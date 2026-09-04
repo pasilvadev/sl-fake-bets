@@ -29,7 +29,7 @@ Mono `tabular-nums` chips split by vertical hairlines, pure readout, no click ta
 
 ## 2. Main column — Bet Feed
 
-Header row: contextual eyebrow (`OPEN BETS` / per filter) + segmented control `All | Open | Closed | Resolved` (slash-notch active tick, §5.8; "All" default). Below: edge-to-edge §5.1 bet rows (rail / icon chip 44px / title + by-creator / odds preview with jade `/` join / POOL + countdown / avatar stack / WAGER CTA → wager modal UX-016; row body → bet-detail UX-015 — Phase 1: `href="#"` placeholder). A small ghost **share** icon sits with the CTA cluster (UX-024 home; Phase 1 copies a fake link).
+Header row: contextual eyebrow (`OPEN BETS` / per filter) + segmented control `All | Open | Closed | Resolved` (slash-notch active tick, §5.8; "All" default). Below: edge-to-edge §5.1 bet rows (rail / icon chip 44px / title + by-creator / odds preview (top-2 stacked vertically, jade `/` bullets, sans label + mono odds column, `…` + full-list tooltip for 3+ — §5.1) / POOL + countdown / avatar stack / WAGER CTA → wager modal UX-016; row body → bet-detail UX-015 — Phase 1: `href="#"` placeholder). A small ghost **share** icon sits with the CTA cluster (UX-024 home; Phase 1 copies a fake link).
 
 Grouping (eyebrow + hairline break, never color-only): **OPEN** soonest-closing first (UX-008) → **CLOSED / AWAITING RESULT** most-recent first → **RESOLVED** most-recent first. Empty group = omitted.
 

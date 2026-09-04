@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
 import { getPoolStats, getUser, type Bet, type OptionPoolStat } from "@repo/shared";
@@ -11,6 +12,7 @@ import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
 import { AvatarCluster } from "@/components/sl/avatar-cluster";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -18,7 +20,63 @@ function formatMultiplier(multiplier: number | null): string {
   return multiplier == null ? "—" : `${multiplier.toFixed(2)}x`;
 }
 
-/** Top-2-by-pool odds preview, jade "/" joined, "+N more" for 3+ options. */
+/**
+ * One option row inside an options grid (label col + odds col, so odds line up
+ * vertically). Label is sans (prose), multiplier is mono 500 `tabular-nums`
+ * (design-visual-identity.md §3: "Numbers are mono, prose is sans").
+ *
+ * The odd lives inside its own filled chip (§3 "odds chip in a row", §4.2
+ * numeral framing): the fill edge — not font or color — marks where the label
+ * ends, which is what keeps numeric labels ("Over 2.5", "100") legible next to
+ * "2.40x". Rank dimming per §4.4 (leader N8, runner-up N7, rest N6 — N5 is
+ * off-limits at text-sm, §2 contrast note). Resolved (§5.2): winner keeps the
+ * jade "/" prefix + N8 600 on a jade-wash chip (§2.2 "positive chip bg");
+ * losers recede chipless — N6 400, line-through odds, no prefix.
+ */
+function OptionLine({
+  opt,
+  rank,
+  isResolvedWinner,
+}: {
+  opt: OptionPoolStat;
+  rank: number;
+  isResolvedWinner: boolean;
+}) {
+  const isWinner = isResolvedWinner && rank === 0;
+  const isLoser = isResolvedWinner && rank > 0;
+
+  const tone = isWinner
+    ? "font-semibold text-text-strong"
+    : isLoser || rank >= 2
+      ? "text-muted-foreground"
+      : rank === 0
+        ? "text-text-strong"
+        : "text-foreground";
+
+  return (
+    <span className="contents">
+      <span className="flex min-w-0 items-center gap-1">
+        {!isLoser && <span className="shrink-0 font-mono text-jade">/</span>}
+        <span className={cn("truncate", tone)}>{opt.label}</span>
+      </span>
+      <span
+        className={cn(
+          "min-w-14 justify-self-end rounded-sm px-1.5 py-0.5 text-right font-mono font-medium tabular-nums",
+          isWinner ? "bg-jade-wash" : !isLoser && "bg-surface-3",
+          tone,
+          isLoser && "font-normal line-through",
+        )}
+      >
+        {formatMultiplier(opt.multiplier)}
+      </span>
+    </span>
+  );
+}
+
+const optionsGridClass =
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 text-sm leading-tight";
+
+/** Top-2-by-pool odds preview stacked vertically; "…" + hover tooltip lists every option for 3+. */
 function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[] }) {
   const resolution = bet.resolution;
   const isResolvedWinner = bet.state === "resolved" && resolution?.kind === "winner";
@@ -36,36 +94,48 @@ function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[]
 
   const shown = ordered.slice(0, 2);
   const extra = bet.options.length - shown.length;
+  const [listOpen, setListOpen] = useState(false);
+
+  const preview = (
+    <div className={cn(optionsGridClass, "min-w-0 gap-y-0.5")}>
+      {shown.map((opt, i) => (
+        <OptionLine key={opt.optionId} opt={opt} rank={i} isResolvedWinner={isResolvedWinner} />
+      ))}
+    </div>
+  );
+
+  if (extra <= 0) return preview;
 
   return (
-    <div className="flex items-center gap-1 truncate font-mono text-sm tabular-nums">
-      {shown.map((opt, i) => {
-        const isWinner = isResolvedWinner && i === 0;
-        const isLoser = isResolvedWinner && i > 0;
-        return (
-          <span key={opt.optionId} className="flex items-center gap-1 truncate">
-            {i > 0 && (
-              <span className={cn(isResolvedWinner ? "text-muted-foreground" : "text-jade")}>
-                /
-              </span>
-            )}
-            {isWinner && <span className="text-jade">/</span>}
-            <span
-              className={cn(
-                "truncate",
-                isWinner && "font-semibold text-text-strong",
-                isLoser && "font-normal text-muted-foreground line-through",
-              )}
-            >
-              {opt.label} {formatMultiplier(opt.multiplier)}
-            </span>
+    <Tooltip open={listOpen} onOpenChange={setListOpen}>
+      <TooltipTrigger asChild>
+        {/* preventDefault stops radix's internal onClick-close so tap/click
+            toggles the list — hover-only tooltips are unreachable on touch. */}
+        <div
+          tabIndex={0}
+          onClick={(e) => {
+            e.preventDefault();
+            setListOpen((o) => !o);
+          }}
+          className="flex min-w-0 cursor-default items-center gap-1.5 outline-none focus-visible:ring-1 focus-visible:ring-jade/40"
+        >
+          {preview}
+          <span
+            aria-label={`+${extra} more option${extra > 1 ? "s" : ""}`}
+            className="shrink-0 font-mono text-sm leading-none text-muted-foreground"
+          >
+            …
           </span>
-        );
-      })}
-      {extra > 0 && (
-        <span className="shrink-0 text-muted-foreground">+{extra} more</span>
-      )}
-    </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent align="start">
+        <div className={cn(optionsGridClass, "max-w-64 gap-y-1")}>
+          {ordered.map((opt, i) => (
+            <OptionLine key={opt.optionId} opt={opt} rank={i} isResolvedWinner={isResolvedWinner} />
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
