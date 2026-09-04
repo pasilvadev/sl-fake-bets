@@ -7,6 +7,7 @@ import { UserName } from "@/components/sl/user-name";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
+import { useAuth } from "@/lib/auth-context";
 
 const itemClass =
   "flex h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-surface-3";
@@ -19,6 +20,7 @@ const itemClass =
 export function ProfileMenu() {
   const { currentUser, balance, canManage, canInvite } = useTeam();
   const { open } = useModal();
+  const { signOut } = useAuth();
 
   return (
     <DropdownMenu.Root>
@@ -84,10 +86,7 @@ export function ProfileMenu() {
 
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
 
-          <DropdownMenu.Item
-            disabled
-            className="flex h-8 items-center rounded-sm px-2 text-sm text-muted-foreground opacity-40 outline-none"
-          >
+          <DropdownMenu.Item className={itemClass} onSelect={signOut}>
             Sign out
           </DropdownMenu.Item>
         </DropdownMenu.Content>

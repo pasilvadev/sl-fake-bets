@@ -12,6 +12,8 @@ export function useNow(intervalMs: number = 30000): number | null {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    // Hydration-safe mount read (server/first-client render must stay null).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(id);
