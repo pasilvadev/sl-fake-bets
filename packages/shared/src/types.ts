@@ -90,6 +90,25 @@ export interface Comment {
   createdAt: string;
 }
 
+/**
+ * Coin-ledger entry (DOM-025): grants, leader injections, future donations.
+ * Deliberately NOT per-wager (DOM-026) — wager outcomes only aggregate into
+ * TeamMember.profitLoss.
+ */
+export interface Transaction {
+  id: string;
+  teamId: string;
+  /** Whose balance this entry belongs to. */
+  userId: string;
+  kind: "onboarding-grant" | "daily-reward" | "injection" | "donation";
+  /** Positive = credit, negative = debit. */
+  amount: number;
+  /** e.g. injector/donor display context; free text for the history row. */
+  description: string;
+  balanceAfter: number;
+  createdAt: string;
+}
+
 /** Live pari-mutuel view of one option's pool share (DOM-016). */
 export interface OptionPoolStat {
   optionId: string;

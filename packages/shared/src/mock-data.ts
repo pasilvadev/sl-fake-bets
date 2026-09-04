@@ -5,19 +5,20 @@
  */
 
 import { CONFIG, DEFAULT_MAX_WAGER } from "./config";
-import type { Bet, Comment, Team, User, Wager } from "./types";
+import type { Bet, Comment, Team, Transaction, User, Wager } from "./types";
 
+// nameColor values = the 10 curated name colors (design-visual-identity.md §2.4).
 export const mockUsers: User[] = [
-  { id: "u-01", displayName: "Rafa", nameColor: "#000000", avatar: "icon-dice" },
-  { id: "u-02", displayName: "Duds", nameColor: "#444444", avatar: "icon-crown" },
-  { id: "u-03", displayName: "Pri", nameColor: "#666666", avatar: "icon-ghost" },
-  { id: "u-04", displayName: "Tomate", nameColor: "#222222", avatar: "icon-flame" },
-  { id: "u-05", displayName: "Careca", nameColor: "#111111", avatar: "icon-bolt" },
-  { id: "u-06", displayName: "Nina", nameColor: "#333333", avatar: "icon-star" },
-  { id: "u-07", displayName: "Guiz", nameColor: "#555555", avatar: "icon-skull" },
-  { id: "u-08", displayName: "Lelê", nameColor: "#777777", avatar: "icon-moon" },
-  { id: "u-09", displayName: "Pinto", nameColor: "#888888", avatar: "icon-fish" },
-  { id: "u-10", displayName: "Xis", nameColor: "#999999", avatar: "icon-target" },
+  { id: "u-01", displayName: "Rafa", nameColor: "#2C9297", avatar: "icon-dice" },
+  { id: "u-02", displayName: "Duds", nameColor: "#2C91AA", avatar: "icon-crown" },
+  { id: "u-03", displayName: "Pri", nameColor: "#2B8DBF", avatar: "icon-ghost" },
+  { id: "u-04", displayName: "Tomate", nameColor: "#2D88EC", avatar: "icon-flame" },
+  { id: "u-05", displayName: "Careca", nameColor: "#647BF1", avatar: "icon-bolt" },
+  { id: "u-06", displayName: "Nina", nameColor: "#8C70F2", avatar: "icon-star" },
+  { id: "u-07", displayName: "Guiz", nameColor: "#B45CF5", avatar: "icon-skull" },
+  { id: "u-08", displayName: "Lelê", nameColor: "#DB36E3", avatar: "icon-moon" },
+  { id: "u-09", displayName: "Pinto", nameColor: "#EC35B3", avatar: "icon-fish" },
+  { id: "u-10", displayName: "Xis", nameColor: "#F33483", avatar: "icon-target" },
 ];
 
 export const mockTeam: Team = {
@@ -40,6 +41,47 @@ export const mockTeam: Team = {
     { userId: "u-10", role: "member", coinBalance: CONFIG.ONBOARDING_GRANT_COINS, profitLoss: 0, joinedAt: "2026-09-01T12:00:00Z" },
   ],
 };
+
+/**
+ * The signed-in user for Phase 1 mocks (UX-011 lands straight on the dashboard).
+ * u-01 (Rafa) is the team leader, so leader-only UI (coin injection, team
+ * settings) is exercised by default.
+ */
+export const mockCurrentUserId = "u-01";
+
+/**
+ * Extra teams the current user belongs to, so the team switcher (UX-009/010)
+ * renders a real multi-team state. Only mockTeam has bets/wagers/comments;
+ * the others exist to populate the switcher.
+ */
+export const mockTeams: Team[] = [
+  mockTeam,
+  {
+    id: "t-02",
+    name: "Lanhouse Legends",
+    leaderId: "u-02",
+    accessMode: "restricted",
+    inviteCode: "lanhouse-legends-gg",
+    createdAt: "2026-07-15T20:00:00Z",
+    members: [
+      { userId: "u-02", role: "member", coinBalance: 300, profitLoss: 200, joinedAt: "2026-07-15T20:00:00Z" },
+      { userId: "u-01", role: "moderator", coinBalance: 80, profitLoss: -20, joinedAt: "2026-07-15T20:10:00Z" },
+      { userId: "u-07", role: "member", coinBalance: 115, profitLoss: 15, joinedAt: "2026-07-16T10:00:00Z" },
+    ],
+  },
+  {
+    id: "t-03",
+    name: "Churrasco FC",
+    leaderId: "u-05",
+    accessMode: "free-for-all",
+    inviteCode: "churrasco-fc-2026",
+    createdAt: "2026-08-20T12:00:00Z",
+    members: [
+      { userId: "u-05", role: "member", coinBalance: 100, profitLoss: 0, joinedAt: "2026-08-20T12:00:00Z" },
+      { userId: "u-01", role: "member", coinBalance: 100, profitLoss: 0, joinedAt: "2026-08-21T09:00:00Z" },
+    ],
+  },
+];
 
 export const mockBets: Bet[] = [
   {
@@ -153,7 +195,9 @@ export const mockWagers: Wager[] = [
   // b-04 (closed): pool 45
   { id: "w-10", betId: "b-04", userId: "u-01", optionId: "b-04-o1", amount: 25, placedAt: "2026-09-01T18:30:00Z" },
   { id: "w-11", betId: "b-04", userId: "u-09", optionId: "b-04-o2", amount: 20, placedAt: "2026-09-02T09:10:00Z" },
-  // b-05 (resolved, winner b-05-o2): pool 120
+  // b-05 (resolved, winner b-05-o2): pool 135 — u-01 loses, so the current
+  // user's own "\ LOST" outcome glyph renders on the dashboard (§5.2).
+  { id: "w-17", betId: "b-05", userId: "u-01", optionId: "b-05-o1", amount: 15, placedAt: "2026-08-25T12:30:00Z" },
   { id: "w-12", betId: "b-05", userId: "u-04", optionId: "b-05-o1", amount: 60, placedAt: "2026-08-25T13:00:00Z" },
   { id: "w-13", betId: "b-05", userId: "u-02", optionId: "b-05-o2", amount: 40, placedAt: "2026-08-25T14:20:00Z" },
   { id: "w-14", betId: "b-05", userId: "u-06", optionId: "b-05-o2", amount: 20, placedAt: "2026-08-26T10:00:00Z" },
@@ -172,6 +216,19 @@ export const mockComments: Comment[] = [
   { id: "c-07", betId: "b-03", userId: "u-02", body: "400 de 1100+... boa sorte", createdAt: "2026-08-29T10:30:00Z" },
   { id: "c-08", betId: "b-05", userId: "u-02", body: "GG, pagou 2x", createdAt: "2026-08-28T19:00:00Z" },
   { id: "c-09", betId: "b-06", userId: "u-05", body: "nem choveu nem fez sol, anulada justa", createdAt: "2026-08-27T18:00:00Z" },
+];
+
+/**
+ * Coin-ledger mock (DOM-025): grants + one leader injection. Scoped to the
+ * current user (u-01) on t-01 except the injection row, which belongs to its
+ * recipient (u-09) — the leader sees it in the team ledger view later.
+ */
+export const mockTransactions: Transaction[] = [
+  { id: "tx-01", teamId: "t-01", userId: "u-01", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-01T18:00:00Z" },
+  { id: "tx-02", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-01T09:12:00Z" },
+  { id: "tx-03", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 133, createdAt: "2026-09-02T08:45:00Z" },
+  { id: "tx-04", teamId: "t-01", userId: "u-09", kind: "injection", amount: 20, description: "Injected by Rafa (leader)", balanceAfter: 23, createdAt: "2026-09-03T14:00:00Z" },
+  { id: "tx-05", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 143, createdAt: "2026-09-04T07:30:00Z" },
 ];
 
 /** Convenience lookup for rendering names/colors from a wager or comment. */

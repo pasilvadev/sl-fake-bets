@@ -17,6 +17,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 | `AGENT_SPEC.md` | Full product requirements derived from vision.md (this file) |
 | `design-stack.md` | APPROVED tech stack decision (Next.js 16 + Supabase + Vercel, in-house analytics/flags), free-tier ceilings, binding implementation rules |
 | `design-visual-identity.md` | Visual identity system: dark-only black/white/jade tokens (oklch), typography, slash motif, component specs, banned-cliché list. Supersedes original UX-020 wording (see its §0.1) |
+| `design-dashboard.md` | Dashboard information architecture: shell (top bar + ticker + Pulse Rail), bet feed, future-feature placeholder inventory, scarcity ruling for co-occurring cut-* motifs, responsive tiers, Phase-1 component map |
 
 ## 2. Product summary
 

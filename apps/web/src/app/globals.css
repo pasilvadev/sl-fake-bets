@@ -2,14 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * SL design system — dark-only (design-visual-identity.md §2.5).
+ * No .dark toggle: every token lives in bare :root.
+ */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -27,6 +30,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -39,82 +43,157 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 1.5);
+  --radius-lg: calc(var(--radius) * 2);
+
+  /* ---- SL tokens (§2.5 @theme inline registration) ---- */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
+
+  --color-jade: var(--jade-base);
+  --color-jade-wash: var(--jade-wash);
+  --color-jade-border: var(--jade-border);
+  --color-jade-muted: var(--jade-muted);
+  --color-jade-glow: var(--jade-glow);
+  --color-jade-raw: var(--jade-raw);
+
+  --color-ember: var(--ember-icon);
+  --color-ember-wash: var(--ember-wash);
+  --color-ember-border: var(--ember-border);
+
+  --color-void: var(--void);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-text-strong: var(--text-strong);
+
+  --color-name-color-1: var(--name-color-1);
+  --color-name-color-2: var(--name-color-2);
+  --color-name-color-3: var(--name-color-3);
+  --color-name-color-4: var(--name-color-4);
+  --color-name-color-5: var(--name-color-5);
+  --color-name-color-6: var(--name-color-6);
+  --color-name-color-7: var(--name-color-7);
+  --color-name-color-8: var(--name-color-8);
+  --color-name-color-9: var(--name-color-9);
+  --color-name-color-10: var(--name-color-10);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.35 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* ---- shadcn/tailwind v4 core tokens ---- */
+  --background: oklch(0.145 0.006 158);            /* #080B09  N0 */
+  --foreground: oklch(0.895 0.004 158);            /* #DADDDB  N7 */
+
+  --card: oklch(0.185 0.006 158);                  /* #111412  N1 */
+  --card-foreground: oklch(0.895 0.004 158);       /* #DADDDB  N7 */
+
+  --popover: oklch(0.225 0.007 158);               /* #191D1A  N2 */
+  --popover-foreground: oklch(0.895 0.004 158);    /* #DADDDB  N7 */
+
+  --primary: oklch(0.755 0.175 158);               /* #0CD083  jade-base */
+  --primary-foreground: oklch(0 0 0);              /* black — NOT white, §2.2 */
+
+  --secondary: oklch(0.300 0.008 158);             /* #2B2F2C  N3 */
+  --secondary-foreground: oklch(0.895 0.004 158);  /* #DADDDB  N7 */
+
+  --muted: oklch(0.225 0.007 158);                 /* #191D1A  N2 */
+  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 — doubles as --negative */
+
+  --accent: oklch(0.240 0.050 158);                /* #052616  jade-wash */
+  --accent-foreground: oklch(0.755 0.175 158);     /* #0CD083  jade-base */
+
+  --destructive: oklch(0.600 0.154 45);            /* #C85C22  ember-solid */
+  --destructive-foreground: oklch(0 0 0);          /* black — white fails 4.19:1 */
+
+  --border: oklch(0.300 0.008 158);                /* #2B2F2C  N3 */
+  --input: oklch(0.365 0.008 158);                 /* #3B403D  N4 */
+  --ring: oklch(0.755 0.175 158);                  /* #0CD083  jade-base — only focus color */
+
+  --chart-1: oklch(0.605 0.091 200);   /* #2C9297 Harbor Teal */
+  --chart-2: oklch(0.610 0.116 236);   /* #2B8DBF Skyline Blue */
+  --chart-3: oklch(0.625 0.178 272);   /* #647BF1 Indigo Pulse */
+  --chart-4: oklch(0.648 0.224 308);   /* #B45CF5 Neon Orchid */
+  --chart-5: oklch(0.650 0.244 344);   /* #EC35B3 Flare Pink */
+  /* chart-N = name-color-(2N−1): every other curated hue for max separation. */
+
+  --sidebar: oklch(0.185 0.006 158);               /* #111412  N1 */
+  --sidebar-foreground: oklch(0.895 0.004 158);    /* #DADDDB  N7 */
+  --sidebar-primary: oklch(0.755 0.175 158);       /* #0CD083 */
+  --sidebar-primary-foreground: oklch(0 0 0);      /* #000000 */
+  --sidebar-accent: oklch(0.240 0.050 158);        /* #052616 */
+  --sidebar-accent-foreground: oklch(0.755 0.175 158);
+  --sidebar-border: oklch(0.300 0.008 158);        /* #2B2F2C */
+  --sidebar-ring: oklch(0.755 0.175 158);
+
+  /* ---- depth / elevation (lightness steps, not shadows) ---- */
+  --surface-0: oklch(0.145 0.006 158);  /* #080B09 = --background, canvas */
+  --surface-1: oklch(0.185 0.006 158);  /* #111412 = --card/--sidebar */
+  --surface-2: oklch(0.225 0.007 158);  /* #191D1A = --popover, floating layer */
+  --surface-3: oklch(0.265 0.007 158);  /* hover/pressed fill, topmost menu row */
+  --text-strong: oklch(0.985 0.002 158); /* #F9FAF9  N8, headings/hero numerals only */
+
+  /* ---- jade ramp ---- */
+  --jade-wash: oklch(0.240 0.050 158);   /* #052616 */
+  --jade-border: oklch(0.340 0.075 158); /* #074328 */
+  --jade-muted: oklch(0.520 0.115 158);  /* #157C4F  icons/large-UI only */
+  --jade-base: oklch(0.755 0.175 158);   /* #0CD083  == --primary */
+  --jade-glow: oklch(0.860 0.195 158);   /* #25F69E  live/pulse effects only */
+  --jade-raw: oklch(0.879 0.214 155.7);  /* #00FF98  logo/marketing reference only */
+
+  /* ---- ember (destructive/warning) ---- */
+  --ember-wash: oklch(0.240 0.045 45);   /* #31180C */
+  --ember-border: oklch(0.340 0.065 45); /* #532C1A */
+  --ember-icon: oklch(0.600 0.110 45);   /* #B66946 */
+
+  /* ---- semantic aliases ---- */
+  --positive: oklch(0.755 0.175 158);    /* == jade-base, "+" / "/" prefix */
+  --negative: oklch(0.665 0.007 158);    /* == N6, "−" / "\" prefix */
+  --void: oklch(0.520 0.008 158);        /* N5, pairs with diagonal hairline */
+
+  /* ---- name colors (curated 10) ---- */
+  --name-color-1: oklch(0.605 0.091 200);  /* #2C9297 Harbor Teal */
+  --name-color-2: oklch(0.610 0.097 218);  /* #2C91AA Signal Cyan */
+  --name-color-3: oklch(0.610 0.116 236);  /* #2B8DBF Skyline Blue */
+  --name-color-4: oklch(0.625 0.172 254);  /* #2D88EC Voltage Blue */
+  --name-color-5: oklch(0.625 0.178 272);  /* #647BF1 Indigo Pulse */
+  --name-color-6: oklch(0.635 0.186 290);  /* #8C70F2 Ultraviolet */
+  --name-color-7: oklch(0.648 0.224 308);  /* #B45CF5 Neon Orchid */
+  --name-color-8: oklch(0.650 0.266 326);  /* #DB36E3 Magenta Static */
+  --name-color-9: oklch(0.650 0.244 344);  /* #EC35B3 Flare Pink */
+  --name-color-10: oklch(0.645 0.229 2);   /* #F33483 Coral Flare */
+
+  /* ---- brand motif (reference constants for canvas/SVG math only) ---- */
+  --brand-slash-angle: 68deg;
+  --brand-slash-rad: 1.187rad;
+
+  /* ---- radius — --radius is the ONE lever ---- */
+  --radius: 0.25rem;                       /* 4px */
+  --radius-full: 9999px;                   /* avatars, icon buttons only */
+
+  /* ---- border weight variant ---- */
+  --border-strong: oklch(0.520 0.008 158); /* #656A67 — edges that must read as a boundary (≥3:1) */
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.75 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.922 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* corner-cut utilities, ratio tuned to ~68° (v ≈ 2.48h) — §4.3 */
+@utility cut-sm     { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%); }
+@utility cut-md     { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 20px, 100% 100%, 0 100%); }
+@utility cut-lg     { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 25px, 100% 100%, 0 100%); }
+@utility cut-mirror { clip-path: polygon(0 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 8px)); }
+@utility cut-danger { clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%, 0 15px); }
+
+/* S-mark, CSS-only clip-path — minimal geometric approximation of the stencil
+   "S" (two parallel diagonal cuts through a block). Loading/watermark/send-glyph
+   only until a real traced SVG replaces it. */
+@utility s-mark {
+  clip-path: polygon(
+    0% 0%, 100% 0%, 100% 24%, 32% 24%,
+    100% 76%, 100% 100%, 0% 100%, 0% 76%,
+    68% 76%, 0% 24%
+  );
+  background: currentColor;
 }
 
 @layer base {
@@ -126,5 +205,6 @@
   }
   html {
     @apply font-sans;
+    color-scheme: dark;
   }
 }
