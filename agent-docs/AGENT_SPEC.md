@@ -16,6 +16,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 |---|---|
 | `AGENT_SPEC.md` | Full product requirements derived from vision.md (this file) |
 | `design-stack.md` | APPROVED tech stack decision (Next.js 16 + Supabase + Vercel, in-house analytics/flags), free-tier ceilings, binding implementation rules |
+| `design-visual-identity.md` | Visual identity system: dark-only black/white/jade tokens (oklch), typography, slash motif, component specs, banned-cliché list. Supersedes original UX-020 wording (see its §0.1) |
 
 ## 2. Product summary
 
@@ -63,7 +64,7 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 - **UX-019 [future]** Team-wide global chat channel (separate from per-bet threads).
 
 **Identity, profile, platform**
-- **UX-020 [mvp]** Visual identity strictly black and white; no other brand colors in core UI.
+- **UX-020 [mvp]** Visual identity is black/white with jade as the sole brand accent, plus the ember destructive hue and 10 curated name colors as sanctioned exceptions (see `design-visual-identity.md` §0.1, §2.2–2.4); no other decorative brand colors; traffic-light red/green/yellow banned for state.
 - **UX-021 [mvp]** Brand is "SL", never spelled out as "Soulless" anywhere in the product, no explanation given. `old-soulless-bg.jpeg` (project root) is the design ancestor: never use the file directly in-app; generate new icons inspired by it; the stylized "S" glyph may be reused 1:1.
 - **UX-022 [mvp]** Twitch-style profile customization: display name, name color (applied everywhere the name renders — chats and bets), platform icon set for avatar, plus custom image upload. All with defaults per UX-002.
 - **UX-025 [mvp]** Fully responsive web app; good mobile-browser experience. Native mobile is far-future (empty `mobile/` folder only).

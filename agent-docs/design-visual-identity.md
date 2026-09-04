@@ -1,0 +1,652 @@
+# SL — Visual Identity Guide
+
+Dark-mode-only design system for SL Fake Bets. Synthesizes color science, typography/motif, component specs, and interaction rules into one system. Every value below is implementable directly as Tailwind v4 `@theme` tokens / shadcn CSS vars in `apps/web/src/app/globals.css`.
+
+> Brand is **"SL"** — never spell out the old name. The stencil-cut "S" mark and its two-parallel-diagonal-cut construction (source: `old-soulless-bg.jpeg`) is the one reusable asset — reuse 1:1, never redraw the mark itself. The faceted dark background in that lockup is **not** part of the in-product system (see Banned List #10-adjacent).
+
+### 0.1 Spec deviation from AGENT_SPEC
+
+Supersedes AGENT_SPEC **UX-020** ("visual identity strictly black and white") per owner-approved jade accent + the ember/name-color exceptions in §2.2–2.4. `AGENT_SPEC.md` UX-020 has been updated in lockstep to read: "Visual identity is black/white with jade as the sole brand accent, plus the ember destructive hue and 10 curated name colors as sanctioned exceptions (see `design-visual-identity.md`); no other decorative brand colors; traffic-light red/green/yellow banned for state." Proposed-and-applied, not a silent divergence, per AGENT_SPEC §0.
+
+---
+
+## 0. Quick knobs
+
+The ~10 values you'd actually reach for. Each links to its section/token.
+
+| Want to change... | Token(s) | Section |
+|---|---|---|
+| **The jade itself** (brand hue) | `--jade-base` (UI color, `#0CD083`) vs `--jade-raw` (logo-only, `#00FF98`) | §2.2 |
+| **How "loud" jade feels overall** | `--jade-wash` / `--jade-border` / `--jade-muted` / `--jade-glow` steps | §2.2 |
+| **Background depth (how black is black)** | `--surface-0/1/2/3` (N0–N3) | §2.1 |
+| **Jade glow frequency** | Glow Ration rule — max 1 glowing element per screen | §6 |
+| **Diagonal motif angle** | the offset ratio in each `@utility cut-*` rule (vertical px ÷ horizontal px, ~2.48 everywhere) — `--brand-slash-angle`/`--brand-slash-rad` are reference constants only, not wired to any utility | §4.3 |
+| **Corner radius (roundedness)** | `--radius` — the one lever; `--radius-sm/md/lg` are `calc()`-derived from it | §2.5 |
+| **The one supporting/destructive hue** | `--ember-*` ramp (H=45, copper) | §2.3 |
+| **Name-color palette (usernames)** | `--name-color-1..10` | §2.4 |
+| **Win/loss visual language** | Slash-glyph system (`/` jade vs `\` muted), §5.2 | §2.3, §5.2 |
+| **Motion speed budget** | Duration table | §6 |
+
+---
+
+## 1. Identity, in one paragraph (UX-021)
+
+SL is a black-and-white app with exactly one loud color: jade. It borrows the stencil/slash cut from its own wordmark as its single geometric signature — used sparingly, never as wallpaper. Every "is this good or bad" moment (won a bet, lost a bet, void, closing soon, destructive action) is solved without red, green, or yellow, because color is reserved for one job: jade means "alive / brand / gain." Everything else is monochrome, told apart by weight, direction, and the two diagonal cuts that already exist in the logo (`/` and `\`). Density beats whitespace — this is a Twitch-adjacent data app, not a airy productivity tool. Nothing here should look like it was scaffolded from a component-library template.
+
+### Design principles (memorize these seven)
+1. **One accent, one job.** Jade means gain / brand / open / alive. It is never a decoration, never a random highlight, never a second "info" color.
+2. **No traffic lights, ever.** Win/loss/open/closed/void/error are told apart by shape, glyph, weight, motion, or jade-vs-neutral — never red, green, or yellow text/fill. This is the single most-repeated rule in the whole system.
+3. **Scarcity is the brand.** Max one diagonal cut visible per viewport, max one jade glow per screen, max one drop-shadow (the modal overlay) in the whole app. Repetition of a "signature" element turns it into wallpaper — the fastest way to look generic.
+4. **Weight over color for hierarchy.** Two text colors handle 90% of the UI (white full-emphasis, muted-gray secondary). A third tier of emphasis is jade, never a third gray.
+5. **Numbers are mono, prose is sans.** Any figure the user compares or scans (odds, coins, timers, ranks) is Geist Mono + `tabular-nums`. Numbers embedded in a sentence stay Geist Sans.
+6. **Cheap by construction.** No blur walls, no stacked shadows, no shimmer sweeps. Elevation is a lightness step + a hairline border. This is a performance requirement (UX-006), not a style preference.
+7. **Dry, deadpan voice, never corporate.** Empty states and the "podium of the poor" carry their meaning through copy/humor, not iconography color. See §7.
+
+---
+
+## 2. Color
+
+All values computed OKLCH → sRGB with real WCAG contrast math (not eyeballed). Hue anchor is the WoW-Monk jade `#00FF98` (`oklch(0.879 0.214 155.7)`) rounded to a working hue of **158°**, used for every neutral and jade step so the whole palette reads as "mixed from one paint," not brand-color-pasted-on-generic-gray.
+
+### 2.1 Neutral ramp (N0–N8)
+
+Slightly jade-tinted (chroma 0.002–0.008 — below the point of looking colored, but enough that neutrals and the jade accent feel related). Three depth tiers, each one lightness stop up — elevation reads via brightness, never shadow weight.
+
+| Token | Alias | Role | OKLCH | Hex | Contrast vs N0 |
+|---|---|---|---|---|---|
+| N0 | `--surface-0` / `--background` | Page canvas | `oklch(0.145 0.006 158)` | `#080B09` | — |
+| N1 | `--surface-1` / `--card` / `--sidebar` | Docked panels, cards, rows | `oklch(0.185 0.006 158)` | `#111412` | 1.07:1 |
+| N2 | `--surface-2` / `--popover` | Floating: modal, dropdown, popover | `oklch(0.225 0.007 158)` | `#191D1A` | 1.16:1 |
+| N3a | `--surface-3` | Hover/pressed fill, topmost menu row | `oklch(0.265 0.007 158)` | `#232624` | 1.30:1 |
+| N3b | `--border` | Hairline border (decorative wash) | `oklch(0.300 0.008 158)` | `#2B2F2C` | 1.46:1 |
+| N4 | `--input` | Border strong / input outline | `oklch(0.365 0.008 158)` | `#3B403D` | 1.87:1 |
+| N5 | `--void` | Muted/disabled text, tertiary icons | `oklch(0.520 0.008 158)` | `#656A67` | **3.59:1** (large text/icons only) |
+| N6 | `--muted-foreground` / `--negative` | Secondary text, loss numerals | `oklch(0.665 0.007 158)` | `#909592` | **6.50:1** ✅ |
+| N7 | `--foreground` | Primary text (default body) | `oklch(0.895 0.004 158)` | `#DADDDB` | **14.45:1** ✅ |
+| N8 | `--text-strong` | Headings, hero numerals only | `oklch(0.985 0.002 158)` | `#F9FAF9` | **18.90:1** ✅ |
+
+**N3a and N3b are two different lightness steps, not aliases** — N3a (hover/pressed fill) and N3b (hairline border) never share one value; don't read them as the same token.
+
+**Reading the "Contrast vs N0" column**: for N1–N4 (surfaces) these ratios measure adjacent-surface *elevation* separation and are intentionally low/ungraded. Only N5–N8 (text/icon roles) are checked against the 4.5:1 small-text bar — don't read N1–N4's low numbers as "failing" anything. And **never use N5 for uppercase labels, table columns, or badge text regardless of apparent size** — N5 clears only large-text/icon thresholds; any of those contexts needs N6 or brighter.
+
+**Rule**: default body text is **N7**, not N8. Reserve true white (N8) for headings and hero numerals (odds, coin totals) — an entire UI in pure white on near-black causes visible eye fatigue on OLED/weak panels.
+
+### 2.2 Jade ramp (hue 158)
+
+Raw Monk jade (`#00FF98`) is a **glow reference**, not a UI fill — its luminance (0.74) is too hot to hold small text or sit under white text. The UI-base sits one step down, at `oklch(0.755 0.175 158)`.
+
+| Step | Token | Use | OKLCH | Hex |
+|---|---|---|---|---|
+| jade-wash | `--jade-wash` / `--accent` | Subtle bg tint: hover rows, positive chip bg | `oklch(0.240 0.050 158)` | `#052616` |
+| jade-border | `--jade-border` | Focus-adjacent border, active-row top line | `oklch(0.340 0.075 158)` | `#074328` |
+| jade-muted | `--jade-muted` | Icons / large text only (fails small-text contrast) | `oklch(0.520 0.115 158)` | `#157C4F` |
+| **jade-base** | `--jade-base` / `--primary` / `--ring` | **UI base**: buttons, links, focus ring, live/open indicator | `oklch(0.755 0.175 158)` | `#0CD083` |
+| jade-glow | `--jade-glow` | Glow/live-pulse only (see Glow Ration, §6) | `oklch(0.860 0.195 158)` | `#25F69E` |
+| jade-raw | `--jade-raw` | **Reference only** — logo, marketing, never product UI | `oklch(0.879 0.214 155.7)` | `#00FF98` |
+
+**Contrast** — the load-bearing rule: **jade-base is the floor for anything holding small text**, either as text-on-dark or as a button fill with black text. Everything darker (wash/border/muted) is decorative/iconography only.
+
+| Pair | Ratio | Verdict |
+|---|---|---|
+| jade-base text on N0 | 9.76:1 | ✅ safe as link/text color |
+| **black text on jade-base fill** | **10.37:1** | ✅ the only safe button combo |
+| white text on jade-base fill | 2.03:1 | ❌ fails hard — never white-on-jade |
+| jade-muted text on N0 | 3.79:1 | fails 4.5:1 — icons/large-UI only |
+
+`--primary-foreground` **must be black**, not the shadcn-default white.
+
+### 2.3 Semantic states — no traffic lights
+
+Two different concerns, two different treatments:
+
+| Concern | Frequency | Treatment |
+|---|---|---|
+| **Outcome polarity** (won/lost a bet) | Constant, routine | Never looks like an error. Asymmetric emphasis: wins pop in jade, losses quietly recede to muted gray. |
+| **Destructive/irreversible action** (delete team, remove member) | Rare | Gets a real warning language — the one sanctioned supporting hue, ember. |
+
+| State | Color | Mechanism |
+|---|---|---|
+| Win / profit | `--positive` = jade-base `#0CD083` | `/` glyph prefix (mirrors logo's forward cut), e.g. `/ +240` |
+| Loss / negative | `--negative` = N6 `#909592` | `\` glyph prefix (mirrors logo's second cut), e.g. `\ −180`. Deliberately recedes — no red, ever |
+| Void / draw / refunded | `--void` = N5 `#656A67` | No pill badge (pills are reserved for team tags, see Banned List #2). Label `VOID · REFUNDED` in N6 + a single thin diagonal hairline drawn across the row |
+| Open | jade-base solid dot | "Open" = alive = brand |
+| Closing soon | Same jade dot, animated pulse (opacity 100→60→100, 1.6s) + countdown promoted to N8 | Urgency = motion + weight, not a new hue |
+| Closed / awaiting result | N5 dot, no animation, row `opacity-90` | No accent at all — closed = quiet |
+| Destructive (ordinary trigger) | Neutral surface + ember icon/border only | Text stays N7, only icon/border tinted |
+| Destructive (final confirm button) | ember-solid fill + **black** text | Escalating weight matches escalating irreversibility |
+| Warning / validation error | ember-icon (icon only) + ember-border (banner edge) | Body copy stays neutral; only icon/border tinted |
+
+**The ember ramp** (H=45°, warm copper — chosen specifically to avoid reading as stoplight-red or caution-yellow):
+
+| Step | Token | Use | OKLCH | Hex |
+|---|---|---|---|---|
+| ember-wash | `--ember-wash` | Destructive row hover bg | `oklch(0.240 0.045 45)` | `#31180C` |
+| ember-border | `--ember-border` | Destructive/warning card border | `oklch(0.340 0.065 45)` | `#532C1A` |
+| ember-icon | `--ember-icon` | Icons, warning glyphs | `oklch(0.600 0.110 45)` | `#B66946` |
+| **ember-solid** | `--destructive` | Final destructive button fill only | `oklch(0.600 0.154 45)` | `#C85C22` |
+
+Contrast on ember-solid: black text 5.01:1 ✅ / white text 4.19:1 ❌. `--destructive-foreground` **must be black** — inverts the shadcn default, flag this in implementation.
+
+**Hard rule**: ember never colors a state *word*. Never `−R$50` in ember, never "LOST" in ember. It only fills icons, thin borders, and the one final confirm-button background.
+
+### 2.4 Name colors (Twitch-style, 10 curated) (UX-022)
+
+The **one deliberate exception** to black/white/jade — user display names need individual color. Excludes 130–190° (jade collision), 25–65° (ember collision), and 65–130° (yellow-green, reads as caution) entirely. What's left: one coherent cool-to-magenta "electric jewel-tone" family, same lightness recipe (L≈0.60–0.65). All 10 verified ≥4.5:1 against N2 (the strictest surface — modal/popover), meaning they clear N0/N1 by a wider margin. Minimum safe usage: **≥14px, weight ≥500** — these margins assume non-subpixel-thin glyph strokes.
+
+| Name | OKLCH | Hex | vs N0 | vs N1 | vs N2 |
+|---|---|---|---|---|---|
+| Harbor Teal | `oklch(0.605 0.091 200)` | `#2C9297` | 5.33 | 5.00 | 4.60 |
+| Signal Cyan | `oklch(0.610 0.097 218)` | `#2C91AA` | 5.40 | 5.07 | 4.66 |
+| Skyline Blue | `oklch(0.610 0.116 236)` | `#2B8DBF` | 5.33 | 5.00 | 4.60 |
+| Voltage Blue | `oklch(0.625 0.172 254)` | `#2D88EC` | 5.50 | 5.17 | 4.74 |
+| Indigo Pulse | `oklch(0.625 0.178 272)` | `#647BF1` | 5.31 | 4.98 | 4.58 |
+| Ultraviolet | `oklch(0.635 0.186 290)` | `#8C70F2` | 5.38 | 5.05 | 4.64 |
+| Neon Orchid | `oklch(0.648 0.224 308)` | `#B45CF5` | 5.46 | 5.14 | 4.71 |
+| Magenta Static | `oklch(0.650 0.266 326)` | `#DB36E3` | 5.32 | 4.99 | 4.59 |
+| Flare Pink | `oklch(0.650 0.244 344)` | `#EC35B3` | 5.39 | 5.06 | 4.65 |
+| Coral Flare | `oklch(0.645 0.229 2)` | `#F33483` | 5.30 | 4.97 | 4.57 |
+
+Voltage Blue and Neon Orchid had the thinnest N2 margins (4.56:1 / 4.58:1 — too close to the 4.5:1 cliff to survive subpixel AA / monitor variance); both got a small L bump, now ≥4.71:1.
+
+**"Same lightness recipe" is not full perceptual-weight parity.** Chroma ranges 0.091 (Harbor Teal) to 0.266 (Magenta Static) at matched L — the high-chroma magenta/pink stops read visibly louder than the low-chroma teal/cyan stops. This isn't an oversight: teal/cyan at L≈0.60 has a narrower sRGB gamut, so pushing those hues to a shared higher chroma (e.g. ≈0.15) clips out of gamut before reaching it (verified: Harbor Teal at C=0.15 computes a negative red channel). Equalizing chroma across this full hue range at this lightness isn't achievable in sRGB — so the parity claim here is scoped to lightness and legibility only, not loudness; if a name reading "louder" than another matters for a specific surface, don't rely on this palette alone for that.
+
+Chart series (option A/B/C… in odds displays, §5.5) reuse this same 5-hue subset (`--chart-1..5`) rather than a rainbow palette — see §4.4 for how 2–6 options are told apart without extra hues.
+
+### 2.5 Full `globals.css` `:root` block
+
+Dark-only — collapse the shadcn light/`.dark` split into a single `:root`.
+
+```css
+:root {
+  /* ---- shadcn/tailwind v4 core tokens ---- */
+  --background: oklch(0.145 0.006 158);            /* #080B09  N0 */
+  --foreground: oklch(0.895 0.004 158);            /* #DADDDB  N7 */
+
+  --card: oklch(0.185 0.006 158);                  /* #111412  N1 */
+  --card-foreground: oklch(0.895 0.004 158);       /* #DADDDB  N7 */
+
+  --popover: oklch(0.225 0.007 158);               /* #191D1A  N2 */
+  --popover-foreground: oklch(0.895 0.004 158);    /* #DADDDB  N7 */
+
+  --primary: oklch(0.755 0.175 158);               /* #0CD083  jade-base */
+  --primary-foreground: oklch(0 0 0);              /* #000000  black — NOT white, see §2.2 */
+
+  --secondary: oklch(0.300 0.008 158);             /* #2B2F2C  N3 */
+  --secondary-foreground: oklch(0.895 0.004 158);  /* #DADDDB  N7 */
+
+  --muted: oklch(0.225 0.007 158);                 /* #191D1A  N2 */
+  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 — doubles as --negative */
+
+  --accent: oklch(0.240 0.050 158);                /* #052616  jade-wash */
+  --accent-foreground: oklch(0.755 0.175 158);     /* #0CD083  jade-base */
+
+  --destructive: oklch(0.600 0.154 45);            /* #C85C22  ember-solid */
+  --destructive-foreground: oklch(0 0 0);          /* #000000  black — white fails 4.19:1 */
+
+  --border: oklch(0.300 0.008 158);                /* #2B2F2C  N3 */
+  --input: oklch(0.365 0.008 158);                 /* #3B403D  N4 */
+  --ring: oklch(0.755 0.175 158);                  /* #0CD083  jade-base — only focus color in the app */
+
+  --chart-1: oklch(0.605 0.091 200);   /* #2C9297 Harbor Teal */
+  --chart-2: oklch(0.610 0.116 236);   /* #2B8DBF Skyline Blue */
+  --chart-3: oklch(0.625 0.178 272);   /* #647BF1 Indigo Pulse */
+  --chart-4: oklch(0.648 0.224 308);   /* #B45CF5 Neon Orchid */
+  --chart-5: oklch(0.650 0.244 344);   /* #EC35B3 Flare Pink */
+  /* Note: chart-N = name-color-(2N−1) — every other curated hue for max
+     separation, not the first five in sequence; don't assume chart-2 ==
+     name-color-2 (it's name-color-3, Skyline Blue). */
+
+  --sidebar: oklch(0.185 0.006 158);               /* #111412  N1 */
+  --sidebar-foreground: oklch(0.895 0.004 158);    /* #DADDDB  N7 */
+  --sidebar-primary: oklch(0.755 0.175 158);       /* #0CD083 */
+  --sidebar-primary-foreground: oklch(0 0 0);      /* #000000 */
+  --sidebar-accent: oklch(0.240 0.050 158);        /* #052616 */
+  --sidebar-accent-foreground: oklch(0.755 0.175 158);
+  --sidebar-border: oklch(0.300 0.008 158);        /* #2B2F2C */
+  --sidebar-ring: oklch(0.755 0.175 158);
+
+  /* ---- depth / elevation (lightness steps, not shadows) ---- */
+  --surface-0: oklch(0.145 0.006 158);  /* #080B09 = --background, canvas */
+  --surface-1: oklch(0.185 0.006 158);  /* #111412 = --card/--sidebar */
+  --surface-2: oklch(0.225 0.007 158);  /* #191D1A = --popover, floating layer */
+  --surface-3: oklch(0.265 0.007 158);  /* hover/pressed fill, topmost menu row */
+  --text-strong: oklch(0.985 0.002 158); /* #F9FAF9  N8, headings/hero numerals only */
+
+  /* ---- jade ramp ---- */
+  --jade-wash: oklch(0.240 0.050 158);   /* #052616 */
+  --jade-border: oklch(0.340 0.075 158); /* #074328 */
+  --jade-muted: oklch(0.520 0.115 158);  /* #157C4F  icons/large-UI only */
+  --jade-base: oklch(0.755 0.175 158);   /* #0CD083  == --primary */
+  --jade-glow: oklch(0.860 0.195 158);   /* #25F69E  live/pulse effects only */
+  --jade-raw: oklch(0.879 0.214 155.7);  /* #00FF98  logo/marketing reference only */
+
+  /* ---- ember (destructive/warning) ---- */
+  --ember-wash: oklch(0.240 0.045 45);   /* #31180C */
+  --ember-border: oklch(0.340 0.065 45); /* #532C1A */
+  --ember-icon: oklch(0.600 0.110 45);   /* #B66946 */
+
+  /* ---- semantic aliases ---- */
+  --positive: oklch(0.755 0.175 158);    /* == jade-base, "+" / "/" prefix */
+  --negative: oklch(0.665 0.007 158);    /* == N6, "−" / "\" prefix */
+  --void: oklch(0.520 0.008 158);        /* N5, pairs with diagonal hairline */
+
+  /* ---- name colors (curated 10) ---- */
+  --name-color-1: oklch(0.605 0.091 200);  /* #2C9297 Harbor Teal */
+  --name-color-2: oklch(0.610 0.097 218);  /* #2C91AA Signal Cyan */
+  --name-color-3: oklch(0.610 0.116 236);  /* #2B8DBF Skyline Blue */
+  --name-color-4: oklch(0.625 0.172 254);  /* #2D88EC Voltage Blue */
+  --name-color-5: oklch(0.625 0.178 272);  /* #647BF1 Indigo Pulse */
+  --name-color-6: oklch(0.635 0.186 290);  /* #8C70F2 Ultraviolet */
+  --name-color-7: oklch(0.648 0.224 308);  /* #B45CF5 Neon Orchid */
+  --name-color-8: oklch(0.650 0.266 326);  /* #DB36E3 Magenta Static */
+  --name-color-9: oklch(0.650 0.244 344);  /* #EC35B3 Flare Pink */
+  --name-color-10: oklch(0.645 0.229 2);   /* #F33483 Coral Flare */
+
+  /* ---- brand motif ---- */
+  --brand-slash-angle: 68deg;    /* reference constant for canvas/SVG math only — NOT consumed by any cut-* utility, see §4.3 */
+  --brand-slash-rad: 1.187rad;   /* 68deg, same reference-only status */
+
+  /* ---- radius — --radius is the ONE lever, sm/md/lg/full derive from it ---- */
+  --radius: 0.25rem;                      /* 4px — bump this, everything else follows */
+  --radius-sm: calc(var(--radius) * 0.5);  /* 2px  inputs, small chips */
+  --radius-md: calc(var(--radius) * 1.5);  /* 6px  rare structural fallback */
+  --radius-lg: calc(var(--radius) * 2);    /* 8px  large panels only, rare */
+  --radius-full: 9999px;                   /* avatars, icon buttons only */
+
+  /* ---- border weight variant ---- */
+  --border-strong: oklch(0.520 0.008 158); /* #656A67, same value as N5/--void — edges that must read as a boundary (≥3:1 vs adjacent surface), see §4.2 */
+}
+```
+
+`@theme inline` registration — every token above that any component spec uses as a bare Tailwind utility class (`bg-surface-2`, `border-border-strong`, etc.) must be registered here or Tailwind v4 generates no CSS for it. Place this immediately after the `:root` block:
+
+```css
+@theme inline {
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
+
+  --color-jade: var(--jade-base);
+  --color-jade-wash: var(--jade-wash);
+  --color-jade-border: var(--jade-border);
+  --color-jade-muted: var(--jade-muted);
+  --color-jade-glow: var(--jade-glow);
+  --color-jade-raw: var(--jade-raw);
+
+  --color-ember: var(--ember-icon);
+  --color-ember-wash: var(--ember-wash);
+  --color-ember-border: var(--ember-border);
+
+  --color-void: var(--void);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-text-strong: var(--text-strong);
+
+  --color-name-color-1: var(--name-color-1);
+  --color-name-color-2: var(--name-color-2);
+  --color-name-color-3: var(--name-color-3);
+  --color-name-color-4: var(--name-color-4);
+  --color-name-color-5: var(--name-color-5);
+  --color-name-color-6: var(--name-color-6);
+  --color-name-color-7: var(--name-color-7);
+  --color-name-color-8: var(--name-color-8);
+  --color-name-color-9: var(--name-color-9);
+  --color-name-color-10: var(--name-color-10);
+}
+```
+
+This supersedes the small `--color-jade`/`--color-ember`-only block previously shown in §4.3 — that block is now just a pointer to this one, don't declare either name twice.
+
+Implementation flags:
+1. `--destructive-foreground` doesn't exist in the current stock file — add it, set **black**.
+2. `--primary-foreground` must be **black** (jade-base fails at 2.03:1 with white text).
+3. `jade-muted` never carries small body text (3.79:1) — icons/large-text/non-text UI only.
+4. Delete the `.dark` block/media toggle entirely — this app is dark-only, everything lives in bare `:root`.
+5. The repo's existing `@theme inline` block already derives `--radius-sm/md/lg` via `calc()` off `--radius` (good — same pattern as above) but also defines unused `--radius-xl/2xl/3xl/4xl`; delete those four, they're banned (§4.1, §8 #1). Don't add a second `--radius-sm/md/lg` anywhere — one definition, one place.
+6. `--coin` (previously a fixed always-jade token) is removed — superseded by the `currentColor` glyph behavior in §5.5, which is conditional (white default, jade only on positive delta), not a fixed color. Don't reintroduce it.
+7. Fix the pre-existing repo bug in `globals.css` where `--font-sans: var(--font-sans)` is self-referential — see §3.
+
+---
+
+## 3. Typography — Geist only, no third font
+
+No display font added. Geist Sans already reads geometric/technical; Geist Mono is the "display" solution for numerals — its ticker-like grid does the branding work numerals need without a second font file (perf: UX-006). Distinctiveness comes from weight contrast + tight numeral tracking + uppercase tracked labels standing in for a stencil display voice.
+
+```css
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+}
+```
+
+`layout.tsx` loads both faces via `next/font/google` as CSS variables (`--font-geist-sans`, `--font-geist-mono`) on `<html>` — there is no system font literally named "Geist Sans"/"Geist Mono", so the tokens must reference those variables, not string literals. This also fixes the pre-existing repo bug where `globals.css` has `--font-sans: var(--font-sans)` (self-referential, never resolves).
+
+| Role | Font | Weight | Size | Tracking | Leading | Notes |
+|---|---|---|---|---|---|---|
+| Hero numeral (bet-detail odds/pot, big coin total) | mono | 700 | `text-4xl`/`text-5xl` | tight | none | always `tabular-nums` |
+| Card numeral (odds on bet card, leaderboard amount) | mono | 600 | `text-2xl`/`text-3xl` | tight | tight | `tabular-nums` |
+| Inline numeral (odds chip in a row, chat wager mention) | mono | 500 | `text-sm`/`text-base` | normal | tight | `tabular-nums` |
+| Page title | sans | 600 | `text-2xl` | tight | tight | e.g. dashboard title |
+| Section title | sans | 600 | `text-lg` | tight | tight | "Open Bets", "Leaderboard" |
+| Body | sans | 400 | `text-sm` (default) / `text-base` (long-form) | normal | normal / relaxed | 14px default = density-first |
+| Label / overline | sans | 600 | `text-[11px]`/`text-xs`, uppercase | wide/widest | none | the stencil-feel substitute for a display face — see uppercase rule below |
+| Caption / meta | sans | 400 | `text-xs` | normal | snug | timestamps, helper text, `text-muted-foreground` |
+| Button text | sans | 500 | `text-sm` | normal | none | uppercase only for the primary CTA style, not all buttons |
+
+### Rules
+- **Mono + `tabular-nums` is mandatory** for any value that is data the user scans/compares: coin balances, odds multipliers, countdown timers, percentages, rank digits, pool sizes, dates in tables. Any numeral that updates live **must** be `tabular-nums` to prevent layout jitter.
+- **Sans stays for narrated numbers** in prose ("3 friends joined") — mono is reserved for figures being compared, not narrated.
+- **Weight discipline**: only 400/500/600/700 used anywhere. 700 is reserved for hero numerals alone — spend it nowhere else, or it stops meaning "most important number on screen."
+- **Uppercase discipline** (ties to Banned List #14): uppercase+tracked type appears in exactly one place — short status labels (`OPEN`, `CLOSED`, `VOID`, `CLOSING SOON`) and section eyebrows. Headings, buttons, nav stay sentence/title case at normal tracking.
+
+---
+
+## 4. Shape & space
+
+### 4.1 Radius — sharp by default, circles reserved
+
+Rounded-2xl-everywhere is exactly the generic look this system avoids. Default posture: **flat rectangles (radius 0) separated by hairlines**, not rounded soft cards. The radius scale (§2.5) exists only as a fallback for small standard controls; the actual "signature" silhouette on hero surfaces is the 68° corner cut (§4.3), not a bigger radius.
+
+| Element | Treatment |
+|---|---|
+| Bet rows, list containers | `radius: 0`, hairline `border-b` separators only |
+| Cards / panels / modals / buttons (default) | `rounded-sm`–`rounded-md` (2–6px) — never `rounded-xl`/`2xl` |
+| One hero surface per screen (bet-detail header, primary CTA, empty-state panel) | one **68° corner cut** instead of extra radius |
+| Avatars, icon buttons | `rounded-full` — the **only** fully-circular elements in the system (rank badges are the slanted-parallelogram shape defined in §5.6, never a pill) |
+| Team-affiliation tags | pill (`rounded-full`) — the **one** other sanctioned pill use (see Banned List #2) |
+
+### 4.2 Borders & elevation (no shadows except one)
+
+1px hairlines everywhere; borders are a lightness step (N3/N4), not a saturated color. N3 (`--border`, 1.3–1.46:1 vs its typical neighbor) is intentionally low-contrast — it's a soft, decorative separator, not a boundary anyone needs to *perceive*. Where an edge must actually read as a boundary (a floating panel's outline, on weak/uncalibrated screens per UX-006), use `--border-strong` instead (~3:1 vs its adjacent surface, see §2.5).
+
+| Layer | Background | Edge |
+|---|---|---|
+| Canvas | N0 | — |
+| Card / row / docked panel (informal separator) | N1 | `border-b`/`border` N3 — decorative only, no legibility burden |
+| Floating: modal, dropdown, popover | N2 | `--border-strong` (~3:1, a real boundary) + **the one exception**: a single soft `box-shadow` (`0 8px 24px -4px oklch(0 0 0 / 45%)`) reserved exclusively for the modal/dialog overlay — only one open at a time |
+| Hover/pressed/topmost menu row | N3 | — |
+| Focus / active-brand edge | any | `--jade-border` or `--ring` (jade) |
+
+Never stack shadows on cards or list rows — that stacking is the clearest "vibe-coded" tell and a real perf cost on weak GPUs (UX-006).
+
+### 4.3 The slash motif — 68°, used with scarcity
+
+**Standardized angle: 68° from horizontal** (steeper than a generic 45° slash, steeper than shallow "esports" cuts at 8–15°) — matches the logo mark's near-vertical urgency. Every diagonal element in the app uses this one angle; never mix slash angles. (`--brand-slash-angle`/`--brand-slash-rad` in §2.5 are reference constants for canvas/SVG math elsewhere — they aren't consumed by any utility below. The real lever for this angle is the offset ratio in each `cut-*` rule; change all of them together, never just one.)
+
+Corner-cut clip-paths approximate 68° via unequal horizontal/vertical offsets (`vertical ≈ 2.48 × horizontal`, since `tan(68°) ≈ 2.475`):
+
+```css
+/* --color-jade / --color-ember and every other bare-utility token are
+   registered once in the @theme inline block in §2.5 — don't redeclare
+   them here. */
+
+/* corner-cut utilities, ratio tuned to ~68° (v ≈ 2.48h). cut-danger uses
+   the same ratio on both top corners — no exception to the single-angle
+   rule above. */
+@utility cut-sm     { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%); }
+@utility cut-md      { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 20px, 100% 100%, 0 100%); }
+@utility cut-lg      { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 25px, 100% 100%, 0 100%); }
+@utility cut-mirror  { clip-path: polygon(0 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 8px)); }
+@utility cut-danger  { clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%, 0 15px); }
+
+/* S-mark, CSS-only clip-path — a minimal geometric approximation of the
+   stencil "S" (two parallel diagonal cuts through a block), NOT a trace
+   of the real logo. Use for the loading indicator / watermark / chat
+   send-glyph below until a real traced SVG (e.g.
+   apps/web/public/s-mark.svg) replaces it — never redraw the actual
+   wordmark mark itself from this approximation. */
+@utility s-mark {
+  clip-path: polygon(
+    0% 0%, 100% 0%, 100% 24%, 32% 24%,
+    100% 76%, 100% 100%, 0% 100%, 0% 76%,
+    68% 76%, 0% 24%
+  );
+  background: currentColor;
+}
+```
+
+**Rule of scarcity: max one diagonal brand element visible per viewport.** The slash is a signature, never a pattern, and never carries semantic meaning by itself (state lives in color/glyph/weight, not in whether a corner is cut).
+
+| Motif | Appears on | Must NOT appear on |
+|---|---|---|
+| Corner cut (`cut-sm`/`cut-md`) | One hero surface per screen: bet-detail header, primary CTA button, empty-state panel, rank-1 leaderboard row, and the single closing-soonest bet row's icon/CTA (§5.1) | Every card, list row, form input, modal, nav item |
+| Diagonal hairline divider (68°) | Bet-detail hero section break, void-row strike, landing section breaks | List separators, chat separators, table rows (stay horizontal — scan speed wins there) |
+| S-slash loading indicator (`s-mark` utility above) | Full-page loads, modal-submit pending | Never inside small buttons (use 3-dot mono sequence there instead) |
+| Watermark (`s-mark` utility, 4–6% opacity, 96–200px) | Empty states only | Behind active content; never more than one on screen |
+| Numeral framing | 68° cut on the *container chip* around a hero numeral (odds badge), or as a divider between value/unit (`2.4 ⟨cut⟩ x`) | Never cut into digit strokes themselves — money/odds legibility is non-negotiable |
+
+### 4.4 Multi-option odds — no rainbow palette
+
+With 2–6+ bet options, a default charting palette would break the black/white/jade rule. Resolve by **position + fill-state first, hue only as a last differentiator**:
+- Option ranked/leading: full white text + fill.
+- Other options: progressively dimmer (`N7 → N6 → N5`) by pool share, not by hue.
+- If a chart/bar visualization needs simultaneous colors (bet-detail odds bars, §5.5), reuse the 5-hue name-color subset (`--chart-1..5`) — never invent a 6th hue, and never assign hue meaningfully (i.e., color there is decorative-differentiator only, not "option A is good, option B is bad").
+
+### 4.5 Spacing & density
+
+Standard 4px scale, two tiers:
+
+| Tier | Use | Spec |
+|---|---|---|
+| **Dense** (default) | Bet lists, leaderboard rows, chat messages | row height 40–44px, `py-2`/`py-2.5`, `gap-2` |
+| **Comfortable** | Modals, bet-detail hero, empty states | `p-6`/`p-8` — reserve for the "trophy moment" (big odds numeral + CTA) |
+
+---
+
+## 5. Components
+
+### 5.1 Bet row (replaces the generic "card")
+
+No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `border-b border-border`.
+
+```
+[rail 3px][icon 44px chip][title + meta][odds preview][pool/countdown][avatar stack][CTA]
+```
+
+| Cell | Spec |
+|---|---|
+| Rail | `absolute inset-y-0 left-0 w-[3px]` — jade-base solid (open) / N4 (closed-awaiting) / none (resolved/void, flat hairline only) |
+| Icon | `size-11 bg-surface-2 rounded-sm`, emoji/icon centered — never a circle (DOM-009). `cut-sm` is reserved for the single closing-soonest row only (see below) — never on every row at once (§4.3 scarcity cap) |
+| Title | sans 500–600, `text-base`/`text-lg`, truncate; `by {creator}` at `text-xs` N6 + 16px avatar |
+| Odds preview | top 2 options inline, mono `tabular-nums`, joined by a jade `/` instead of a middot; 3+ collapses to `+2 more` (N6) |
+| Pool | stacked: `POOL` label (11px, uppercase, N6) over mono value + coin glyph |
+| Countdown | mono, color per state table §5.3 — the only urgency signal, no separate badge |
+| Participants | overlapping 20px circles, `-space-x-2`, max 3 + `+N` mono circle |
+| CTA | `WAGER` — jade-base fill, black text, `rounded-sm`, `h-8 px-3 text-xs uppercase`. `cut-sm` reserved for the closing-soonest row (below) and the one true Primary button on bet-detail (§5.3) — never on every row's CTA at once. On a resolved bet the user played, this cell is replaced by the outcome glyph (§5.2), not left as a dead button |
+
+**Closing-soon row**: background layer (not the row bg itself) gets a diagonal cut at the far edge with a 6% jade tint — reserved for the single soonest-closing bet on the dashboard, never every open row. This is also the one row whose icon chip and CTA use `cut-sm` instead of the default `rounded-sm`, per §4.3's scarcity cap.
+
+**Mobile (<640px)**: same rail+hairline, 2–3 stacked lines (icon+title / odds·pool·countdown / avatars+CTA), row min-height ~96px, full-width tap target.
+
+### 5.2 State language (rail + label + countdown color + motion — never a colored chip)
+
+| State | Rail | Label | Countdown | Extra |
+|---|---|---|---|---|
+| Open | jade solid | none (rail is enough) | N6 mono | static |
+| Closing soon (<1h) | jade + pulse (opacity 100→60→100, 1.6s) | `CLOSING SOON` jade/80 | jade, semibold | featured slash-corner tint (§5.1) — this row never gets the literal `box-shadow` glow; that's reserved for bet-detail's hero countdown under 5 minutes (§6) |
+| Closed / awaiting result | N4, static | `AWAITING RESULT` N6 | replaced by static "closed 2h ago" | row `opacity-90`, no CTA |
+| Resolved | rail removed, flat hairline only | none | none | winner/loser split below |
+| Void / refunded | rail removed | `VOID · REFUNDED` N6 | — | one thin diagonal hairline across the row (not a pill, not strikethrough font) |
+
+**Winners vs losers on a resolved bet — position + weight + slash glyph, never color:**
+- Winning option: full-opacity N8 text, jade `/` prefix, sorts to top.
+- Losing options: solid N6 (full alpha — no opacity dilution, which drops below 3:1 and becomes unreadable) + font-weight 400 (vs the winner's 600/700) + odds column `line-through`, no prefix, sorts below. Weight and line-through carry the "quietly recedes" effect, not transparency.
+- Your own outcome (CTA cell / bet-detail header): `/ WON +240` in jade mono, or `\ LOST 180` in N6 mono — the backslash literally mirrors the logo's second diagonal cut, doing the job a red minus sign does elsewhere, without red.
+- Did-not-participate (4th de-facto state): neutral, no glyph, no emphasis — must not read as a loss.
+
+### 5.3 Buttons
+
+| Variant | Spec |
+|---|---|
+| Primary | jade-base fill, **black** text, `font-semibold`, `cut-sm`, `hover:brightness-110`, `active:brightness-95`. One per screen (Wager, Create Bet, Confirm) |
+| Outline / secondary | `border-border text-foreground bg-transparent`, `hover:border-jade/50 hover:text-jade`, `cut-sm` |
+| Ghost / tertiary | `text-muted-foreground hover:bg-surface-3 hover:text-foreground`, no border, no clip |
+| Disabled | `opacity-40 pointer-events-none` on any variant — no separate gray palette |
+| Loading | label swaps to 3-dot mono opacity-stagger sequence — no spinner icon, no button shimmer |
+| Destructive (ordinary trigger) | dark/neutral fill + border, ember icon only; `hover:` reveals a 2px ember top hairline. Text stays neutral N7, never ember, never "Delete" in ember |
+| Destructive (final confirm) | ember-solid fill + **black** text, `cut-danger`. Starts `opacity-40 pointer-events-none`, unlocks only once type-to-confirm input matches |
+
+**Note on `border-*` classes throughout §5**: bare `[--border]` bracket arbitrary values (a Tailwind v3.4 shorthand) are invalid CSS in v4 and silently fail to render. Since `--border` is already registered as a shadcn/Tailwind v4 color, use the plain utility `border-border` everywhere (not `border-[var(--border)]`, not `border-[--border]`).
+
+### 5.4 Modals (UX-014/015/016)
+
+- Backdrop: flat `bg-black/75`, **no** `backdrop-blur` (perf).
+- Shape: `cut-md` on one corner only (desktop: top-right) — never all four rounded.
+- Header: no colored banner. Small uppercase eyebrow (`NEW BET`), title beneath. One 1px jade line across the very top edge of the modal ("the cut line"). Optional: S-mark clip-shape at 5% opacity in the empty header corner, decorative, `pointer-events-none`.
+- Mobile: bottom sheet, translateY+fade only (220ms), top corners mirrored `cut-md` (12px), drag handle = plain bar, not a rounded pill.
+- Inputs: `bg-surface-1 border-border text-foreground placeholder:text-muted-foreground/60`, `rounded-none`/2px max, `focus:border-jade focus:ring-1 focus:ring-jade/40` — jade is the **only** focus color anywhere in the app.
+- Type-to-confirm destructive input (DOM-034): neutral border by default → jade border on live match (not green) → helper text fades once matched. Mismatch on submit = one ember 1px flash for 400ms, then reverts; button stays disabled. No shake, no red error text.
+
+### 5.5 Coin display & P/L
+
+- Glyph: ≈12–14px inline SVG, the logo's two-diagonal-cut mark at miniature scale, `currentColor` (white by default, jade only on a live/positive delta). Placed before every amount.
+- All amounts: `font-mono tabular-nums`, comma-grouped.
+- Gain: `/ +240` jade. Loss: `\ −180` muted. Same pairing reused identically across leaderboard deltas, chat mentions, toasts, and the per-user aggregated P/L view (one row per team the user is in, lifetime net delta only, same glyph+mono treatment as a transaction row, sorted by magnitude) — **one glyph vocabulary everywhere**, established once here.
+- Transaction history rows: dense, `py-2.5 border-b`, columns date (mono, N6) · description (N7) · delta (glyph-prefixed mono, right) · balance-after (mono, N6, smaller, right).
+- Wager input "cap reached" state: disabled/greyed at the balance/max-bet ceiling, never a red-bordered invalid state.
+
+### 5.6 Leaderboard, poor podium, rank badges (DOM-027/028/029)
+
+- **No 3D podium graphic.** Both boards are lists using the bet-row anatomy: oversized mono rank digit (rank 1 largest, stepping down by rank 5+), avatar, name (in the user's own name-color, §2.4), balance right-aligned mono.
+- **Richest list**: rank-1 row gets `cut-sm` on its right edge + a 1px jade top line + jade rank digit. Ranks 2–3 full-opacity white digit, 4+ muted (N6).
+- **Poor podium**: mirrored motif, not an inverted color — `cut-mirror` (opposite corner), rank digit muted (N6, never ember/red), and *copy* carries the "loser" signal (dry/ironic tag line under rank 1, e.g. "House's favorite donor") rather than hue. This is the hardest single spot for the no-traffic-light rule — resolved entirely through humor + shape mirroring, zero color difference from the richest board's structure.
+- **Inline rank badges** (chat, participant lists): small **slanted parallelogram tag** (not a pill) — `#1` jade fill/black text; `#2`/`#3` jade border/jade text on transparent; `TOP 5` neutral border/N6 text; `BOTTOM 5` same shape mirrored horizontally, `\` prefix instead of a down-arrow icon, N6 text.
+- **Role badges** (moderator/member) are visually distinct from rank badges: rank badges are the slanted parallelogram; role badges are a plain square-cornered label with an icon (shield/star glyph), never the parallelogram shape — the two "badge" concepts must not be visually confusable in the same name-adjacent slot.
+
+### 5.7 Chat / comments
+
+- Dense rows, no bubbles: `flex gap-2 py-1.5`, 24px avatar, name in `--name-color-N`, inline rank badge immediately after name if applicable, message N7, timestamp mono N6 trailing (matches §3's caption/meta rule — N5 was inconsistent here).
+- No hover cards, no message-bubble background. Whitespace (`py-1.5`) carries separation; hairline every few messages at most.
+- Input: fixed to panel bottom, `bg-surface-1 border-t`, plain `rounded-none` field. Send affordance is the **diagonal slash itself** as icon — a single `/` glyph styled as a send arrow, jade on hover — doubling as brand mark and function.
+- Realtime arrival: lightweight insertion animation only (§6), never a layout-shifting entrance.
+
+### 5.8 Forms & inputs (general)
+
+| Control | Spec |
+|---|---|
+| Text field / textarea | `bg-surface-1 border-border`, `rounded-sm` max, jade focus ring |
+| Number/amount stepper | mono value, disabled state at cap (§5.5), no red border on invalid |
+| Select / team switcher / sort | **segmented tab control** for short frequent choices (open/closed filter, sort order), with a slash-notch active-state tick — not a dropdown. Reserve real `<Select>` dropdowns for long/rare lists (avatar icon grid, 30+ items) |
+| Date-time picker | custom close-time control, 3 presets + custom picker, same input chrome as text fields |
+| Toggle/switch | access-mode (free-for-all vs restricted) — jade = on, N4 track = off, no red "off" state |
+| Color swatch picker | name color (§2.4), 10 curated swatches, `rounded-full` swatches |
+| Icon-set grid picker | avatar / bet emoji, `cut-sm` chip per option, selected state = jade border, not a filled background |
+| File upload | custom avatar — same `cut-sm` frame as generated avatars, no circle crop for uploads on non-avatar contexts |
+| Validation error | icon/border/weight-based only — never red text. Ember icon + ember border on the field, body copy stays N7 |
+| Focus ring | jade, 1–2px, on every interactive element — the **only** focus color in the app |
+
+### 5.9 Toasts
+
+`bg-surface-2 border-border`, left rail 2px by type: jade (success) / N4 (info/neutral) / ember (destructive-confirmation only) — never red/green. Icon slot reuses the glyph system: `/` jade for success, `\` N6 for failure — no check/x icon-library glyphs. Position bottom-right desktop / bottom-center mobile. Motion: slide+fade, 3.5s auto-dismiss, transform+opacity only, no blur.
+
+### 5.10 Empty & loading states
+
+- Empty: oversized ghost S-mark watermark (5% opacity, pure CSS clip-path, no image asset), one dry/irreverent line (N6), one primary CTA. Shared pattern across dashboard, poor podium, transaction history, chat, participant list — not bespoke per surface (perf + consistency).
+- Loading/skeleton: shaped exactly like the real row (rail, icon tile, text bars) at `surface-1`/5% white, slow opacity breathe (0.4↔0.6, 1.2s ease-in-out) — **no gradient shimmer sweep**, no rounded-full placeholder blobs where real content is rectangular. Alternative for full-page/modal-submit loads: the S-slash mark itself, static or single opacity pulse, respecting `prefers-reduced-motion`.
+
+### 5.11 Bet-detail page (the one full-page nav)
+
+- Header reuses bet-row state language at larger scale; this is the one surface allowed its `cut-md` hero treatment (§4.1/4.3). Its countdown digits are also the sole `box-shadow` Jade Glow Ration anchor (§6) — glow activates only under 5 minutes remaining, nowhere else on this page.
+- Rich odds display: per-option pool share + implied multiplier as jade/neutral bars, distinguished by position/fill-state first (§4.4), chart-hue subset only as a last resort for 4+ simultaneous series.
+- Participant list: avatar + name (own color) + badge + amount, same atomic identity cluster as chat (§5.7/§5.6).
+- Resolution banner: same non-traffic-light treatment as bet-row §5.2, scaled up, comfortable spacing tier.
+
+### 5.12 Social/OG previews
+
+Static renders (invite link, bet-share link) can't use live CSS/motion — bake a static equivalent: brand lockup (S-mark) + jade accent + a static odds-bar snapshot at share-time, matching the same fill/position rules as §4.4 (no rainbow, no live pulse — just a frozen jade/neutral bar).
+
+---
+
+## 6. Motion — cheap on weak devices
+
+Transform/opacity only. No blur, no shadow bloom, no shimmer sweeps. **Every animation in this table is wrapped in `@media (prefers-reduced-motion: no-preference)`** — under reduced-motion, every one of them (not just the full-page loader) is replaced by an instant opacity/state swap: no transform, no repeating pulse.
+
+| Interaction | Duration | Easing | Notes |
+|---|---|---|---|
+| Hover / press / focus | 120–150ms | ease-out | micro-feedback only |
+| Row / modal enter | 200–240ms | `cubic-bezier(0.16,1,0.3,1)` | opacity 0→1 + translateY(-4px→0) (rows) / translateY(100%→0) (mobile sheet) / opacity+scale(0.98→1) (desktop dialog) |
+| New bet row inserted | enter transition, then rail brightness-pulses **once**, 2 cycles, 900ms, then stops | — | must not compete with a genuinely "closing soon" pulse elsewhere on screen |
+| Odds digit changed | 250ms | — | only the affected mono digits flash opacity 0.4→1 + scale(1.04→1), color transitions through jade and settles back, 300ms |
+| Skeleton breathe | 1.2s ease-in-out infinite | — | opacity 0.4↔0.6 only, no gradient sweep |
+| Toast | slide+fade, 3.5s auto-dismiss | — | transform+opacity only |
+
+**Jade Glow Ration** (the one hard cap on the whole system):
+1. **Max one glow per screen**, tied to a genuinely real-time state. The one wired anchor: bet-detail's hero countdown digits, once under 5 minutes remain — nowhere else uses the literal `box-shadow` glow (the closing-soon dashboard *row*, §5.1/§5.2, uses the opacity-pulsing rail + 6% jade tint instead — that's a different, cheaper mechanism, not this one).
+2. **Never** on static icons, nav items, section headers, avatars, chips, or hover states on non-critical elements.
+3. Ordinary hover/focus = a 1px jade border or underline, **not** a glow — glow means "this is live," border means "this is interactive." Different jobs, never conflated.
+4. Cap: `box-shadow: 0 0 12px oklch(0.860 0.195 158 / 35%)` (== `--jade-glow` at 35% — never `--jade-raw`, which is logo-only) max, single layer, never stacked. A one-time pulse on state-change is fine; a continuous breathing glow is not.
+5. If two elements "deserve" the glow simultaneously, only the more time-sensitive one gets it.
+
+Shadows generally: the **only** soft `box-shadow` in the entire app is the modal/dialog overlay (§4.2) — never on cards, rows, or lists.
+
+---
+
+## 7. Voice & microcopy tone
+
+Dry, deadpan, irreverent — never corporate, never hype-startup. Copy does semantic work that color isn't allowed to do (especially the poor podium and empty states).
+
+| Surface | Example line |
+|---|---|
+| Empty dashboard | "No bets yet. Someone has to make the first bad decision." |
+| Empty bet list (alt) | "Nobody's lost anything here. Yet." |
+| Poor podium, empty | "Everyone's still solvent. Suspicious." |
+| Poor podium, rank 1 tagline | "House's favorite donor" |
+| Onboarding skip affordance | plain, low-pressure — never "Complete your profile to unlock features!" |
+| Error toast | plain statement of what failed, no exclamation points, no "Oops!" |
+| Destructive confirm helper | `Type "{team}" to confirm` — factual, not alarmist |
+
+Rule: humor replaces color as the "this is the losing board" signal (§5.6) — never let copy go flat/corporate on the one surface (poor podium) that most needs personality to avoid feeling punitive.
+
+---
+
+## 8. Banned list (cliché → replacement)
+
+| # | Banned | Replacement |
+|---|---|---|
+| 1 | Uniform `rounded-2xl` cards + soft shadows everywhere | Flat rectangles, hairline borders, one `cut-*` corner reserved per screen (§4.1, §4.3) |
+| 2 | Pill/chip for every metadata type (status, category, count) | Pills reserved for **team tags only**; status/category use uppercase label + bracket/rail language (§5.2), never a colored blob |
+| 3 | Purple→blue gradients on buttons/hero/avatar rings | No gradients on interactive elements at all; the one allowed gradient is monochrome black→jade-at-1%, once, on the single largest hero backdrop |
+| 4 | Glassmorphism / `backdrop-blur` walls | Solid surfaces + 1px hairline edge; depth via `--surface-0..3` lightness steps only |
+| 5 | Emoji-in-colored-circle placeholder avatars | Stencil-style avatar icon set in a `cut-sm` square frame, never a circle for the icon-set itself (uploaded photos get `rounded-full`, §4.1) |
+| 6 | Gray-on-gray text soup (3+ indistinguishable grays) | Two tiers only — N7 (primary) / N6 (secondary) — third emphasis tier is jade, not a third gray |
+| 7 | Default shadcn zinc palette left untouched | Full token replacement (§2.5) — no stock oklch zinc survives |
+| 8 | Green-for-win / red-for-loss text | Slash-glyph system: `/` jade for gain, `\` muted for loss (§5.2, §5.5) — direction + glyph, never hue |
+| 9 | Rainbow per-category hue assignment | All categories render identically (white label + icon glyph); color is never a category-differentiation channel |
+| 10 | Centered hero + blurred gradient blob landing (UX-021) | Left-aligned wordmark lockup, hard black bg, the slash used as an actual compositional divider — no blob |
+| 11 | Neon glow on every icon/button/hover | Glow Ration: max 1 per screen, tied to real urgency only (§6) |
+| 12 | Generic shimmer-sweep skeletons | Row-shaped skeletons with a slow opacity breathe, no moving gradient (§5.10) |
+| 13 | Dropdown-for-everything (status filter, sort, team switch all as `<Select>`) | Segmented tab controls with a slash-notch active tick for short/frequent choices; dropdowns reserved for genuinely long/rare lists (§5.8) |
+| 14 | Uppercase-everything crypto-bro treatment | Uppercase confined to short status labels/eyebrows only (§3) |
+
+---
+
+## 9. Per-surface checklists
+
+**Dashboard**
+- [ ] Open bets before closed, soonest-closing first within open (visual break ≠ just a color change — use a section label + hairline)
+- [ ] At most one row carries the closing-soon jade tint/pulse (not a `box-shadow` glow — that's bet-detail-only, §6)
+- [ ] Empty state uses the shared ghost-S-mark pattern, dry copy, one CTA
+- [ ] Skeleton rows shaped like real rows, opacity-breathe only
+
+**Bet detail**
+- [ ] Header is the one hero surface allowed `cut-md`
+- [ ] Odds bars distinguished by fill/position first, chart-hue subset only if 4+ options
+- [ ] Resolution banner reuses bet-row win/loss glyph language, scaled up, never introduces new color logic
+- [ ] Chat section stays dense, no bubbles, hairline-sparse
+
+**Modals** (UX-014/015/016)
+- [ ] Backdrop is flat `black/75`, no blur
+- [ ] Exactly one corner cut (`cut-md`), never all four rounded
+- [ ] Jade is the only focus-ring color; destructive confirm gates on type-match, no red error state
+- [ ] Mobile variant is a bottom sheet with mirrored `cut-md`, not a full route change
+
+**Landing / invite / share (logged-out)**
+- [ ] No centered-hero-blob template; left-aligned lockup, slash as compositional divider
+- [ ] OG/social preview cards use the static jade/neutral bar equivalent, not a live-only component
+- [ ] Auth screens stay minimal-field, no security-theater copy, errors avoid red
+
+---
+
+**Source files**: `apps/web/src/app/globals.css` (target for §2.5's `:root` block + `@utility cut-*`), `agent-docs/AGENT_SPEC.md` (requirement IDs referenced throughout), `old-soulless-bg.jpeg` (source of the S-mark/slash motif — trace at small scale, never regenerate).
