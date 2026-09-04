@@ -15,6 +15,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 | File | Scope |
 |---|---|
 | `AGENT_SPEC.md` | Full product requirements derived from vision.md (this file) |
+| `design-stack.md` | APPROVED tech stack decision (Next.js 16 + Supabase + Vercel, in-house analytics/flags), free-tier ceilings, binding implementation rules |
 
 ## 2. Product summary
 
