@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# turborepo
+.turbo/
+
+# builds
+dist/
+
+# env
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

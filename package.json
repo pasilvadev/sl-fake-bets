@@ -1,0 +1,22 @@
+{
+  "name": "sl-fake-bets",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "2.10.12",
+    "typescript": "5.9.3"
+  },
+  "//": [
+    "typescript deliberately pinned to 5.9.3 (last 5.x): npm 'latest' is 7.0.2 (Go-native compiler) with no language-service API yet — breaks typescript-eslint until TS 7.1; 6.x flips defaults. Revisit when TS 7.1 ships.",
+    "eslint stays on the 9.x line paired by eslint-config-next 16.3.4; ESLint 10 blocked by bundled plugin peer ranges (vercel/next.js#91702). Revisit when that lands."
+  ]
+}
