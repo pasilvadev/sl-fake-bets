@@ -2,22 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "cn";
-import { getPoolStats } from "@repo/shared";
+import { canAcceptWagers, getPoolStats } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
+import { useNow } from "@/lib/use-now";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 
 const QUICK_CHIPS = [10, 25, 50] as const;
 
-/** UX-016: place-wager modal — option pick + amount stepper, Phase 1 mutates nothing. */
+/**
+ * UX-016: place-wager modal. Submits through team-context's placeWager (the
+ * shared validation + state-machine guards run there too); the amount input
+ * clamps to min(balance, remaining per-user max) — DOM-014/017 — and an
+ * effectively-closed bet (DOM-012) blocks submission with a visible reason.
+ */
 export function WagerModal({ betId }: { betId: string }) {
   const { close } = useModal();
-  const { bets, wagers, balance } = useTeam();
+  const { bets, wagers, balance, currentUser, placeWager } = useTeam();
   const bet = bets.find((b) => b.id === betId);
+  const now = useNow();
 
   const [optionId, setOptionId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const pool = useMemo(() => (bet ? getPoolStats(bet, wagers) : []), [bet, wagers]);
 
@@ -31,7 +39,16 @@ export function WagerModal({ betId }: { betId: string }) {
     );
   }
 
-  const cap = Math.max(0, Math.min(balance, bet.maxWagerPerUser));
+  // Stored state until the clock mounts (useNow is null on the first render);
+  // the placeWager mutator re-guards with a fresh clock on submit.
+  const acceptingWagers =
+    now == null ? bet.state === "open" : canAcceptWagers(bet, now);
+
+  const existingStake = wagers
+    .filter((w) => w.betId === bet.id && w.userId === currentUser.id)
+    .reduce((sum, w) => sum + w.amount, 0);
+  const remainingMax = bet.maxWagerPerUser - existingStake;
+  const cap = Math.max(0, Math.min(balance, remainingMax));
   const atCap = amount > 0 && amount >= cap;
   const selected = pool.find((o) => o.optionId === optionId) ?? null;
   const multiplier = selected?.multiplier ?? null;
@@ -44,33 +61,53 @@ export function WagerModal({ betId }: { betId: string }) {
     setAmount(Math.max(0, Math.min(cap, Math.round(next))));
   }
 
+  function submit() {
+    if (!optionId || amount <= 0 || !acceptingWagers) return;
+    setSubmitError(null);
+    const result = placeWager(bet!.id, optionId, amount);
+    if (result.ok) {
+      close();
+    } else {
+      setSubmitError(result.error);
+    }
+  }
+
   return (
     <ModalShell
       eyebrow="PLACE WAGER"
       title={`${bet.iconEmoji ? `${bet.iconEmoji} ` : ""}${bet.title}`}
       onClose={close}
       footer={
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-xs text-muted-foreground">
-            <span className="block">If it hits:</span>
-            <CoinDelta amount={potential} className="text-sm" />
+        <div className="space-y-2">
+          {submitError && <p className="text-xs text-negative">{submitError}</p>}
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-xs text-muted-foreground">
+              <span className="block">If it hits:</span>
+              <CoinDelta amount={potential} className="text-sm" />
+            </div>
+            <button
+              type="button"
+              disabled={!optionId || amount <= 0 || !acceptingWagers}
+              onClick={submit}
+              className={cn(
+                "cut-sm h-9 shrink-0 px-5 text-xs font-semibold uppercase tracking-wide text-black",
+                "bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
+                "disabled:opacity-40 disabled:pointer-events-none",
+              )}
+            >
+              Place wager
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={!optionId || amount <= 0}
-            onClick={close}
-            className={cn(
-              "cut-sm h-9 shrink-0 px-5 text-xs font-semibold uppercase tracking-wide text-black",
-              "bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
-              "disabled:opacity-40 disabled:pointer-events-none",
-            )}
-          >
-            Place wager
-          </button>
         </div>
       }
     >
       <div className="space-y-4">
+        {!acceptingWagers && (
+          <p className="border border-border bg-surface-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Betting is closed for this bet.
+          </p>
+        )}
+
         <ul className="space-y-2">
           {pool.map((option) => {
             const isSelected = option.optionId === optionId;
@@ -137,8 +174,27 @@ export function WagerModal({ betId }: { betId: string }) {
               Max/user: <CoinAmount amount={bet.maxWagerPerUser} />
             </span>
           </div>
-          {atCap && (
-            <p className="text-xs text-muted-foreground">Cap reached.</p>
+          {existingStake > 0 && (
+            <p className="text-xs text-muted-foreground">
+              You already have {existingStake} on this bet
+              {remainingMax > 0
+                ? ` — up to ${Math.max(0, remainingMax)} more allowed.`
+                : " — per-user max reached."}
+            </p>
+          )}
+          {cap === 0 && acceptingWagers && (
+            <p className="text-xs text-negative">
+              {balance === 0
+                ? "No coins left to wager."
+                : "You reached the per-user max for this bet."}
+            </p>
+          )}
+          {atCap && cap > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {balance <= remainingMax
+                ? "Capped at your balance."
+                : "Capped at the per-user max."}
+            </p>
           )}
         </div>
       </div>

@@ -54,7 +54,14 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 
 ## 5. Phases
 
-### Phase 1 — Bet lifecycle: real logic, in-memory state
+### Phase 1 — Bet lifecycle: real logic, in-memory state ✅ COMPLETE (2026-09-04)
+
+> **Completion note (2026-09-04).** All 11 tasks done; exit criteria verified (`typecheck`/`lint`/`build` green; vitest b-05/b-06 regression passes 10/10; both routes smoke-tested). Records for later phases:
+> 1. **Fixture fix (risk #8 confirmed):** the hand-typed `coinBalance`/`profitLoss`/`balanceAfter` numbers did not survive the settlement regression — `mock-data.ts` t-01 members and the ledger were rewritten to derived-consistent values (complete ledger: one grant per membership + rewards + injection). The regression test now pins them.
+> 2. **Providers moved to the root layout** (`app-providers.tsx`): required so the new `/bet/[id]` route shares the same in-memory TeamProvider state across client navigation. `AuthGated` (app-gate.tsx) is the reusable per-route gate; ModalRoot mounts globally.
+> 3. **DOM-017 enforced as a cumulative per-(user, bet) cap** (`validateWager`'s `existingStake`), not per-wager — the literal per-wager reading lets repeat wagers bypass the max.
+> 4. **Single-source cleanups beyond the task list:** `bet-row`'s ResolvedOutcome now renders from `settleBet` (was duplicated float math); `team-switcher` open-bet counts and `transactions-modal` team P/L now read live context state (were static mock imports that would have gone stale).
+> 5. Context's inline `canCreateBet`/`canInvite`/`canManage` flags deliberately NOT migrated to `permissions.ts` (that is Phase 2 task 1); all NEW code (mutators, bet-detail page) already uses `permissions.ts`.
 
 **Goal:** make create-bet → wager → early-close → resolve fully real (DOM-007/008/012/017, DOM-011, DOM-014, pari-mutuel settlement per DOM-016/018/019, DOM-001 leader invariant) against client-side in-memory state, before any backend exists. Produces the exact pure functions the backend will call unchanged in Phases 5–7.
 

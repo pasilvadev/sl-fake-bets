@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
-import { getPoolStats, getUser, type Bet, type OptionPoolStat } from "@repo/shared";
+import { getPoolStats, getUser, settleBet, type Bet, type OptionPoolStat } from "@repo/shared";
 import { useNow } from "@/lib/use-now";
 import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
 import { useTeam } from "@/lib/team-context";
@@ -181,13 +182,19 @@ function Rail({ bet, featured, msLeft }: { bet: Bet; featured?: boolean; msLeft:
 }
 
 /** Resolved CTA cell: pari-mutuel outcome as a CoinDelta, never a dead button. */
-function ResolvedOutcome({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[] }) {
+function ResolvedOutcome({ bet }: { bet: Bet }) {
   const { currentUser, wagers } = useTeam();
-  const userWagers = wagers.filter((w) => w.betId === bet.id && w.userId === currentUser.id);
 
-  if (userWagers.length === 0) return null; // did-not-participate: must not read as loss
+  if (!bet.resolution) return null;
 
-  if (bet.resolution?.kind === "void") {
+  // Same math the balances were settled with — settlement.ts, no re-derivation.
+  const delta = settleBet(bet, wagers, bet.resolution).find(
+    (d) => d.userId === currentUser.id,
+  );
+
+  if (!delta) return null; // did-not-participate: must not read as loss
+
+  if (bet.resolution.kind === "void") {
     return (
       <span className="text-[11px] font-semibold uppercase text-muted-foreground">
         Refunded
@@ -195,27 +202,7 @@ function ResolvedOutcome({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolSt
     );
   }
 
-  if (bet.resolution?.kind === "winner") {
-    const winningOptionId = bet.resolution.winningOptionId;
-    const userStake = userWagers.reduce((sum, w) => sum + w.amount, 0);
-    const userWinStake = userWagers
-      .filter((w) => w.optionId === winningOptionId)
-      .reduce((sum, w) => sum + w.amount, 0);
-
-    if (userWinStake > 0) {
-      const winningOptionTotal = poolStats.find((o) => o.optionId === winningOptionId)?.total ?? 0;
-      const poolTotal = poolStats.reduce((sum, o) => sum + o.total, 0);
-      const winnings =
-        winningOptionTotal > 0
-          ? Math.floor((userWinStake / winningOptionTotal) * poolTotal) - userWinStake
-          : 0;
-      return <CoinDelta amount={winnings} className="text-sm" />;
-    }
-
-    return <CoinDelta amount={-userStake} className="text-sm" />;
-  }
-
-  return null;
+  return <CoinDelta amount={delta.profitLossDelta} className="text-sm" />;
 }
 
 export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
@@ -287,12 +274,12 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
         </div>
 
         <div className="min-w-0">
-          <a
-            href="#"
+          <Link
+            href={`/bet/${bet.id}`}
             className="block truncate text-base font-medium text-foreground hover:text-jade"
           >
             {bet.title}
-          </a>
+          </Link>
           <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             <span>by</span>
             {creator && (
@@ -360,7 +347,7 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
           </button>
         )}
 
-        {bet.state === "resolved" && <ResolvedOutcome bet={bet} poolStats={poolStats} />}
+        {bet.state === "resolved" && <ResolvedOutcome bet={bet} />}
       </div>
     </div>
   );

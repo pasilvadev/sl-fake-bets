@@ -1,6 +1,6 @@
 "use client";
 
-import { mockTeams, type Team, type TeamMember } from "@repo/shared";
+import { type Team, type TeamMember } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
@@ -10,13 +10,13 @@ import { formatShortDate } from "@/lib/format";
 /** DOM-025/026: dense transaction history + per-team lifetime P/L breakdown. */
 export function TransactionsModal() {
   const { close } = useModal();
-  const { currentUser, transactions } = useTeam();
+  const { currentUser, transactions, teams } = useTeam();
 
   const myTransactions = transactions
     .filter((t) => t.userId === currentUser.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  const myTeams: { team: Team; member: TeamMember }[] = mockTeams
+  const myTeams: { team: Team; member: TeamMember }[] = teams
     .map((team) => ({
       team,
       member: team.members.find((m) => m.userId === currentUser.id),

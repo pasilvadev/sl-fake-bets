@@ -3,20 +3,18 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Popover } from "radix-ui";
-import { mockBets, type Team } from "@repo/shared";
+import { type Team } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 
-function openBetCount(teamId: string): number {
-  return mockBets.filter((b) => b.teamId === teamId && b.state === "open").length;
-}
-
 function TeamRow({
   team,
+  openBetCount,
   active,
   onSelect,
 }: {
   team: Team;
+  openBetCount: number;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -30,7 +28,7 @@ function TeamRow({
       {active && <span className="absolute inset-y-0 left-0 w-[3px] bg-jade" />}
       <span className="min-w-0 flex-1 truncate text-sm text-foreground">{team.name}</span>
       <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-        {openBetCount(team.id)}
+        {openBetCount}
       </span>
       {/* Reserved slot for a future per-team notification pip (ARC-015).
           Intentionally empty in Phase 1 — renders nothing. */}
@@ -45,7 +43,7 @@ function TeamRow({
  * footer actions.
  */
 export function TeamSwitcher() {
-  const { team, teams, setTeamId } = useTeam();
+  const { team, teams, setTeamId, openBetCountFor } = useTeam();
   const { open } = useModal();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
@@ -81,6 +79,7 @@ export function TeamSwitcher() {
               <TeamRow
                 key={t.id}
                 team={t}
+                openBetCount={openBetCountFor(t.id)}
                 active={t.id === team.id}
                 onSelect={() => {
                   setTeamId(t.id);

@@ -2,19 +2,31 @@
 
 import { useState } from "react";
 import { cn } from "cn";
-import { CONFIG, DEFAULT_MAX_WAGER } from "@repo/shared";
+import {
+  CONFIG,
+  DEFAULT_MAX_WAGER,
+  MIN_BET_OPTIONS,
+  validateBetDraft,
+} from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
+import { useTeam } from "@/lib/team-context";
+import { useNow } from "@/lib/use-now";
 import { ModalShell } from "@/components/sl/modal-shell";
 
+/** UI cap on option slots only — the domain floor is 2 with no max (§4.5). */
 const MAX_OPTIONS = 6;
-const MIN_OPTIONS = 2;
 
 const inputClass =
   "w-full border border-border bg-surface-1 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40";
 
-/** DOM-007/008/009/017: new-bet form. Phase 1 validates + closes, mutates nothing. */
+/**
+ * DOM-007/008/009/017: new-bet form. Submit gating routes through the shared
+ * validateBetDraft (single source of truth with the future server); a valid
+ * draft lands in team-context's addBet mutator.
+ */
 export function CreateBetModal() {
   const { close } = useModal();
+  const { addBet } = useTeam();
 
   const [title, setTitle] = useState("");
   const [emoji, setEmoji] = useState("");
@@ -25,9 +37,34 @@ export function CreateBetModal() {
   );
   const [customCloseAt, setCustomCloseAt] = useState("");
   const [maxWager, setMaxWager] = useState<number>(DEFAULT_MAX_WAGER);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const now = useNow();
 
-  const nonEmptyOptions = options.filter((o) => o.trim().length > 0);
-  const canSubmit = title.trim().length > 0 && nonEmptyOptions.length >= MIN_OPTIONS;
+  // Preset => clock + duration; custom => the datetime-local value (local
+  // time) as ISO. "" while unset/unparsable so validation flags it, never throws.
+  function resolveClosesAt(nowMs: number): string {
+    if (presetMinutes === "custom") {
+      if (!customCloseAt) return "";
+      const parsed = new Date(customCloseAt);
+      return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+    }
+    return new Date(nowMs + presetMinutes * 60_000).toISOString();
+  }
+
+  // Render-time gating routes through the shared validateBetDraft, driven by
+  // the mounted clock (useNow is null on the very first render — the button
+  // simply starts disabled); addBet revalidates with a fresh clock on submit.
+  const issues =
+    now == null
+      ? []
+      : validateBetDraft(
+          { title, options, closesAt: resolveClosesAt(now), maxWagerPerUser: maxWager },
+          now,
+        );
+  const canSubmit = now != null && issues.length === 0;
+  const visibleIssue = issues.find(
+    (i) => i.code === "closes-at-past" || i.code === "max-wager-invalid",
+  );
 
   function updateOption(index: number, value: string) {
     setOptions((prev) => prev.map((o, i) => (i === index ? value : o)));
@@ -39,14 +76,28 @@ export function CreateBetModal() {
 
   function removeOption(index: number) {
     setOptions((prev) =>
-      prev.length <= MIN_OPTIONS ? prev : prev.filter((_, i) => i !== index),
+      prev.length <= MIN_BET_OPTIONS ? prev : prev.filter((_, i) => i !== index),
     );
   }
 
   function submit() {
     if (!canSubmit) return;
-    close();
+    setSubmitError(null);
+    const result = addBet({
+      title,
+      iconEmoji: emoji,
+      options,
+      closesAt: resolveClosesAt(Date.now()),
+      maxWagerPerUser: maxWager,
+    });
+    if (result.ok) {
+      close();
+    } else {
+      setSubmitError(result.error);
+    }
   }
+
+  const footerError = submitError ?? visibleIssue?.message ?? null;
 
   return (
     <ModalShell
@@ -54,14 +105,19 @@ export function CreateBetModal() {
       title="Create a bet"
       onClose={close}
       footer={
-        <button
-          type="button"
-          disabled={!canSubmit}
-          onClick={submit}
-          className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
-        >
-          Create bet
-        </button>
+        <div className="space-y-2">
+          {footerError && (
+            <p className="text-xs text-negative">{footerError}</p>
+          )}
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={submit}
+            className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            Create bet
+          </button>
+        </div>
       }
     >
       <div className="space-y-5">
@@ -109,7 +165,7 @@ export function CreateBetModal() {
                   placeholder={`Option ${index + 1}`}
                   className={inputClass}
                 />
-                {options.length > MIN_OPTIONS && (
+                {options.length > MIN_BET_OPTIONS && (
                   <button
                     type="button"
                     onClick={() => removeOption(index)}

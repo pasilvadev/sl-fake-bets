@@ -21,6 +21,13 @@ export const mockUsers: User[] = [
   { id: "u-10", displayName: "Xis", nameColor: "#F33483", avatar: "icon-target" },
 ];
 
+/**
+ * t-01 member numbers are DERIVED, not hand-typed (settlement regression in
+ * settlement.test.ts pins them): stakes leave the balance at placement, so
+ * coinBalance = ledger credits (grant/rewards/injection) − stakes still in
+ * flight (open/closed bets) + resolved payouts/refunds, and profitLoss is the
+ * realized outcome of the resolved bets only (b-05 winner, b-06 void).
+ */
 export const mockTeam: Team = {
   id: "t-01",
   name: "SL Originals",
@@ -29,16 +36,17 @@ export const mockTeam: Team = {
   inviteCode: "sl-originals-4ever",
   createdAt: "2026-08-01T18:00:00Z",
   members: [
-    { userId: "u-01", role: "member", coinBalance: 143, profitLoss: 43, joinedAt: "2026-08-01T18:00:00Z" },
-    { userId: "u-02", role: "moderator", coinBalance: 210, profitLoss: 110, joinedAt: "2026-08-01T18:05:00Z" },
-    { userId: "u-03", role: "moderator", coinBalance: 95, profitLoss: -5, joinedAt: "2026-08-01T19:12:00Z" },
-    { userId: "u-04", role: "member", coinBalance: 12, profitLoss: -88, joinedAt: "2026-08-02T10:30:00Z" },
-    { userId: "u-05", role: "member", coinBalance: 61, profitLoss: -39, joinedAt: "2026-08-02T11:00:00Z" },
-    { userId: "u-06", role: "member", coinBalance: 187, profitLoss: 87, joinedAt: "2026-08-03T14:45:00Z" },
-    { userId: "u-07", role: "member", coinBalance: 74, profitLoss: -26, joinedAt: "2026-08-05T09:20:00Z" },
-    { userId: "u-08", role: "member", coinBalance: 130, profitLoss: 30, joinedAt: "2026-08-07T21:10:00Z" },
-    { userId: "u-09", role: "member", coinBalance: 3, profitLoss: -97, joinedAt: "2026-08-10T16:40:00Z" },
-    { userId: "u-10", role: "member", coinBalance: CONFIG.ONBOARDING_GRANT_COINS, profitLoss: 0, joinedAt: "2026-09-01T12:00:00Z" },
+    { userId: "u-01", role: "member", coinBalance: 45, profitLoss: -15, joinedAt: "2026-08-01T18:00:00Z" },
+    { userId: "u-02", role: "moderator", coinBalance: 110, profitLoss: 50, joinedAt: "2026-08-01T18:05:00Z" },
+    { userId: "u-03", role: "moderator", coinBalance: 80, profitLoss: 0, joinedAt: "2026-08-01T19:12:00Z" },
+    { userId: "u-04", role: "member", coinBalance: 30, profitLoss: -60, joinedAt: "2026-08-02T10:30:00Z" },
+    { userId: "u-05", role: "member", coinBalance: 90, profitLoss: 0, joinedAt: "2026-08-02T11:00:00Z" },
+    { userId: "u-06", role: "member", coinBalance: 105, profitLoss: 25, joinedAt: "2026-08-03T14:45:00Z" },
+    { userId: "u-07", role: "member", coinBalance: 60, profitLoss: 0, joinedAt: "2026-08-05T09:20:00Z" },
+    { userId: "u-08", role: "member", coinBalance: 65, profitLoss: 0, joinedAt: "2026-08-07T21:10:00Z" },
+    { userId: "u-09", role: "member", coinBalance: 100, profitLoss: 0, joinedAt: "2026-08-10T16:40:00Z" },
+    // Newest member: grant minus the 20 still in flight on b-02 (w-07).
+    { userId: "u-10", role: "member", coinBalance: CONFIG.ONBOARDING_GRANT_COINS - 20, profitLoss: 0, joinedAt: "2026-09-01T12:00:00Z" },
   ],
 };
 
@@ -219,16 +227,33 @@ export const mockComments: Comment[] = [
 ];
 
 /**
- * Coin-ledger mock (DOM-025): grants + one leader injection. Scoped to the
- * current user (u-01) on t-01 except the injection row, which belongs to its
- * recipient (u-09) — the leader sees it in the team ledger view later.
+ * Coin-ledger mock (DOM-025): t-01's complete transfer ledger — one onboarding
+ * grant per membership (decision §4.2), daily rewards for the members who
+ * logged in on those days (lazy grant, decision §4.3), and one leader
+ * injection. balanceAfter snapshots interleave with wager stakes/payouts,
+ * which are deliberately NOT ledger rows (DOM-026, decision §4.6).
  */
 export const mockTransactions: Transaction[] = [
+  // Onboarding grants, one per membership, at join time (DOM-021).
   { id: "tx-01", teamId: "t-01", userId: "u-01", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-01T18:00:00Z" },
-  { id: "tx-02", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-01T09:12:00Z" },
-  { id: "tx-03", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 133, createdAt: "2026-09-02T08:45:00Z" },
-  { id: "tx-04", teamId: "t-01", userId: "u-09", kind: "injection", amount: 20, description: "Injected by Rafa (leader)", balanceAfter: 23, createdAt: "2026-09-03T14:00:00Z" },
-  { id: "tx-05", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 143, createdAt: "2026-09-04T07:30:00Z" },
+  { id: "tx-02", teamId: "t-01", userId: "u-02", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-01T18:05:00Z" },
+  { id: "tx-03", teamId: "t-01", userId: "u-03", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-01T19:12:00Z" },
+  { id: "tx-04", teamId: "t-01", userId: "u-04", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-02T10:30:00Z" },
+  { id: "tx-05", teamId: "t-01", userId: "u-05", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-02T11:00:00Z" },
+  { id: "tx-06", teamId: "t-01", userId: "u-06", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-03T14:45:00Z" },
+  { id: "tx-07", teamId: "t-01", userId: "u-07", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-05T09:20:00Z" },
+  { id: "tx-08", teamId: "t-01", userId: "u-08", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-07T21:10:00Z" },
+  { id: "tx-09", teamId: "t-01", userId: "u-09", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-10T16:40:00Z" },
+  { id: "tx-10", teamId: "t-01", userId: "u-10", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-09-01T12:00:00Z" },
+  // Daily rewards + injection, chronological. u-01's chain: 100 −15 (w-17)
+  // → +5 = 90 → −25 (w-10) → +5 = 70 → −30 (w-01) → +5 = 45.
+  { id: "tx-11", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 90, createdAt: "2026-09-01T09:12:00Z" },
+  { id: "tx-12", teamId: "t-01", userId: "u-02", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-01T10:02:00Z" },
+  { id: "tx-13", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 70, createdAt: "2026-09-02T08:45:00Z" },
+  { id: "tx-14", teamId: "t-01", userId: "u-02", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 110, createdAt: "2026-09-03T09:40:00Z" },
+  { id: "tx-15", teamId: "t-01", userId: "u-09", kind: "injection", amount: 20, description: "Injected by Rafa (leader)", balanceAfter: 100, createdAt: "2026-09-03T14:00:00Z" },
+  { id: "tx-16", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 45, createdAt: "2026-09-04T07:30:00Z" },
+  { id: "tx-17", teamId: "t-01", userId: "u-06", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-04T08:15:00Z" },
 ];
 
 /** Convenience lookup for rendering names/colors from a wager or comment. */
