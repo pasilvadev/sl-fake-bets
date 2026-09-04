@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { cn } from "cn";
-import { getUser } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
@@ -21,7 +20,7 @@ function rankSize(rank: number): string {
 /** DOM-027/028/029: full leaderboard modal, Richest/Poorest tabs. */
 export function StandingsFullModal() {
   const { close } = useModal();
-  const { richest, poorest } = useTeam();
+  const { richest, poorest, userById } = useTeam();
   const [tab, setTab] = useState<Tab>("richest");
 
   const rows = tab === "richest" ? richest : poorest;
@@ -56,7 +55,7 @@ export function StandingsFullModal() {
           <ul>
             {rows.map((member, index) => {
               const rank = index + 1;
-              const user = getUser(member.userId);
+              const user = userById(member.userId);
               if (!user) return null;
               const isRichestTop = tab === "richest" && rank === 1;
               const isPoorestTop = tab === "poorest" && rank === 1;

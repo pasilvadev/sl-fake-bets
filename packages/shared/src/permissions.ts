@@ -65,3 +65,39 @@ export function canBan(team: Team, userId: string): boolean {
 export function canInjectCoins(team: Team, userId: string): boolean {
   return isLeader(team, userId);
 }
+
+/**
+ * DOM-033 (assumption in the requirement itself): team deletion is the
+ * leader's call — it destroys every member's balance, bets, and history.
+ */
+export function canDeleteTeam(team: Team, userId: string): boolean {
+  return isLeader(team, userId);
+}
+
+/** DOM-033: bet deletion follows the same set that closes/resolves it. */
+export function canDeleteBet(team: Team, userId: string, bet: Bet): boolean {
+  return canCloseBetEarly(team, userId, bet);
+}
+
+/** UX-018/DOM-030: any member of the bet's team may comment; no moderation. */
+export function canComment(team: Team, userId: string): boolean {
+  return isMember(team, userId);
+}
+
+/**
+ * DOM-005/006 + A-4: an invite code lets anyone in — except someone already on
+ * the roster (a double-join would break per-team balances) and someone banned,
+ * which is exactly what a ban adds over a kick.
+ */
+export function canJoinTeam(team: Team, userId: string): boolean {
+  return !isMember(team, userId) && !team.bannedUserIds.includes(userId);
+}
+
+/**
+ * The leader cannot walk out: DOM-001 requires exactly one leader at all times
+ * and leadership transfer is an explicitly open spec point, so the leader's
+ * only exit is deleting the team (DOM-033). Everyone else may leave.
+ */
+export function canLeaveTeam(team: Team, userId: string): boolean {
+  return isMember(team, userId) && !isLeader(team, userId);
+}

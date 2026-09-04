@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn } from "cn";
 import {
   canCloseBetEarly,
+  canComment,
+  canDeleteBet,
   canResolveBet,
   computeEffectiveState,
   getPoolStats,
-  getUser,
   settleBet,
+  validateCommentBody,
   type Bet,
   type BetResolution,
   type BetState,
@@ -74,7 +77,7 @@ function stateLabel(effectiveState: BetState, bet: Bet): string {
 }
 
 function BetDetailContent({ bet }: { bet: Bet }) {
-  const { wagers, team, currentUser } = useTeam();
+  const { wagers, team, currentUser, userById } = useTeam();
   const { open } = useModal();
   const now = useNow();
 
@@ -88,12 +91,14 @@ function BetDetailContent({ bet }: { bet: Bet }) {
     .filter((w) => w.betId === bet.id)
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt));
   const playerCount = new Set(betWagers.map((w) => w.userId)).size;
-  const creator = getUser(bet.creatorId);
+  const creator = userById(bet.creatorId);
 
   const mayCloseEarly =
     effectiveState === "open" && canCloseBetEarly(team, currentUser.id, bet);
   const mayResolve =
     effectiveState === "closed" && canResolveBet(team, currentUser.id, bet);
+  const mayDelete = canDeleteBet(team, currentUser.id, bet);
+  const mayComment = canComment(team, currentUser.id);
 
   const winningOptionId =
     bet.resolution?.kind === "winner" ? bet.resolution.winningOptionId : null;
@@ -241,7 +246,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
         ) : (
           <ul className="mt-2 divide-y divide-border border-y border-border">
             {betWagers.map((wager) => {
-              const user = getUser(wager.userId);
+              const user = userById(wager.userId);
               const optionLabel =
                 bet.options.find((o) => o.id === wager.optionId)?.label ?? "—";
               return (
@@ -261,7 +266,152 @@ function BetDetailContent({ bet }: { bet: Bet }) {
           </ul>
         )}
       </section>
+
+      <CommentsSection betId={bet.id} canPost={mayComment} />
+
+      {mayDelete && <DeleteBetPanel bet={bet} />}
     </>
+  );
+}
+
+/**
+ * UX-018: the bet's own mini chat. Dense §5.7 rows — 24px avatar, name in the
+ * user's name color with its rank badge, message N7, mono timestamp trailing —
+ * no bubbles, no hover cards. DOM-030: free-form, nothing is filtered.
+ */
+function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }) {
+  const { comments, userById, addComment } = useTeam();
+  const now = useNow();
+  const [body, setBody] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const thread = comments
+    .filter((c) => c.betId === betId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const canSubmit = canPost && validateCommentBody(body).length === 0;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    const result = addComment(betId, body);
+    if (result.ok) {
+      setBody("");
+      setError(null);
+    } else {
+      setError(result.error);
+    }
+  }
+
+  return (
+    <section className="mt-6">
+      <p className={eyebrowClass}>Comments ({thread.length})</p>
+
+      {thread.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Nothing said yet. Someone start something.
+        </p>
+      ) : (
+        <div className="mt-2">
+          {thread.map((comment) => {
+            const user = userById(comment.userId);
+            return (
+              <div key={comment.id} className="flex items-start gap-2 py-1.5">
+                {user && <UserAvatar user={user} size={24} />}
+                {user && <UserName user={user} badge className="shrink-0 text-sm" />}
+                <span className="min-w-0 flex-1 break-words text-sm text-foreground">
+                  {comment.body}
+                </span>
+                <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                  {now == null ? "—" : formatRelativePast(comment.createdAt, now)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <form
+        onSubmit={submit}
+        className="mt-2 flex items-center gap-2 border-t border-border bg-surface-1 pt-2"
+      >
+        <input
+          value={body}
+          onChange={(e) => {
+            setBody(e.target.value);
+            setError(null);
+          }}
+          disabled={!canPost}
+          placeholder={canPost ? "Say something" : "Only team members can comment"}
+          className="h-8 min-w-0 flex-1 rounded-none border border-border bg-surface-2 px-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40 disabled:opacity-40"
+        />
+        {/* Send affordance is the brand slash itself (§5.7), not an icon glyph. */}
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          aria-label="Post comment"
+          className="flex size-8 items-center justify-center font-mono text-muted-foreground transition-colors hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
+        >
+          /
+        </button>
+      </form>
+      {error && <p className="mt-1.5 text-xs text-negative">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * DOM-033/034: hard delete behind an exact-title type-to-confirm gate. The
+ * bet's money effects are unwound by settlement.ts (`reverseBet`) inside the
+ * mutator — stakes come back, and a resolved bet's payouts are undone.
+ */
+function DeleteBetPanel({ bet }: { bet: Bet }) {
+  const { deleteBet } = useTeam();
+  const router = useRouter();
+  const [confirmText, setConfirmText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const matches = confirmText === bet.title;
+
+  function submit() {
+    const result = deleteBet(bet.id);
+    // The bet is gone — this page has nothing left to render.
+    if (result.ok) router.push("/");
+    else setError(result.error);
+  }
+
+  return (
+    <section className="mt-6 space-y-2 rounded-sm border border-ember-border p-3">
+      <p className={eyebrowClass}>Danger zone</p>
+      <p className="text-sm text-foreground">Delete bet</p>
+      <p
+        className={cn(
+          "text-xs text-muted-foreground transition-opacity",
+          matches && "opacity-0",
+        )}
+      >
+        Permanent. Wagers are returned to their owners and this bet stops
+        counting toward anyone&apos;s P/L.
+      </p>
+      <input
+        type="text"
+        value={confirmText}
+        onChange={(e) => setConfirmText(e.target.value)}
+        placeholder={`Type "${bet.title}" to confirm`}
+        className={cn(
+          "w-full border bg-surface-1 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none",
+          matches ? "border-jade" : "border-border",
+        )}
+      />
+      <button
+        type="button"
+        disabled={!matches}
+        onClick={submit}
+        className="cut-danger h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-destructive opacity-40 pointer-events-none transition-opacity enabled:opacity-100 enabled:pointer-events-auto"
+      >
+        Delete bet
+      </button>
+      {error && <p className="text-xs text-negative">{error}</p>}
+    </section>
   );
 }
 
@@ -381,7 +531,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
 
 /** Post-resolution receipt straight from settlement.ts — same math as balances. */
 function SettlementBlock({ bet, resolution }: { bet: Bet; resolution: BetResolution }) {
-  const { wagers } = useTeam();
+  const { wagers, userById } = useTeam();
   const deltas = settleBet(bet, wagers, resolution).sort(
     (a, b) => b.profitLossDelta - a.profitLossDelta,
   );
@@ -393,7 +543,7 @@ function SettlementBlock({ bet, resolution }: { bet: Bet; resolution: BetResolut
       <p className={eyebrowClass}>Settlement</p>
       <ul className="mt-2 space-y-1.5">
         {deltas.map((delta) => {
-          const user = getUser(delta.userId);
+          const user = userById(delta.userId);
           return (
             <li key={delta.userId} className="flex items-center gap-2 text-sm">
               {user && <UserAvatar user={user} size={18} />}

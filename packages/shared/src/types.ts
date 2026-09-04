@@ -47,6 +47,13 @@ export interface Team {
   /** Non-expiring invite token (UX-005/DOM-005). */
   inviteCode: string;
   members: TeamMember[];
+  /**
+   * Banned users (DOM-031 + assumption A-4): a ban removes the membership AND
+   * blocks re-joining via the invite link, which a kick does not. Kept as its
+   * own list because the membership row is gone (Phase 3 maps it to a
+   * `team_bans` table).
+   */
+  bannedUserIds: string[];
   createdAt: string;
 }
 

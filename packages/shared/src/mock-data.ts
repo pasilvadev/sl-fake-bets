@@ -34,6 +34,7 @@ export const mockTeam: Team = {
   leaderId: "u-01",
   accessMode: "free-for-all",
   inviteCode: "sl-originals-4ever",
+  bannedUserIds: [],
   createdAt: "2026-08-01T18:00:00Z",
   members: [
     { userId: "u-01", role: "member", coinBalance: 45, profitLoss: -15, joinedAt: "2026-08-01T18:00:00Z" },
@@ -70,6 +71,7 @@ export const mockTeams: Team[] = [
     leaderId: "u-02",
     accessMode: "restricted",
     inviteCode: "lanhouse-legends-gg",
+    bannedUserIds: [],
     createdAt: "2026-07-15T20:00:00Z",
     members: [
       { userId: "u-02", role: "member", coinBalance: 300, profitLoss: 200, joinedAt: "2026-07-15T20:00:00Z" },
@@ -83,6 +85,7 @@ export const mockTeams: Team[] = [
     leaderId: "u-05",
     accessMode: "free-for-all",
     inviteCode: "churrasco-fc-2026",
+    bannedUserIds: [],
     createdAt: "2026-08-20T12:00:00Z",
     members: [
       { userId: "u-05", role: "member", coinBalance: 100, profitLoss: 0, joinedAt: "2026-08-20T12:00:00Z" },

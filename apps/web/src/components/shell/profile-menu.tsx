@@ -70,7 +70,7 @@ export function ProfileMenu() {
 
           {/* Ordinary-destructive (§5.3): neutral text, ember icon only, ember-wash on hover/highlight. */}
           <DropdownMenu.Item
-            title="Phase 1 — not wired"
+            onSelect={() => open("leave-team")}
             className="flex h-8 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-ember-wash"
           >
             <LogOut className="size-3.5 text-ember" />

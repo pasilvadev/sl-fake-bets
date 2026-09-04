@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { Crown, Dice5, Flame, Ghost, Moon, Skull, Star, Zap } from "lucide-react";
+import { NAME_COLORS, validateProfileDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 
 // Literal class names, not interpolated — Tailwind v4 only generates
-// utilities for class strings it can see statically in source.
+// utilities for class strings it can see statically in source. Index-aligned
+// with NAME_COLORS, so the swatch shown and the hex stored are one list.
 const NAME_COLOR_SWATCHES = [
   "bg-name-color-1",
   "bg-name-color-2",
@@ -33,14 +35,34 @@ const AVATAR_ICONS = [
   { id: "icon-moon", Icon: Moon },
 ] as const;
 
-/** UX-022: profile editor — shaped, Phase-1 inert (client state only, Save disabled). */
+/**
+ * UX-022: profile editor — display name, one of the 10 curated name colors
+ * (§2.4), and an avatar from the platform icon set. Saving applies everywhere
+ * the name renders, immediately. Custom image upload needs real storage, so it
+ * arrives with the Supabase bucket in a later phase.
+ */
 export function ProfileModal() {
   const { close } = useModal();
-  const { currentUser } = useTeam();
+  const { currentUser, updateProfile } = useTeam();
 
   const [displayName, setDisplayName] = useState(currentUser.displayName);
-  const [colorIndex, setColorIndex] = useState<number | null>(null);
+  const [nameColor, setNameColor] = useState(currentUser.nameColor);
   const [avatarId, setAvatarId] = useState(currentUser.avatar);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const draft = { displayName, nameColor, avatar: avatarId };
+  const canSubmit = validateProfileDraft(draft).length === 0;
+
+  function submit() {
+    if (!canSubmit) return;
+    setSubmitError(null);
+    const result = updateProfile(draft);
+    if (result.ok) {
+      close();
+    } else {
+      setSubmitError(result.error);
+    }
+  }
 
   return (
     <ModalShell
@@ -48,17 +70,16 @@ export function ProfileModal() {
       title="Edit profile"
       onClose={close}
       footer={
-        <div className="space-y-1.5">
+        <div className="space-y-2">
+          {submitError && <p className="text-xs text-negative">{submitError}</p>}
           <button
             type="button"
-            disabled
-            className="h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade opacity-40 pointer-events-none"
+            disabled={!canSubmit}
+            onClick={submit}
+            className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
             Save
           </button>
-          <p className="text-[11px] text-muted-foreground">
-            Profile editing wires up in Phase 2.
-          </p>
         </div>
       }
     >
@@ -81,17 +102,18 @@ export function ProfileModal() {
           </label>
           <div className="flex flex-wrap gap-2">
             {NAME_COLOR_SWATCHES.map((swatchClass, i) => {
-              const n = i + 1;
+              const hex = NAME_COLORS[i];
               return (
                 <button
-                  key={n}
+                  key={hex}
                   type="button"
-                  aria-label={`Name color ${n}`}
-                  onClick={() => setColorIndex(n)}
+                  aria-label={`Name color ${i + 1}`}
+                  aria-pressed={nameColor === hex}
+                  onClick={() => setNameColor(hex)}
                   className={cn(
                     "size-7 shrink-0 rounded-full ring-offset-2 ring-offset-surface-2 transition-shadow",
                     swatchClass,
-                    colorIndex === n && "ring-2 ring-jade",
+                    nameColor === hex && "ring-2 ring-jade",
                   )}
                 />
               );
@@ -108,6 +130,7 @@ export function ProfileModal() {
               <button
                 key={id}
                 type="button"
+                aria-pressed={avatarId === id}
                 onClick={() => setAvatarId(id)}
                 className={cn(
                   "cut-sm flex aspect-square items-center justify-center border bg-surface-1 text-foreground transition-colors",
@@ -121,7 +144,7 @@ export function ProfileModal() {
           <button
             type="button"
             disabled
-            title="Phase 1 — not wired"
+            title="Custom image upload arrives with file storage"
             className="mt-2 border border-border px-3 py-1.5 text-xs font-medium text-foreground opacity-40 pointer-events-none"
           >
             Upload image

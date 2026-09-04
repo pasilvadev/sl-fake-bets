@@ -43,10 +43,25 @@ function TeamRow({
  * footer actions.
  */
 export function TeamSwitcher() {
-  const { team, teams, setTeamId, openBetCountFor } = useTeam();
+  const { team, teams, setTeamId, openBetCountFor, joinTeamByCode } = useTeam();
   const { open } = useModal();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  // UX-005/DOM-005: codes never expire; joinTeamByCode seeds the onboarding
+  // grant (decision §4.2) and re-scopes the app to the joined team (UX-010).
+  function submitJoin(e: React.FormEvent) {
+    e.preventDefault();
+    const result = joinTeamByCode(joinCode);
+    if (result.ok) {
+      setJoinCode("");
+      setJoinError(null);
+      setPopoverOpen(false);
+    } else {
+      setJoinError(result.error);
+    }
+  }
 
   return (
     <Popover.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
@@ -101,28 +116,27 @@ export function TeamSwitcher() {
               Create a team
             </button>
 
-            {/* Phase 1 stub: inline join-code form, one fewer hop than a modal. */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setJoinCode("");
-              }}
-              className="mt-2 flex items-center gap-1.5"
-            >
+            {/* Inline join-code form, one fewer hop than a modal. */}
+            <form onSubmit={submitJoin} className="mt-2 flex items-center gap-1.5">
               <input
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
+                onChange={(e) => {
+                  setJoinCode(e.target.value);
+                  setJoinError(null);
+                }}
                 placeholder="Invite code"
                 className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-surface-1 px-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40"
               />
               <button
                 type="submit"
-                title="Phase 1 — not wired"
                 className="h-7 shrink-0 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
               >
                 Join
               </button>
             </form>
+            {joinError && (
+              <p className="mt-1.5 px-0.5 text-[11px] text-negative">{joinError}</p>
+            )}
           </div>
         </Popover.Content>
       </Popover.Portal>

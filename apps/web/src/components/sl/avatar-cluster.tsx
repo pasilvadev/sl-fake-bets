@@ -1,6 +1,6 @@
 "use client";
 
-import { getUser } from "@repo/shared";
+import { useTeam } from "@/lib/team-context";
 import { UserAvatar } from "./user-avatar";
 
 /** Overlapping avatar stack + trailing "+N" mono circle for the overflow. */
@@ -13,13 +13,14 @@ export function AvatarCluster({
   max?: number;
   size?: number;
 }) {
+  const { userById } = useTeam();
   const shown = userIds.slice(0, max);
   const extra = userIds.length - shown.length;
 
   return (
     <div className="flex items-center -space-x-2">
       {shown.map((userId) => {
-        const user = getUser(userId);
+        const user = userById(userId);
         if (!user) return null;
         return (
           <UserAvatar

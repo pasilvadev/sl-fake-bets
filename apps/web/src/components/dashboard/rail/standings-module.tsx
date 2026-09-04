@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "cn";
-import { getUser, type TeamMember } from "@repo/shared";
+import { type TeamMember } from "@repo/shared";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -54,7 +54,8 @@ function StandingRow({
   rank: number;
   tab: Tab;
 }) {
-  const user = getUser(member.userId);
+  const { userById } = useTeam();
+  const user = userById(member.userId);
   if (!user) return null;
 
   return (

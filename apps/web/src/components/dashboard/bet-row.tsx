@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
-import { getPoolStats, getUser, settleBet, type Bet, type OptionPoolStat } from "@repo/shared";
+import { getPoolStats, settleBet, type Bet, type OptionPoolStat } from "@repo/shared";
 import { useNow } from "@/lib/use-now";
 import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
 import { useTeam } from "@/lib/team-context";
@@ -206,14 +206,14 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
 }
 
 export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
-  const { wagers } = useTeam();
+  const { wagers, userById } = useTeam();
   const { open } = useModal();
   const now = useNow();
 
   const betWagers = wagers.filter((w) => w.betId === bet.id);
   const poolStats = getPoolStats(bet, wagers);
   const poolTotal = poolStats.reduce((sum, o) => sum + o.total, 0);
-  const creator = getUser(bet.creatorId);
+  const creator = userById(bet.creatorId);
   const distinctWagerUserIds = Array.from(new Set(betWagers.map((w) => w.userId)));
 
   const { label: countdownLabel, msLeft } =

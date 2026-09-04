@@ -29,3 +29,22 @@ export const CONFIG = Object.freeze({
 
 /** Suggested default per-user max wager = onboarding grant (DOM-017). */
 export const DEFAULT_MAX_WAGER = CONFIG.ONBOARDING_GRANT_COINS;
+
+/**
+ * The 10 curated name colors (design-visual-identity.md §2.4) — the only
+ * values `User.nameColor` may take (UX-022). Index + 1 lines up with the
+ * `--name-color-N` CSS tokens and the `bg-name-color-N` swatch utilities, so
+ * the profile picker can render a swatch and store a hex from one list.
+ */
+export const NAME_COLORS = Object.freeze([
+  "#2C9297", // 1 Harbor Teal
+  "#2C91AA", // 2 Signal Cyan
+  "#2B8DBF", // 3 Skyline Blue
+  "#2D88EC", // 4 Voltage Blue
+  "#647BF1", // 5 Indigo Pulse
+  "#8C70F2", // 6 Ultraviolet
+  "#B45CF5", // 7 Neon Orchid
+  "#DB36E3", // 8 Magenta Static
+  "#EC35B3", // 9 Flare Pink
+  "#F33483", // 10 Coral Flare
+] as const);
