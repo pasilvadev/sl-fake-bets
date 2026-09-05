@@ -15,6 +15,8 @@ dist/
 .env
 .env.*
 !.env.example
+# google oauth credentials (never commit)
+client_secret*.json
 
 # misc
 .DS_Store
