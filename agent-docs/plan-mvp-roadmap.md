@@ -51,6 +51,7 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 4. **Kick/ban wager cascade = remove the member's wagers from all active pools.** DOM-032 mandates the removal but explicitly leaves refunded-vs-forfeited-vs-removed open. Since the per-team balance is deleted along with the membership, "refund to the removed member" has no durable target; plain removal is the default — pools shrink and everyone else's odds recompute automatically because `getPoolStats` runs over live wagers. The cascade must still go through one shared `settlement.ts` helper so the Phase 2 in-memory version and the Phase 5 RPC behave identically.
 5. **Bet options floor = 2, no maximum.** DOM-007 says options are plural but marks min/max count open.
 6. **Ledger scope stays spec-literal (DOM-025/026).** Transactions = grants/rewards/injections (the `"donation"` kind stays reserved for post-MVP DOM-023). Wager stakes, payouts, and void refunds mutate stored balances + aggregated `profitLoss` via `settlement.ts` and are **not** ledger rows — do not extend `Transaction["kind"]`, do not event-source balances by replaying history. Balances are stored on the member (per types + fixtures) and updated atomically with each mutation.
+7. **Onboarding = one skippable full-screen profile step, after the team step, once per account.** UX-001/002/028 mandate a low-friction, pre-filled, step-structured onboarding but never say what the steps *are*. Default (owner-ordered 2026-09-05, specified in Phase 7.5): signup → team (create/join) → confirm-your-profile → dashboard, where the profile step is never required, is skipped in one click, and is marked done by `users.onboarded_at` whether it was saved or skipped.
 
 ## 5. Phases
 
@@ -286,6 +287,55 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 
 **Sizing:** ~11–13 files. Last purely-backend-logic phase before realtime/polish. *Actual: 13 files — one migration, one new dev-only module (`consistency-guard.ts`), 7 in `apps/web`, and 3 fixture/test files that only changed because the guard found them wrong.*
 
+### Phase 7.5 — First-run profile step (onboarding)
+
+**Numbered 7.5 on purpose.** Inserted 2026-09-05 by owner order, after Phase 7 shipped and before Phase 8 starts. It is *not* renumbered to 8 because "Phase 8 = realtime" and "Phase 9 = analytics/flags/SEO" are referenced by §6's risks, by Phase 9's own tasks, and by the commit history — renaming them to buy a whole number would invalidate more text than the fraction costs.
+
+**Goal:** give a brand-new account exactly one look at its own identity before the dashboard (UX-001/UX-002/UX-022), structured as a discrete, skippable, once-only step so Phase 9 has a funnel to instrument (UX-028/ARC-017).
+
+**The UX decision (owner asked for the best-practice call; this is it):** a **full-screen step between `TeamGate` and the dashboard**, not a forced modal, and not a blocking form.
+
+Why this shape, point by point — the implementing session must preserve the reasoning, not just the file list:
+
+- **A gate, not a forced modal.** `team-gate.tsx` already states the rule this follows: *"deliberately NOT the create-team modal — a modal implies something behind it to go back to, and here there is nothing."* A modal auto-opened over a dashboard the user has never seen is the worst of both worlds: it dims content they cannot read yet, and its close affordance (an X in the corner) reads as *dismiss and lose*, not as *skip*. A step owns the viewport, so the skip control can be a real, labeled, primary-weight button.
+- **After the team step, not before it.** A new arrival gets here two ways, and both are better served by profile-last: the invite-link visitor came to join a specific team (`join-page.tsx` already `router.replace("/")`s into the dashboard route on success, so the gate catches them on the very next render), and the cold-start visitor came to make one. Interposing a name-and-color screen before either is a decision between the user and the thing they clicked — precisely what UX-001 forbids. Profile-after also means the step can frame itself as *"this is how your team sees you"*, which is the only reason to care about the field, and it puts the whole feature below `TeamGate`, where `useTeam()` already hands over `currentUser` and `updateProfile`.
+- **Confirm, never fill.** Every field arrives pre-filled and valid from Phase 4's `app.handle_new_user` (UX-002), so this step has **no required input and no validation wall**. Show a live identity preview (`UserAvatar` + name in the chosen color) so a second's glance is enough to decide.
+- **Skip prominence is conditional on prefill quality** (the owner's explicit requirement). Phase 4's `app.default_display_name` already ranks its sources: Google's `full_name`/`name` is a *real* name, while an email local part or the `'Player'` literal is a placeholder the user has never seen and did not choose. Those two cases deserve inverted emphasis:
+  - **Provider-named (Google, and typically with a real profile picture too):** the primary jade button is **continue as-is** — the step is a confirmation. Editing is one visibly-available secondary action away, on the same screen. A user who signed in with Google reaches the dashboard in one click.
+  - **Derived name (email OTP):** the primary button **saves** the fields, and the skip stays present, immediate, and honest — labeled with the actual placeholder it accepts (e.g. *"Keep "pedro" for now"*), never a bare "Skip" and never a guilt-worded one. Still one click to the dashboard.
+- **Skipping completes the step.** Both paths stamp `onboarded_at`, so the screen never returns. A step that reappears until satisfied is nagware, and it would also corrupt the Phase 9 funnel by re-firing. The profile stays editable forever from the profile menu, which is the actual answer to *"what if they wanted to change it later"*.
+- **Deep links stay uninterrupted.** The gate goes in `AppGate` (the `/` route) only — **not** in `bet-detail-page.tsx`, which wraps its own `AuthGated`/`TeamGate`. Someone who followed a shared bet link gets the bet; they meet the step on their first real dashboard landing.
+
+**Schema:** two columns on `public.users`, both written by paths that already exist.
+
+- `onboarded_at timestamptz` (nullable — NULL *is* "first run"; no separate boolean, no default).
+- `profile_prefill text not null default 'derived' check (profile_prefill in ('provider','derived'))` — set to `'provider'` by `app.handle_new_user` when `raw_user_meta_data` supplied a name (the same first three `coalesce` branches `app.default_display_name` prefers). This is what the step reads to choose its emphasis; deriving it client-side by re-guessing whether a name "looks provider-shaped" is not possible and must not be attempted.
+- `users_update_self` (Phase 3 RLS) already covers both columns row-wise; verify, don't add a policy. Note that `users_select_self_or_teammate` makes them teammate-readable — acceptable (neither is sensitive), and the reason they stay off the shared `User` type.
+
+**Tasks:**
+
+1. **Migration** (`supabase/migrations/<ts>_onboarding_profile_step.sql`): the two columns above, `comment on column` for each, and a `create or replace function app.handle_new_user()` that also sets `profile_prefill`. Backfill: stamp `onboarded_at = now()` for every existing row, so accounts that predate this phase (including the owner's own) are not shown a first-run screen after the fact.
+2. **Read path:** add `onboarded_at, profile_prefill` to the `users` select in `apps/web/src/lib/data/team-data.ts` and its row type. Do **not** add them to `@repo/shared`'s `User` interface — that would put a private-ish, per-viewer concern on every teammate object and force `mock-data.ts` fixtures to carry it. They ride the existing batched `Promise.all`, so this costs no extra round trip.
+3. **Session state:** expose the current user's pair through `apps/web/src/lib/team-context.tsx` as one narrow value (e.g. `onboarding: { onboardedAt, prefill }`) plus a `completeOnboarding(draft | null)` mutation: with a draft it saves the profile and stamps `onboarded_at` in **one** UPDATE (extend `updateProfile` in `lib/data/team-mutations.ts` rather than firing two writes); with `null` it stamps only. Update local state optimistically the way the existing mutations do, so the gate falls away without a refetch.
+4. **Shared profile fields:** extract the name input, the 10 color swatches, the icon grid, the upload button, and the preview out of `profile-modal.tsx` into one reusable piece (e.g. `components/profile/profile-fields.tsx`), then rebuild the modal on it. Both surfaces must edit the same fields with the same `validateProfileDraft` contract — two hand-maintained copies of that grid is exactly the drift this codebase has avoided so far (see `avatar-icons.ts`).
+5. **The step:** `components/onboarding/profile-step.tsx` — full-screen, `SMark`-headed, visually a sibling of `NoTeamsScreen` (same shell, same jade primary, same border/`surface-1` language); reads `prefill` to order and weight its two actions per the decision above; renders the shared fields; surfaces save errors inline without trapping the user (a failed save must still leave skip reachable).
+6. **Wire the gate:** `<OnboardingGate>` between `TeamGate` and `DashboardPage` in `apps/web/src/components/app-gate.tsx`, rendering the step while `onboardedAt === null` and `children` otherwise. `AppGate` only — leave `bet-detail-page.tsx` alone.
+7. **Discrete steps for UX-028:** a single small module (e.g. `components/onboarding/steps.ts`) naming the funnel's steps as constants — `signup` → `team` (create or join) → `profile` → `dashboard` — and marking where each is reached. **Constants and call sites only: write no `analytics_events` rows here.** ARC-017's instrumentation is Phase 9 task 1, whose first line is "verify onboarding is structured as discrete steps"; this is the thing that makes that verifiable instead of interpretive.
+
+**Exit criteria:**
+
+- A brand-new email-OTP account, after creating or joining a team, lands on the profile step, and reaches the dashboard in one click via a skip labeled with its own placeholder name; the step does not reappear on reload or on a later sign-in.
+- A brand-new Google account lands on the same step with **continue-as-is** as the primary action and its provider name/picture already shown, and can still edit in place without leaving the step.
+- Saving from the step persists to `public.users` and shows up immediately wherever the name renders (standings, ticker, comments) — verified against the DB, not just the UI.
+- Skipping stamps `onboarded_at` and changes nothing else about the profile.
+- Existing accounts (backfilled) never see the step.
+- A logged-out visitor following a bet-share link signs in and gets the **bet**, not the step.
+- `profile-modal.tsx` and the step render the same fields from one shared component; `pnpm lint` and `pnpm typecheck` pass.
+
+**Sizing:** ~9–11 files (one migration, one new component dir of 2–3 files, one extracted shared component, and edits to `app-gate.tsx`, `team-context.tsx`, `team-data.ts`, `team-mutations.ts`, `profile-modal.tsx`). Small, but genuinely its own session: the extraction in task 4 touches a working modal, and the step's two-mode emphasis is the kind of judgment that gets flattened into a generic "Skip" if it is squeezed in beside realtime debugging.
+
+**Scope guard:** no new profile fields, no multi-screen wizard, no notification/email opt-in (ARC-014 forbids notifications outright), no re-litigating the onboarding *grant* — that is decision §4.2 and it already fires on the membership write path.
+
 ### Phase 8 — Realtime propagation
 
 **Goal:** close the liveness gap (ARC-005/UX-013, extended to UX-018's comments): bets, wagers, and comments propagate to other online team members without manual refresh, using **coarse-grained** Supabase Realtime subscriptions only.
@@ -308,7 +358,7 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 **Goal:** close the remaining `[mvp]` items that only make sense with real data/traffic: in-house analytics + feature flags (ARC-016/017), real SEO/social previews (UX-017/023/024), and the spec-mandated free-tier/scale-up documentation (ARC-001/004).
 
 **Tasks:**
-1. Verify onboarding is structured as discrete steps (UX-028 — the instrumentation prerequisite), then instrument the two specified funnel points into the existing `analytics_events` table: onboarding per-step drop-off; invite-open → signup conversion. Exactly these two — ARC-017 forbids anything broader.
+1. Verify onboarding is structured as discrete steps (UX-028 — the instrumentation prerequisite; Phase 7.5 built them, `components/onboarding/steps.ts` is the list to instrument), then instrument the two specified funnel points into the existing `analytics_events` table: onboarding per-step drop-off; invite-open → signup conversion. Exactly these two — ARC-017 forbids anything broader.
 2. Simple `feature_flags` read-at-load helper against the existing table (no admin UI; toggle directly in Supabase Studio). **Scope-creep guard:** do NOT implement the post-MVP coin-donation feature (DOM-023) behind a flag — the flag scaffolding is the point most likely to invite it.
 3. Dynamic OG/Twitter metadata (`generateMetadata`) for the `join/[code]` invite route (team name — UX-023) and the `bet/[id]` share route (title + live odds — UX-024), sourced from real DB records.
 4. Baseline public-page SEO (UX-017): the logged-out landing/join/bet pages are server-rendered, semantically marked up, and crawlable — meta tags beyond the two OG cases.
@@ -346,3 +396,5 @@ Revision 2026-09-04 (same day), after a 3-agent verification audit (shared packa
 - **Citation fixes:** kick/ban is DOM-031/032 (DOM-033/034 are team/bet hard-deletion); resolution is DOM-016/018/019 (not DOM-021/024/025/026); Phase 5/6 goal citations rescoped.
 - **Coverage gaps closed:** DOM-011 early close, DOM-027/028/029 standings/podium/badges, DOM-033/034 bet deletion, UX-022 avatar upload + storage bucket, UX-012 deep-link routing (`join/[code]` + `?next=`), UX-017 baseline SEO, UX-028 verification, ARC-001/004 scale docs, ARC-007 session config, ARC-015 schema check; ARC-012 acknowledged as the one `[mvp]` item outside the plan ("local-MVP" checkpoint).
 - **New sections:** §4 open-spec-point decisions; phase-numbering trap + standing constraints in "How to use".
+
+Revision 2026-09-05 (owner order, after Phase 7 shipped): inserted **Phase 7.5 — First-run profile step**, the UX-001/002/022/028 onboarding moment no phase owned (Phase 4 pre-filled the profile, Phase 5 built the editor, Phase 9 assumed steps existed to instrument). Numbered 7.5 rather than renumbering Phases 8–9, whose numbers are cited by §6's risks, Phase 9's tasks, and the commit history; added decision §4.7 recording the step order and the skip semantics.
