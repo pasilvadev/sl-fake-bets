@@ -53,6 +53,10 @@ supabase stop       # tears the stack down, keeping the database
   the `on_auth_user_created` trigger writes a randomly pre-filled profile the
   moment the seed inserts each `auth.users` row; the fixture values overwrite
   those. A plain insert fails with a unique violation.
+- **No email ever leaves this machine.** Mailpit (http://127.0.0.1:54324)
+  captures every outgoing message, so signing in with a real address and
+  waiting for an OTP in a real inbox will wait forever. The OTP screen says so
+  in dev. This is a property of the local stack, not a bug.
 - **Seeded accounts** are `<name>@sl.local` (rafa, duds, pri, tomate, careca,
   nina, guiz, lele, pinto, xis), password `slfakebets`. Dev only. The product's
   real email flavor is OTP; the password exists so you can jump straight into a

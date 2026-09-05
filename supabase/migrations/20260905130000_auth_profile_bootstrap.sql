@@ -67,16 +67,42 @@ returns text language sql volatile set search_path = '' as $$
   ])[floor(random() * 10)::int + 1];
 $$;
 
--- The platform icon set (UX-022). Deliberately the 8 ids the profile modal can
--- actually render — a default the user cannot re-select in the picker would be
--- a dead end. (mock-data.ts also uses `icon-fish` and `icon-target`, which the
--- picker does not offer; that predates this phase and is left alone.)
-create or replace function app.default_avatar()
+-- Avatar. Google hands us a real profile picture (`avatar_url`/`picture` in the
+-- identity metadata) and UX-002 says a pre-filled default should be the best
+-- one available — someone who signed in with Google expects to see their own
+-- face, not a dice icon. `user-avatar.tsx` already renders any http(s) value as
+-- an image and falls back to initials, so no client change is needed.
+--
+-- Only https is accepted: the value is provider-controlled and lands in an
+-- `<img src>`, so a `javascript:`/`data:` URL has no business reaching it.
+--
+-- Everyone else falls back to the platform icon set (UX-022) — deliberately
+-- the 8 ids the profile modal can actually render, because a default the user
+-- cannot re-select in the picker would be a dead end. (mock-data.ts also uses
+-- `icon-fish` and `icon-target`, which the picker does not offer; that
+-- predates this phase and is left alone.)
+--
+-- Note this stores an EXTERNAL url, a third kind of value alongside icon ids
+-- and Phase 3's avatars-bucket paths. That is intended and self-healing: the
+-- link dies only if the user changes their Google picture, and Phase 5's
+-- profile modal overwrites the field the moment they pick anything else.
+create or replace function app.default_avatar(p_meta jsonb default '{}'::jsonb)
 returns text language sql volatile set search_path = '' as $$
-  select (array[
-    'icon-dice', 'icon-crown', 'icon-ghost', 'icon-flame',
-    'icon-bolt', 'icon-star', 'icon-skull', 'icon-moon'
-  ])[floor(random() * 8)::int + 1];
+  select coalesce(
+    (
+      select url
+      from (values
+        (nullif(btrim(p_meta ->> 'avatar_url'), '')),
+        (nullif(btrim(p_meta ->> 'picture'), ''))
+      ) as candidates(url)
+      where url like 'https://%'
+      limit 1
+    ),
+    (array[
+      'icon-dice', 'icon-crown', 'icon-ghost', 'icon-flame',
+      'icon-bolt', 'icon-star', 'icon-skull', 'icon-moon'
+    ])[floor(random() * 8)::int + 1]
+  );
 $$;
 
 create or replace function app.handle_new_user()
@@ -87,7 +113,7 @@ begin
     new.id,
     app.default_display_name(new.email, new.raw_user_meta_data),
     app.default_name_color(),
-    app.default_avatar()
+    app.default_avatar(new.raw_user_meta_data)
   )
   -- seed.sql writes auth.users directly and then upserts the fixture profiles
   -- over these defaults; a signup that somehow re-runs must also not fail.

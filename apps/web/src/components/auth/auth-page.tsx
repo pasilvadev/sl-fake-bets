@@ -347,6 +347,27 @@ function OtpStep({
         <p className="mt-1 text-sm text-muted-foreground">
           We sent a code to {email || "your email"}.
         </p>
+        {/*
+          Dev only, and it earns its place: a 100% local stack (vision Phase 2)
+          has no SMTP server — `supabase start` runs Mailpit, which CAPTURES
+          every outgoing email instead of delivering it. Without this line the
+          first reasonable conclusion is "email login is broken", because a
+          real address genuinely never receives anything.
+        */}
+        {process.env.NODE_ENV === "development" && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Local stack — no mail leaves this machine. Read the code in{" "}
+            <a
+              href="http://127.0.0.1:54324"
+              target="_blank"
+              rel="noreferrer"
+              className="text-jade underline-offset-2 hover:underline"
+            >
+              Mailpit
+            </a>
+            .
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
