@@ -30,7 +30,6 @@ import {
   computeEffectiveState,
   generateId,
   removeMemberWagersInTeam,
-  reverseBet,
   settleBet,
   validateBetDraft,
   validateCommentBody,
@@ -56,6 +55,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { EMPTY_TEAM_DATA, loadTeamData, type TeamData } from "@/lib/data/team-data";
 import * as db from "@/lib/data/team-mutations";
+import * as betDb from "@/lib/data/bet-mutations";
 import { fail, ok, type MutationResult } from "@/lib/data/result";
 
 export type { MutationResult } from "@/lib/data/result";
@@ -114,23 +114,28 @@ export interface TeamState {
   openBetCountFor: (teamId: string) => number;
   // --- mutators ---
   //
-  // Two kinds since roadmap Phase 5, and the split is the phase boundary
-  // itself, not a style choice:
+  // Every mutator writes to Postgres first (its RPC and the policies behind
+  // it) and only then applies the same change locally, so what the screen
+  // shows is what the database accepted. That is now the rule with two
+  // exceptions, and both are the next phase's job rather than a style choice:
   //
-  //  * TEAM mutators are async. They write to Postgres first (Phase 5's RPCs
-  //    and policies) and only then apply the same local change, so what the
-  //    screen shows is what the database accepted.
-  //  * BET mutators are still synchronous local state. Placing a wager has to
-  //    debit a stored coin_balance in the same transaction, which the Phase 3
-  //    column trigger reserves for the leader and for SECURITY DEFINER
-  //    functions — so it needs an RPC that does not exist yet. That is
-  //    Phase 6's whole job. Until it lands, bets/wagers/comments LOAD from
-  //    Postgres but any change made here lives for the session only.
-  addBet: (draft: NewBetDraft) => MutationResult;
-  placeWager: (betId: string, optionId: string, amount: number) => MutationResult;
-  closeBetEarly: (betId: string) => MutationResult;
+  //  * resolveBet pays out — it has to move every wagerer's stored
+  //    coin_balance and profit_loss from settlement.ts's deltas.
+  //  * addComment writes to the `comments` table.
+  //
+  // Both are roadmap Phase 7 (tasks 1 and 4). Until then they LOAD from
+  // Postgres like everything else, but a change made through them lives for
+  // the session only — which is also why `reload` is not called after a bet
+  // mutation. The synchronous signature is what marks them.
+  addBet: (draft: NewBetDraft) => Promise<MutationResult>;
+  placeWager: (
+    betId: string,
+    optionId: string,
+    amount: number,
+  ) => Promise<MutationResult>;
+  closeBetEarly: (betId: string) => Promise<MutationResult>;
+  deleteBet: (betId: string) => Promise<MutationResult>;
   resolveBet: (betId: string, resolution: BetResolution) => MutationResult;
-  deleteBet: (betId: string) => MutationResult;
   addComment: (betId: string, body: string) => MutationResult;
   createTeam: (draft: TeamDraft) => Promise<MutationResult>;
   joinTeamByCode: (code: string) => Promise<MutationResult>;
@@ -270,7 +275,9 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       };
     case "delete-bet":
       // DOM-033 hard delete: the bet, its wagers and its comments go, and the
-      // deltas (from settlement.ts reverseBet) undo its money effects.
+      // deltas undo its money effects. Since Phase 6 they arrive from the
+      // delete_bet RPC — the reversal Postgres actually applied — rather than
+      // being recomputed here from settlement.ts.
       return {
         ...data,
         bets: data.bets.filter((b) => b.id !== action.betId),
@@ -366,12 +373,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   /**
    * Pull the whole world down again. Used on sign-in, on team switching
-   * between accounts, and after the two mutations whose result includes
-   * server-generated rows the client cannot predict (create/join a team).
+   * between accounts, and after the two mutations that change which teams the
+   * user belongs to (create/join a team) — those re-scope everything.
    *
-   * Every other mutation applies its own local change instead, which is not an
-   * optimization: a reload would also discard the session-local bet and wager
-   * state that Phase 6 has not yet made durable.
+   * Every other mutation applies its own local change instead. Since Phase 6
+   * that is an ordinary avoid-a-round-trip decision for most of them, but it
+   * is still load-bearing for two: resolveBet and addComment are session-local
+   * until Phase 7, and a reload would discard them.
    */
   const reload = useCallback(async () => {
     if (!currentUserId) {
@@ -419,10 +427,16 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [team, currentUserId],
   );
 
-  // --- bet lifecycle: still session-local state (see the TeamState comment) ---
+  // --- bet lifecycle: real Postgres writes (roadmap Phase 6) ---
 
+  /**
+   * DOM-007/008/009/017. The client still runs validateBetDraft and
+   * canCreateBet first so a bad draft never leaves the modal, but neither is
+   * the enforcement: `create_bet` re-checks both, and it is the only thing
+   * that can enforce the two-option floor, which spans two tables.
+   */
   const addBet = useCallback(
-    (draft: NewBetDraft): MutationResult => {
+    async (draft: NewBetDraft): Promise<MutationResult> => {
       const ctx = requireContext();
       if (!ctx) return fail("Team not found.");
       if (!permitCreateBet(ctx.team, ctx.userId)) {
@@ -431,30 +445,56 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const firstIssue = validateBetDraft(draft, Date.now())[0];
       if (firstIssue) return fail(firstIssue.message);
 
-      const id = generateId("b");
+      const result = await betDb.createBet(supabase, {
+        teamId: ctx.team.id,
+        title: draft.title,
+        iconEmoji: draft.iconEmoji,
+        options: draft.options,
+        closesAt: draft.closesAt,
+        maxWagerPerUser: draft.maxWagerPerUser,
+      });
+      if (!result.ok || !result.bet) {
+        return result.ok ? fail("Could not create the bet.") : result;
+      }
+
+      // Labels are trimmed and blank slots dropped the same way create_bet
+      // did before inserting, so these line up with the returned option ids.
+      const labels = draft.options
+        .map((label) => label.trim())
+        .filter((label) => label.length > 0);
       const bet: Bet = {
-        id,
+        id: result.bet.betId,
         teamId: ctx.team.id,
         creatorId: ctx.userId,
         title: draft.title.trim(),
         iconEmoji: draft.iconEmoji?.trim() || undefined,
-        options: draft.options
-          .map((label) => label.trim())
-          .filter((label) => label.length > 0)
-          .map((label, index) => ({ id: `${id}-o${index + 1}`, label })),
+        options: labels.map((label, index) => ({
+          id: result.bet!.optionIds[index],
+          label,
+        })),
         state: "open",
-        closesAt: draft.closesAt,
+        closesAt: result.bet.closesAt,
         maxWagerPerUser: draft.maxWagerPerUser,
-        createdAt: new Date().toISOString(),
+        createdAt: result.bet.createdAt,
       };
       dispatch({ type: "add-bet", bet });
       return ok;
     },
-    [requireContext],
+    [supabase, requireContext],
   );
 
+  /**
+   * DOM-013/014/016/017 + DOM-012. The gating below is the same set of shared
+   * checks `place_wager` performs, run here first so the modal can say why
+   * before a round trip — but the debit and the limits are decided server-side
+   * (the exit criterion for this phase is exactly that).
+   */
   const placeWager = useCallback(
-    (betId: string, optionId: string, amount: number): MutationResult => {
+    async (
+      betId: string,
+      optionId: string,
+      amount: number,
+    ): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
@@ -477,25 +517,35 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       })[0];
       if (firstIssue) return fail(firstIssue.message);
 
+      const result = await betDb.placeWager(supabase, {
+        betId: bet.id,
+        optionId,
+        amount,
+      });
+      if (!result.ok || !result.wager) {
+        return result.ok ? fail("Could not place the wager.") : result;
+      }
+
       dispatch({
         type: "place-wager",
         teamId: team.id,
         wager: {
-          id: generateId("w"),
+          id: result.wager.wagerId,
           betId: bet.id,
           userId: member.userId,
           optionId,
           amount,
-          placedAt: new Date().toISOString(),
+          placedAt: result.wager.placedAt,
         },
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers, currentUserId],
+    [supabase, data.bets, data.teams, data.wagers, currentUserId],
   );
 
+  /** DOM-011/DOM-012: creator or moderator, and only while it is really open. */
   const closeBetEarly = useCallback(
-    (betId: string): MutationResult => {
+    async (betId: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
@@ -503,8 +553,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitCloseBetEarly(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can close betting early.");
       }
-      const now = Date.now();
-      const effectiveState = computeEffectiveState(bet, now);
+      const effectiveState = computeEffectiveState(bet, Date.now());
       if (!canTransitionBetState(effectiveState, "closed")) {
         return fail(
           effectiveState === "resolved"
@@ -512,14 +561,22 @@ export function TeamProvider({ children }: { children: ReactNode }) {
             : "Betting is already closed.",
         );
       }
+
+      const result = await betDb.closeBetEarly(supabase, bet.id);
+      if (!result.ok || !result.closedAt) {
+        return result.ok ? fail("Could not close the bet.") : result;
+      }
+
+      // DOM-012: closesAt is exactly when open→closed happened, and the value
+      // that lands here is the server's — the browser clock never writes it.
       dispatch({
         type: "close-bet",
         betId: bet.id,
-        closedAt: new Date(now).toISOString(),
+        closedAt: result.closedAt,
       });
       return ok;
     },
-    [data.bets, data.teams, currentUserId],
+    [supabase, data.bets, data.teams, currentUserId],
   );
 
   const resolveBet = useCallback(
@@ -557,9 +614,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [data.bets, data.teams, data.wagers, currentUserId],
   );
 
-  /** DOM-033/034: hard delete; reverseBet undoes the bet's money effects. */
+  /**
+   * DOM-033/034: hard delete. The bet, its options, its wagers and its
+   * comments go by ON DELETE CASCADE; the money is unwound by the SQL twin of
+   * settlement.ts's reverseBet and the deltas it actually applied come back,
+   * so the balances on screen are the ones Postgres wrote.
+   */
   const deleteBet = useCallback(
-    (betId: string): MutationResult => {
+    async (betId: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
@@ -567,15 +629,19 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitDeleteBet(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can delete this bet.");
       }
+
+      const result = await betDb.deleteBet(supabase, bet.id);
+      if (!result.ok) return result;
+
       dispatch({
         type: "delete-bet",
         teamId: bet.teamId,
         betId: bet.id,
-        deltas: reverseBet(bet, data.wagers),
+        deltas: result.deltas ?? [],
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers, currentUserId],
+    [supabase, data.bets, data.teams, currentUserId],
   );
 
   /** UX-018 + DOM-030: any member of the bet's team, no content filtering. */

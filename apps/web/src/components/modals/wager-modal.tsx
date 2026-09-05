@@ -12,8 +12,9 @@ import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 const QUICK_CHIPS = [10, 25, 50] as const;
 
 /**
- * UX-016: place-wager modal. Submits through team-context's placeWager (the
- * shared validation + state-machine guards run there too); the amount input
+ * UX-016: place-wager modal. Submits through team-context's placeWager, which
+ * runs the shared validation + state-machine guards and then hands the stake
+ * to the `place_wager` RPC that actually enforces them; the amount input
  * clamps to min(balance, remaining per-user max) — DOM-014/017 — and an
  * effectively-closed bet (DOM-012) blocks submission with a visible reason.
  */
@@ -26,6 +27,7 @@ export function WagerModal({ betId }: { betId: string }) {
   const [optionId, setOptionId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const pool = useMemo(() => (bet ? getPoolStats(bet, wagers) : []), [bet, wagers]);
 
@@ -57,14 +59,21 @@ export function WagerModal({ betId }: { betId: string }) {
       ? Math.floor(amount * (multiplier ?? 1)) - amount
       : 0;
 
+  const canSubmit = optionId != null && amount > 0 && acceptingWagers && !pending;
+
   function setClampedAmount(next: number) {
     setAmount(Math.max(0, Math.min(cap, Math.round(next))));
   }
 
-  function submit() {
-    if (!optionId || amount <= 0 || !acceptingWagers) return;
+  // Async since roadmap Phase 6: the wager row and the debit on the member's
+  // stored balance are one Postgres transaction (the `place_wager` RPC), which
+  // is where DOM-014's over-balance and DOM-017's per-user max are decided.
+  async function submit() {
+    if (!canSubmit) return;
     setSubmitError(null);
-    const result = placeWager(bet!.id, optionId, amount);
+    setPending(true);
+    const result = await placeWager(bet!.id, optionId!, amount);
+    setPending(false);
     if (result.ok) {
       close();
     } else {
@@ -87,15 +96,15 @@ export function WagerModal({ betId }: { betId: string }) {
             </div>
             <button
               type="button"
-              disabled={!optionId || amount <= 0 || !acceptingWagers}
-              onClick={submit}
+              disabled={!canSubmit}
+              onClick={() => void submit()}
               className={cn(
                 "cut-sm h-9 shrink-0 px-5 text-xs font-semibold uppercase tracking-wide text-black",
                 "bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
                 "disabled:opacity-40 disabled:pointer-events-none",
               )}
             >
-              Place wager
+              {pending ? "Placing…" : "Place wager"}
             </button>
           </div>
         </div>

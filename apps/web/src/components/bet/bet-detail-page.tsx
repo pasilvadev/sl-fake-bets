@@ -33,8 +33,10 @@ const eyebrowClass =
 
 /**
  * Bet detail (UX-015, the one allowed full page): full bet info, wager list,
- * and the Phase-1 moderation controls — early close (DOM-011) and resolve
- * (DOM-018/019) — gated through packages/shared permissions.ts.
+ * and the moderation controls — early close (DOM-011), resolve (DOM-018/019)
+ * and hard delete (DOM-033/034) — gated through packages/shared
+ * permissions.ts, with the same rules enforced again by the RPCs behind them.
+ * Resolve is the one control still writing session-local state (Phase 7).
  */
 export function BetDetailPage({ betId }: { betId: string }) {
   return (
@@ -372,14 +374,23 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
   const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const matches = confirmText === bet.title;
+  const matches = confirmText === bet.title && !pending;
 
-  function submit() {
-    const result = deleteBet(bet.id);
-    // The bet is gone — this page has nothing left to render.
-    if (result.ok) router.push("/");
-    else setError(result.error);
+  // Async since roadmap Phase 6: the cascade and the money reversal are one
+  // Postgres transaction (the `delete_bet` RPC).
+  async function submit() {
+    setError(null);
+    setPending(true);
+    const result = await deleteBet(bet.id);
+    if (result.ok) {
+      // The bet is gone — this page has nothing left to render.
+      router.push("/");
+      return;
+    }
+    setPending(false);
+    setError(result.error);
   }
 
   return (
@@ -408,10 +419,10 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
       <button
         type="button"
         disabled={!matches}
-        onClick={submit}
+        onClick={() => void submit()}
         className="cut-danger h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-destructive opacity-40 pointer-events-none transition-opacity enabled:opacity-100 enabled:pointer-events-auto"
       >
-        Delete bet
+        {pending ? "Deleting…" : "Delete bet"}
       </button>
       {error && <p className="text-xs text-negative">{error}</p>}
     </section>
@@ -423,9 +434,15 @@ function CloseEarlyControl({ betId }: { betId: string }) {
   const { closeBetEarly } = useTeam();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  function confirm() {
-    const result = closeBetEarly(betId);
+  // Async since roadmap Phase 6: `close_bet_early` moves state and closes_at
+  // together and hands back the timestamp it wrote (DOM-012).
+  async function confirm() {
+    setError(null);
+    setPending(true);
+    const result = await closeBetEarly(betId);
+    setPending(false);
     if (!result.ok) setError(result.error);
   }
 
@@ -438,10 +455,11 @@ function CloseEarlyControl({ betId }: { betId: string }) {
           </span>
           <button
             type="button"
-            onClick={confirm}
-            className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
+            disabled={pending}
+            onClick={() => void confirm()}
+            className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
           >
-            Confirm close
+            {pending ? "Closing…" : "Confirm close"}
           </button>
           <button
             type="button"

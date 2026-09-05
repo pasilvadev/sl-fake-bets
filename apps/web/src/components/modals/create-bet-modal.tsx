@@ -21,8 +21,8 @@ const inputClass =
 
 /**
  * DOM-007/008/009/017: new-bet form. Submit gating routes through the shared
- * validateBetDraft (single source of truth with the future server); a valid
- * draft lands in team-context's addBet mutator.
+ * validateBetDraft — the same rules the `create_bet` RPC enforces, so the form
+ * can refuse a bad draft before a round trip and the server still decides.
  */
 export function CreateBetModal() {
   const { close } = useModal();
@@ -38,6 +38,7 @@ export function CreateBetModal() {
   const [customCloseAt, setCustomCloseAt] = useState("");
   const [maxWager, setMaxWager] = useState<number>(DEFAULT_MAX_WAGER);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const now = useNow();
 
   // Preset => clock + duration; custom => the datetime-local value (local
@@ -61,7 +62,7 @@ export function CreateBetModal() {
           { title, options, closesAt: resolveClosesAt(now), maxWagerPerUser: maxWager },
           now,
         );
-  const canSubmit = now != null && issues.length === 0;
+  const canSubmit = now != null && issues.length === 0 && !pending;
   const visibleIssue = issues.find(
     (i) => i.code === "closes-at-past" || i.code === "max-wager-invalid",
   );
@@ -80,16 +81,21 @@ export function CreateBetModal() {
     );
   }
 
-  function submit() {
+  // Async since roadmap Phase 6: the bet row and its option rows are created
+  // by one Postgres transaction (the `create_bet` RPC), which is also what
+  // enforces DOM-007's two-option floor server-side.
+  async function submit() {
     if (!canSubmit) return;
     setSubmitError(null);
-    const result = addBet({
+    setPending(true);
+    const result = await addBet({
       title,
       iconEmoji: emoji,
       options,
       closesAt: resolveClosesAt(Date.now()),
       maxWagerPerUser: maxWager,
     });
+    setPending(false);
     if (result.ok) {
       close();
     } else {
@@ -112,10 +118,10 @@ export function CreateBetModal() {
           <button
             type="button"
             disabled={!canSubmit}
-            onClick={submit}
+            onClick={() => void submit()}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            Create bet
+            {pending ? "Creating…" : "Create bet"}
           </button>
         </div>
       }
