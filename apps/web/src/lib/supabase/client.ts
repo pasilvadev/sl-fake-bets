@@ -3,11 +3,12 @@ import { createBrowserClient } from "@supabase/ssr";
 /**
  * Browser-side Supabase client (roadmap Phase 3, task 7).
  *
- * Since Phase 4 this is the app's auth surface: auth-page.tsx runs the OTP and
- * Google flows through it and auth-context.tsx listens for session changes.
- * Everything else — dashboard, team context, bets — still runs on Phase 1/2
- * in-memory state; rewiring those is Phases 5–8's work, one subsystem at a
- * time.
+ * Since Phase 4 this is the app's auth surface (auth-page.tsx runs the OTP and
+ * Google flows through it, auth-context.tsx listens for session changes), and
+ * since Phase 5 it is also the data surface: team-context.tsx reads the whole
+ * world through it and writes team/membership changes through the RPCs in
+ * lib/data/. Bets and wagers still MUTATE in session-local state — persisting
+ * those is Phase 6.
  *
  * `createBrowserClient` specifically, not supabase-js's `createClient`: it
  * persists the session (and the PKCE verifier the OAuth callback route needs)

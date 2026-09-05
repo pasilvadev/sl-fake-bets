@@ -1,6 +1,7 @@
 "use client";
 
 import { useModal } from "@/lib/modal-context";
+import { useTeamSession } from "@/lib/team-context";
 import { WagerModal } from "./wager-modal";
 import { CreateBetModal } from "./create-bet-modal";
 import { InviteModal } from "./invite-modal";
@@ -11,11 +12,21 @@ import { TeamSettingsModal } from "./team-settings-modal";
 import { CreateTeamModal } from "./create-team-modal";
 import { LeaveTeamModal } from "./leave-team-modal";
 
-/** Single modal mount point — reads the active modal id and renders it. */
+/**
+ * Single modal mount point — reads the active modal id and renders it.
+ *
+ * Mounted in app-providers.tsx, beside the routed page rather than inside its
+ * TeamGate, because modals are route-independent (UX-014/016). That placement
+ * means it can survive the disappearance of the last team: leaving or deleting
+ * one from inside a modal empties the roster a frame before the modal itself
+ * closes, and every modal below calls `useTeam()`. Standing down when there is
+ * no team is what keeps that ordinary sequence from throwing.
+ */
 export function ModalRoot() {
   const { active } = useModal();
+  const { teams } = useTeamSession();
 
-  if (!active) return null;
+  if (!active || teams.length === 0) return null;
 
   switch (active.id) {
     case "wager":

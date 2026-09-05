@@ -4,14 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
-  CONFIG,
-  applyTransaction,
   canAcceptWagers,
   canBan as permitBan,
   canCloseBetEarly as permitCloseBetEarly,
@@ -29,15 +29,6 @@ import {
   canTransitionBetState,
   computeEffectiveState,
   generateId,
-  generateInviteCode,
-  hasExactlyOneLeader,
-  mockBets,
-  mockComments,
-  mockCurrentUserId,
-  mockTeams,
-  mockTransactions,
-  mockUsers,
-  mockWagers,
   removeMemberWagersInTeam,
   reverseBet,
   settleBet,
@@ -61,29 +52,16 @@ import {
   type User,
   type Wager,
 } from "@repo/shared";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth-context";
+import { EMPTY_TEAM_DATA, loadTeamData, type TeamData } from "@/lib/data/team-data";
+import * as db from "@/lib/data/team-mutations";
+import { fail, ok, type MutationResult } from "@/lib/data/result";
 
-/**
- * The identity every mutator below reads, kept deliberately on the fixture id.
- *
- * Phase 4 made AUTH real (useAuth().user is a genuine Supabase identity), but
- * teams, bets and wagers are still the in-memory Phase 1/2 fixtures, whose
- * rows are keyed by `u-01` — pointing this at the real session's uuid would
- * simply detach the signed-in user from every fixture they appear in. The swap
- * belongs to Phase 5, together with the move of this whole context onto
- * Supabase queries. One place to change, exactly as before.
- */
-const currentUserId = mockCurrentUserId;
+export type { MutationResult } from "@/lib/data/result";
 
 /** Inline rank-badge kinds (design-visual-identity.md §5.6). */
 export type RankBadgeKind = "1" | "2" | "3" | "top5" | "bottom5";
-
-/** Uniform mutator outcome — modals surface `error` as the visible reason. */
-export type MutationResult = { ok: true } | { ok: false; error: string };
-
-const ok: MutationResult = { ok: true };
-function fail(error: string): MutationResult {
-  return { ok: false, error };
-}
 
 /** Payload for addBet — raw form values; validation.ts is the gatekeeper. */
 export interface NewBetDraft {
@@ -134,37 +112,61 @@ export interface TeamState {
   rankBadgeFor: (userId: string) => RankBadgeKind | null;
   /** Open-bet count for any of the user's teams (team-switcher rows). */
   openBetCountFor: (teamId: string) => number;
-  // Mutators — thin wrappers over the shared pure functions (validation.ts /
-  // state-machine.ts / settlement.ts / ledger.ts / permissions.ts / id.ts).
-  // Phase 1: the bet lifecycle. Phase 2: team lifecycle + comments.
+  // --- mutators ---
+  //
+  // Two kinds since roadmap Phase 5, and the split is the phase boundary
+  // itself, not a style choice:
+  //
+  //  * TEAM mutators are async. They write to Postgres first (Phase 5's RPCs
+  //    and policies) and only then apply the same local change, so what the
+  //    screen shows is what the database accepted.
+  //  * BET mutators are still synchronous local state. Placing a wager has to
+  //    debit a stored coin_balance in the same transaction, which the Phase 3
+  //    column trigger reserves for the leader and for SECURITY DEFINER
+  //    functions — so it needs an RPC that does not exist yet. That is
+  //    Phase 6's whole job. Until it lands, bets/wagers/comments LOAD from
+  //    Postgres but any change made here lives for the session only.
   addBet: (draft: NewBetDraft) => MutationResult;
   placeWager: (betId: string, optionId: string, amount: number) => MutationResult;
   closeBetEarly: (betId: string) => MutationResult;
   resolveBet: (betId: string, resolution: BetResolution) => MutationResult;
   deleteBet: (betId: string) => MutationResult;
-  createTeam: (draft: TeamDraft) => MutationResult;
-  joinTeamByCode: (code: string) => MutationResult;
-  kickMember: (userId: string) => MutationResult;
-  banMember: (userId: string) => MutationResult;
-  updateTeamSettings: (settings: { accessMode: TeamAccessMode }) => MutationResult;
-  deleteTeam: () => MutationResult;
-  leaveTeam: () => MutationResult;
-  updateProfile: (draft: ProfileDraft) => MutationResult;
   addComment: (betId: string, body: string) => MutationResult;
-  injectCoins: (userId: string, amount: number) => MutationResult;
+  createTeam: (draft: TeamDraft) => Promise<MutationResult>;
+  joinTeamByCode: (code: string) => Promise<MutationResult>;
+  kickMember: (userId: string) => Promise<MutationResult>;
+  banMember: (userId: string) => Promise<MutationResult>;
+  updateTeamSettings: (settings: { accessMode: TeamAccessMode }) => Promise<MutationResult>;
+  deleteTeam: () => Promise<MutationResult>;
+  leaveTeam: () => Promise<MutationResult>;
+  updateProfile: (draft: ProfileDraft) => Promise<MutationResult>;
+  injectCoins: (userId: string, amount: number) => Promise<MutationResult>;
 }
 
-/** The mutable frontend-only world: everything the reducer owns, seeded from mocks. */
-interface TeamData {
-  users: User[];
+/**
+ * What the app knows before (or without) a current team: whether the world has
+ * loaded, and the two actions that can create one.
+ *
+ * Separate from TeamState because both of its consumers exist precisely when
+ * TeamState cannot: the loading/empty gate, and the `/join/[code]` route a
+ * brand-new user lands on with no team at all. Making TeamState.team nullable
+ * instead would push a null check into every module that renders a team name.
+ */
+export interface TeamSession {
+  status: "loading" | "ready" | "error";
+  error: string | null;
+  /** Teams the signed-in user belongs to — empty for a brand-new account. */
   teams: Team[];
-  bets: Bet[];
-  wagers: Wager[];
-  transactions: Transaction[];
-  comments: Comment[];
+  currentUserId: string | null;
+  setTeamId: (id: string) => void;
+  reload: () => Promise<void>;
+  createTeam: (draft: TeamDraft) => Promise<MutationResult>;
+  joinTeamByCode: (code: string) => Promise<MutationResult>;
 }
 
 type TeamDataAction =
+  /** A fresh load from Postgres replaces the world wholesale. */
+  | { type: "replace"; data: TeamData }
   | { type: "add-bet"; bet: Bet }
   | { type: "place-wager"; teamId: string; wager: Wager }
   | { type: "close-bet"; betId: string; closedAt: string }
@@ -176,13 +178,6 @@ type TeamDataAction =
       deltas: SettlementDelta[];
     }
   | { type: "delete-bet"; teamId: string; betId: string; deltas: SettlementDelta[] }
-  | { type: "create-team"; team: Team; transaction: Transaction }
-  | {
-      type: "join-team";
-      teamId: string;
-      member: TeamMember;
-      transaction: Transaction;
-    }
   | {
       type: "remove-membership";
       teamId: string;
@@ -228,10 +223,13 @@ function applyDeltas(
 /**
  * Mechanical state application only — every domain decision (validation,
  * permissions, settlement math, ledger snapshots) happens in the mutators via
- * the shared pure functions, so Phases 5–7 can lift them into RPCs unchanged.
+ * the shared pure functions, and since Phase 5 the team-shape ones have already
+ * been accepted by Postgres before they reach here.
  */
 function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
   switch (action.type) {
+    case "replace":
+      return action.data;
     case "add-bet":
       return { ...data, bets: [...data.bets, action.bet] };
     case "place-wager": {
@@ -280,24 +278,6 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         comments: data.comments.filter((c) => c.betId !== action.betId),
         teams: applyDeltas(data.teams, action.teamId, action.deltas),
       };
-    case "create-team":
-      return {
-        ...data,
-        teams: [...data.teams, action.team],
-        transactions: [...data.transactions, action.transaction],
-      };
-    case "join-team":
-      // The member arrives already credited by ledger.ts, so the row and the
-      // transaction's balanceAfter snapshot cannot drift apart.
-      return {
-        ...data,
-        teams: data.teams.map((t) =>
-          t.id === action.teamId
-            ? { ...t, members: [...t.members, action.member] }
-            : t,
-        ),
-        transactions: [...data.transactions, action.transaction],
-      };
     case "remove-membership":
       // DOM-031/032: the membership (and with it the per-team balance) goes,
       // the pre-computed cascade replaces the wager list, and a ban — unlike a
@@ -326,8 +306,8 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       };
     case "delete-team": {
       // DOM-033 hard delete: the team takes its bets, wagers, comments and
-      // ledger with it. Balances are per-team (DOM-013), so nothing survives
-      // to refund.
+      // ledger with it (in Postgres, by ON DELETE CASCADE). Balances are
+      // per-team (DOM-013), so nothing survives to refund.
       const doomedBetIds = new Set(
         data.bets.filter((b) => b.teamId === action.teamId).map((b) => b.id),
       );
@@ -362,62 +342,90 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
   }
 }
 
-const initialTeamData: TeamData = {
-  users: mockUsers,
-  teams: mockTeams,
-  bets: mockBets,
-  wagers: mockWagers,
-  transactions: mockTransactions,
-  comments: mockComments,
-};
-
 /** Teams the given user is actually on — what the switcher may show (UX-009). */
 function teamsOf(teams: Team[], userId: string): Team[] {
   return teams.filter((t) => t.members.some((m) => m.userId === userId));
 }
 
-/**
- * A new membership starts at the onboarding grant (decision §4.2) — built
- * through ledger.ts so the member row and the Transaction's balanceAfter
- * snapshot are produced together (DOM-021/025).
- */
-function seedMembership(
-  teamId: string,
-  userId: string,
-  createdAt: string,
-): { member: TeamMember; transaction: Transaction } {
-  return applyTransaction({
-    member: {
-      userId,
-      role: "member",
-      coinBalance: 0,
-      profitLoss: 0,
-      joinedAt: createdAt,
-    },
-    teamId,
-    id: generateId("tx"),
-    kind: "onboarding-grant",
-    amount: CONFIG.ONBOARDING_GRANT_COINS,
-    description: "Onboarding grant",
-    createdAt,
-  });
-}
-
 const TeamContext = createContext<TeamState | null>(null);
+const TeamSessionContext = createContext<TeamSession | null>(null);
 
 export function TeamProvider({ children }: { children: ReactNode }) {
-  const [data, dispatch] = useReducer(teamDataReducer, initialTeamData);
-  const [currentTeamId, setCurrentTeamId] = useState<string>(mockTeams[0].id);
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
+  const supabase = useMemo(() => createClient(), []);
+
+  const [data, dispatch] = useReducer(teamDataReducer, EMPTY_TEAM_DATA);
+  const [status, setStatus] = useState<TeamSession["status"]>("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
 
   const setTeamId = useCallback((id: string) => {
     setCurrentTeamId(id);
   }, []);
 
+  /**
+   * Pull the whole world down again. Used on sign-in, on team switching
+   * between accounts, and after the two mutations whose result includes
+   * server-generated rows the client cannot predict (create/join a team).
+   *
+   * Every other mutation applies its own local change instead, which is not an
+   * optimization: a reload would also discard the session-local bet and wager
+   * state that Phase 6 has not yet made durable.
+   */
+  const reload = useCallback(async () => {
+    if (!currentUserId) {
+      dispatch({ type: "replace", data: EMPTY_TEAM_DATA });
+      setStatus("ready");
+      return;
+    }
+    const { data: loaded, error } = await loadTeamData(supabase);
+    if (error) {
+      setLoadError(error);
+      setStatus("error");
+      return;
+    }
+    dispatch({ type: "replace", data: loaded });
+    setLoadError(null);
+    setStatus("ready");
+  }, [supabase, currentUserId]);
+
+  // Identity change (sign-in, sign-out, a different account) is the only thing
+  // that invalidates the whole load.
+  const loadedForUserId = useRef<string | null>(null);
+  useEffect(() => {
+    if (loadedForUserId.current === currentUserId) return;
+    loadedForUserId.current = currentUserId;
+    setStatus("loading");
+    setCurrentTeamId(null);
+    void reload();
+  }, [currentUserId, reload]);
+
+  const myTeams = useMemo(
+    () => (currentUserId ? teamsOf(data.teams, currentUserId) : []),
+    [data.teams, currentUserId],
+  );
+
+  // UX-011: a returning user lands on a team dashboard, never on a picker.
+  // The selection follows the roster rather than being pinned, so leaving or
+  // being kicked from the current team cannot strand the app on a team the
+  // user can no longer read.
+  const team =
+    myTeams.find((t) => t.id === currentTeamId) ?? myTeams[0] ?? null;
+
+  const requireContext = useCallback(
+    (): { team: Team; userId: string } | null =>
+      team && currentUserId ? { team, userId: currentUserId } : null,
+    [team, currentUserId],
+  );
+
+  // --- bet lifecycle: still session-local state (see the TeamState comment) ---
+
   const addBet = useCallback(
     (draft: NewBetDraft): MutationResult => {
-      const team = data.teams.find((t) => t.id === currentTeamId);
-      if (!team) return fail("Team not found.");
-      if (!permitCreateBet(team, currentUserId)) {
+      const ctx = requireContext();
+      if (!ctx) return fail("Team not found.");
+      if (!permitCreateBet(ctx.team, ctx.userId)) {
         return fail("Only the leader or moderators can create bets in this team.");
       }
       const firstIssue = validateBetDraft(draft, Date.now())[0];
@@ -426,8 +434,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const id = generateId("b");
       const bet: Bet = {
         id,
-        teamId: team.id,
-        creatorId: currentUserId,
+        teamId: ctx.team.id,
+        creatorId: ctx.userId,
         title: draft.title.trim(),
         iconEmoji: draft.iconEmoji?.trim() || undefined,
         options: draft.options
@@ -442,7 +450,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "add-bet", bet });
       return ok;
     },
-    [data.teams, currentTeamId],
+    [requireContext],
   );
 
   const placeWager = useCallback(
@@ -475,7 +483,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         wager: {
           id: generateId("w"),
           betId: bet.id,
-          userId: currentUserId,
+          userId: member.userId,
           optionId,
           amount,
           placedAt: new Date().toISOString(),
@@ -483,7 +491,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers],
+    [data.bets, data.teams, data.wagers, currentUserId],
   );
 
   const closeBetEarly = useCallback(
@@ -491,7 +499,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("Team not found.");
       if (!permitCloseBetEarly(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can close betting early.");
       }
@@ -511,7 +519,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [data.bets, data.teams],
+    [data.bets, data.teams, currentUserId],
   );
 
   const resolveBet = useCallback(
@@ -519,7 +527,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("Team not found.");
       if (!permitResolveBet(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can resolve this bet.");
       }
@@ -546,7 +554,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers],
+    [data.bets, data.teams, data.wagers, currentUserId],
   );
 
   /** DOM-033/034: hard delete; reverseBet undoes the bet's money effects. */
@@ -555,7 +563,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("Team not found.");
       if (!permitDeleteBet(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can delete this bet.");
       }
@@ -567,211 +575,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers],
-  );
-
-  /** DOM-001/002 + DOM-021: creator becomes the leader and gets the grant. */
-  const createTeam = useCallback(
-    (draft: TeamDraft): MutationResult => {
-      const firstIssue = validateTeamDraft(draft)[0];
-      if (firstIssue) return fail(firstIssue.message);
-
-      const createdAt = new Date().toISOString();
-      const teamId = generateId("t");
-      const { member, transaction } = seedMembership(
-        teamId,
-        currentUserId,
-        createdAt,
-      );
-      const team: Team = {
-        id: teamId,
-        name: draft.name.trim(),
-        leaderId: currentUserId,
-        accessMode: draft.accessMode,
-        inviteCode: generateInviteCode(data.teams.map((t) => t.inviteCode)),
-        members: [member],
-        bannedUserIds: [],
-        createdAt,
-      };
-      if (!hasExactlyOneLeader(team)) {
-        return fail("A team needs exactly one leader (DOM-001).");
-      }
-
-      dispatch({ type: "create-team", team, transaction });
-      setCurrentTeamId(teamId); // UX-010: switching re-scopes the whole app.
-      return ok;
-    },
-    [data.teams],
-  );
-
-  /** UX-005/DOM-005/006 + A-4: codes never expire, bans still keep you out. */
-  const joinTeamByCode = useCallback(
-    (code: string): MutationResult => {
-      const firstIssue = validateInviteCode(code)[0];
-      if (firstIssue) return fail(firstIssue.message);
-
-      const normalized = code.trim().toLowerCase();
-      const team = data.teams.find(
-        (t) => t.inviteCode.toLowerCase() === normalized,
-      );
-      if (!team) return fail("No team matches that invite code.");
-      if (!permitJoinTeam(team, currentUserId)) {
-        return fail(
-          team.members.some((m) => m.userId === currentUserId)
-            ? `You are already in ${team.name}.`
-            : `You can't rejoin ${team.name}.`,
-        );
-      }
-
-      const { member, transaction } = seedMembership(
-        team.id,
-        currentUserId,
-        new Date().toISOString(),
-      );
-      dispatch({ type: "join-team", teamId: team.id, member, transaction });
-      setCurrentTeamId(team.id);
-      return ok;
-    },
-    [data.teams],
-  );
-
-  /**
-   * DOM-031/032: kick and ban share one path — the only difference is whether
-   * re-joining stays open (A-4). The wager cascade goes through settlement.ts,
-   * team-scoped so other teams' pools are untouched (decision §4.4).
-   */
-  const removeMember = useCallback(
-    (userId: string, ban: boolean): MutationResult => {
-      const team = data.teams.find((t) => t.id === currentTeamId);
-      if (!team) return fail("Team not found.");
-      const permitted = ban ? permitBan : permitKick;
-      if (!permitted(team, currentUserId)) {
-        return fail("Only the leader or moderators can remove members.");
-      }
-      if (userId === currentUserId) {
-        return fail("Use Leave team to remove yourself.");
-      }
-      if (userId === team.leaderId) {
-        return fail("The team leader can't be removed.");
-      }
-      if (!team.members.some((m) => m.userId === userId)) {
-        return fail("That member is not on this team.");
-      }
-
-      dispatch({
-        type: "remove-membership",
-        teamId: team.id,
-        userId,
-        ban,
-        wagers: removeMemberWagersInTeam(userId, team.id, data.bets, data.wagers),
-      });
-      return ok;
-    },
-    [data.teams, data.bets, data.wagers, currentTeamId],
-  );
-
-  const kickMember = useCallback(
-    (userId: string) => removeMember(userId, false),
-    [removeMember],
-  );
-  const banMember = useCallback(
-    (userId: string) => removeMember(userId, true),
-    [removeMember],
-  );
-
-  /** DOM-002: access mode gates bet creation and invites; mods may change it. */
-  const updateTeamSettings = useCallback(
-    (settings: { accessMode: TeamAccessMode }): MutationResult => {
-      const team = data.teams.find((t) => t.id === currentTeamId);
-      if (!team) return fail("Team not found.");
-      if (!permitManageTeam(team, currentUserId)) {
-        return fail("Only the leader or moderators can change team settings.");
-      }
-      if (team.accessMode === settings.accessMode) return ok;
-
-      dispatch({
-        type: "update-team-access",
-        teamId: team.id,
-        accessMode: settings.accessMode,
-      });
-      return ok;
-    },
-    [data.teams, currentTeamId],
-  );
-
-  /**
-   * DOM-033/034: leader-only hard delete. Blocked when it would leave the user
-   * with no team at all — a team-less shell is onboarding's job (UX-028), not
-   * something Phase 2 has a screen for.
-   */
-  const deleteTeam = useCallback((): MutationResult => {
-    const team = data.teams.find((t) => t.id === currentTeamId);
-    if (!team) return fail("Team not found.");
-    if (!permitDeleteTeam(team, currentUserId)) {
-      return fail("Only the team leader can delete the team.");
-    }
-    const myTeams = teamsOf(data.teams, currentUserId);
-    if (myTeams.length <= 1) {
-      return fail("This is your only team — create or join another one first.");
-    }
-
-    dispatch({ type: "delete-team", teamId: team.id });
-    setCurrentTeamId(myTeams.find((t) => t.id !== team.id)!.id);
-    return ok;
-  }, [data.teams, currentTeamId]);
-
-  /** The membership and its per-team balance go; wagers cascade as on a kick. */
-  const leaveTeam = useCallback((): MutationResult => {
-    const team = data.teams.find((t) => t.id === currentTeamId);
-    if (!team) return fail("Team not found.");
-    if (!permitLeaveTeam(team, currentUserId)) {
-      return fail(
-        team.leaderId === currentUserId
-          ? "The leader can't leave — delete the team instead."
-          : "You are not a member of this team.",
-      );
-    }
-    const myTeams = teamsOf(data.teams, currentUserId);
-    if (myTeams.length <= 1) {
-      return fail("This is your only team — create or join another one first.");
-    }
-
-    dispatch({
-      type: "remove-membership",
-      teamId: team.id,
-      userId: currentUserId,
-      ban: false,
-      wagers: removeMemberWagersInTeam(
-        currentUserId,
-        team.id,
-        data.bets,
-        data.wagers,
-      ),
-    });
-    setCurrentTeamId(myTeams.find((t) => t.id !== team.id)!.id);
-    return ok;
-  }, [data.teams, data.bets, data.wagers, currentTeamId]);
-
-  /** UX-022: name, curated name color, avatar — applied everywhere at once. */
-  const updateProfile = useCallback(
-    (draft: ProfileDraft): MutationResult => {
-      const user = data.users.find((u) => u.id === currentUserId);
-      if (!user) return fail("Profile not found.");
-      const firstIssue = validateProfileDraft(draft)[0];
-      if (firstIssue) return fail(firstIssue.message);
-
-      dispatch({
-        type: "update-user",
-        user: {
-          ...user,
-          displayName: draft.displayName.trim(),
-          nameColor: draft.nameColor,
-          avatar: draft.avatar,
-        },
-      });
-      return ok;
-    },
-    [data.users],
+    [data.bets, data.teams, data.wagers, currentUserId],
   );
 
   /** UX-018 + DOM-030: any member of the bet's team, no content filtering. */
@@ -780,7 +584,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team || !permitComment(team, currentUserId)) {
+      if (!team || !currentUserId || !permitComment(team, currentUserId)) {
         return fail("Only team members can comment on this bet.");
       }
       const firstIssue = validateCommentBody(body)[0];
@@ -798,53 +602,313 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [data.bets, data.teams],
+    [data.bets, data.teams, currentUserId],
+  );
+
+  // --- team lifecycle: real Postgres writes (roadmap Phase 5) ---
+
+  /** DOM-001/002 + DOM-021: creator becomes the leader and gets the grant. */
+  const createTeam = useCallback(
+    async (draft: TeamDraft): Promise<MutationResult> => {
+      if (!currentUserId) return fail("You must be signed in.");
+      const firstIssue = validateTeamDraft(draft)[0];
+      if (firstIssue) return fail(firstIssue.message);
+
+      const result = await db.createTeam(supabase, draft);
+      if (!result.ok) return result;
+
+      await reload();
+      // UX-010: switching re-scopes the whole app.
+      if (result.teamId) setCurrentTeamId(result.teamId);
+      return ok;
+    },
+    [supabase, currentUserId, reload],
+  );
+
+  /** UX-005/DOM-005/006 + A-4: codes never expire, bans still keep you out. */
+  const joinTeamByCode = useCallback(
+    async (code: string): Promise<MutationResult> => {
+      if (!currentUserId) return fail("You must be signed in.");
+      const firstIssue = validateInviteCode(code)[0];
+      if (firstIssue) return fail(firstIssue.message);
+
+      // The client's own copy of canJoinTeam only answers for teams it can
+      // already see; the authoritative check is inside join_team_with_code.
+      const known = data.teams.find(
+        (t) => t.inviteCode.toLowerCase() === code.trim().toLowerCase(),
+      );
+      if (known && !permitJoinTeam(known, currentUserId)) {
+        return fail(`You are already in ${known.name}.`);
+      }
+
+      const result = await db.joinTeamByCode(supabase, code);
+      if (!result.ok) return result;
+
+      await reload();
+      if (result.teamId) setCurrentTeamId(result.teamId);
+      return ok;
+    },
+    [supabase, currentUserId, data.teams, reload],
+  );
+
+  /**
+   * DOM-031/032: kick and ban share one path — the only difference is whether
+   * re-joining stays open (A-4). The wager cascade goes through settlement.ts,
+   * team-scoped so other teams' pools are untouched (decision §4.4); the ids it
+   * drops are what the RPC applies in Postgres.
+   */
+  const removeMember = useCallback(
+    async (userId: string, ban: boolean): Promise<MutationResult> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("Team not found.");
+      const permitted = ban ? permitBan : permitKick;
+      if (!permitted(ctx.team, ctx.userId)) {
+        return fail("Only the leader or moderators can remove members.");
+      }
+      if (userId === ctx.userId) {
+        return fail("Use Leave team to remove yourself.");
+      }
+      if (userId === ctx.team.leaderId) {
+        return fail("The team leader can't be removed.");
+      }
+      if (!ctx.team.members.some((m) => m.userId === userId)) {
+        return fail("That member is not on this team.");
+      }
+
+      const keptWagers = removeMemberWagersInTeam(
+        userId,
+        ctx.team.id,
+        data.bets,
+        data.wagers,
+      );
+      const kept = new Set(keptWagers.map((w) => w.id));
+      const removedIds = data.wagers
+        .filter((w) => !kept.has(w.id))
+        .map((w) => w.id);
+
+      const result = await db.removeMembership(supabase, {
+        teamId: ctx.team.id,
+        userId,
+        ban,
+        wagerIds: removedIds,
+      });
+      if (!result.ok) return result;
+
+      dispatch({
+        type: "remove-membership",
+        teamId: ctx.team.id,
+        userId,
+        ban,
+        wagers: keptWagers,
+      });
+      return ok;
+    },
+    [supabase, requireContext, data.bets, data.wagers],
+  );
+
+  const kickMember = useCallback(
+    (userId: string) => removeMember(userId, false),
+    [removeMember],
+  );
+  const banMember = useCallback(
+    (userId: string) => removeMember(userId, true),
+    [removeMember],
+  );
+
+  /** DOM-002: access mode gates bet creation and invites; mods may change it. */
+  const updateTeamSettings = useCallback(
+    async (settings: { accessMode: TeamAccessMode }): Promise<MutationResult> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("Team not found.");
+      if (!permitManageTeam(ctx.team, ctx.userId)) {
+        return fail("Only the leader or moderators can change team settings.");
+      }
+      if (ctx.team.accessMode === settings.accessMode) return ok;
+
+      const result = await db.updateTeamSettings(supabase, {
+        teamId: ctx.team.id,
+        accessMode: settings.accessMode,
+      });
+      if (!result.ok) return result;
+
+      dispatch({
+        type: "update-team-access",
+        teamId: ctx.team.id,
+        accessMode: settings.accessMode,
+      });
+      return ok;
+    },
+    [supabase, requireContext],
+  );
+
+  /**
+   * DOM-033/034: leader-only hard delete. Unlike Phase 2, deleting your only
+   * team is allowed now — Phase 5 has a screen for having no team (the create/
+   * join gate), so refusing would only trap the leader in a team they wanted
+   * gone.
+   */
+  const deleteTeam = useCallback(async (): Promise<MutationResult> => {
+    const ctx = requireContext();
+    if (!ctx) return fail("Team not found.");
+    if (!permitDeleteTeam(ctx.team, ctx.userId)) {
+      return fail("Only the team leader can delete the team.");
+    }
+
+    const result = await db.deleteTeam(supabase, ctx.team.id);
+    if (!result.ok) return result;
+
+    dispatch({ type: "delete-team", teamId: ctx.team.id });
+    setCurrentTeamId(null);
+    return ok;
+  }, [supabase, requireContext]);
+
+  /** The membership and its per-team balance go; wagers cascade as on a kick. */
+  const leaveTeam = useCallback(async (): Promise<MutationResult> => {
+    const ctx = requireContext();
+    if (!ctx) return fail("Team not found.");
+    if (!permitLeaveTeam(ctx.team, ctx.userId)) {
+      return fail(
+        ctx.team.leaderId === ctx.userId
+          ? "The leader can't leave — delete the team instead."
+          : "You are not a member of this team.",
+      );
+    }
+
+    const keptWagers = removeMemberWagersInTeam(
+      ctx.userId,
+      ctx.team.id,
+      data.bets,
+      data.wagers,
+    );
+    const kept = new Set(keptWagers.map((w) => w.id));
+    const removedIds = data.wagers.filter((w) => !kept.has(w.id)).map((w) => w.id);
+
+    const result = await db.removeMembership(supabase, {
+      teamId: ctx.team.id,
+      userId: ctx.userId,
+      ban: false,
+      wagerIds: removedIds,
+    });
+    if (!result.ok) return result;
+
+    dispatch({
+      type: "remove-membership",
+      teamId: ctx.team.id,
+      userId: ctx.userId,
+      ban: false,
+      wagers: keptWagers,
+    });
+    setCurrentTeamId(null);
+    return ok;
+  }, [supabase, requireContext, data.bets, data.wagers]);
+
+  /** UX-022: name, curated name color, avatar — applied everywhere at once. */
+  const updateProfile = useCallback(
+    async (draft: ProfileDraft): Promise<MutationResult> => {
+      if (!currentUserId) return fail("You must be signed in.");
+      const user = data.users.find((u) => u.id === currentUserId);
+      if (!user) return fail("Profile not found.");
+      const firstIssue = validateProfileDraft(draft)[0];
+      if (firstIssue) return fail(firstIssue.message);
+
+      const result = await db.updateProfile(supabase, currentUserId, draft);
+      if (!result.ok) return result;
+
+      dispatch({
+        type: "update-user",
+        user: {
+          ...user,
+          displayName: draft.displayName.trim(),
+          nameColor: draft.nameColor,
+          avatar: draft.avatar,
+        },
+      });
+      return ok;
+    },
+    [supabase, currentUserId, data.users],
   );
 
   /** DOM-024/025: leader-only credit, written as an "injection" ledger row. */
   const injectCoins = useCallback(
-    (userId: string, amount: number): MutationResult => {
-      const team = data.teams.find((t) => t.id === currentTeamId);
-      if (!team) return fail("Team not found.");
-      if (!permitInjectCoins(team, currentUserId)) {
+    async (userId: string, amount: number): Promise<MutationResult> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("Team not found.");
+      if (!permitInjectCoins(ctx.team, ctx.userId)) {
         return fail("Only the team leader can inject coins.");
       }
-      const member = team.members.find((m) => m.userId === userId);
-      if (!member) return fail("That member is not on this team.");
+      if (!ctx.team.members.some((m) => m.userId === userId)) {
+        return fail("That member is not on this team.");
+      }
       const firstIssue = validateInjection(amount)[0];
       if (firstIssue) return fail(firstIssue.message);
 
-      const injector = data.users.find((u) => u.id === currentUserId);
-      const { transaction } = applyTransaction({
-        member,
-        teamId: team.id,
-        id: generateId("tx"),
-        kind: "injection",
+      const result = await db.injectCoins(supabase, {
+        teamId: ctx.team.id,
+        userId,
         amount,
-        description: `Injected by ${injector?.displayName ?? "the leader"} (leader)`,
-        createdAt: new Date().toISOString(),
       });
-      dispatch({ type: "add-transaction", transaction });
+      if (!result.ok) return result;
+
+      const injector = data.users.find((u) => u.id === ctx.userId);
+      dispatch({
+        type: "add-transaction",
+        transaction: {
+          // The row exists in Postgres with its own uuid; this local copy only
+          // has to be distinct until the next reload replaces it.
+          id: generateId("tx"),
+          teamId: ctx.team.id,
+          userId,
+          kind: "injection",
+          amount,
+          description: `Injected by ${injector?.displayName ?? "the leader"} (leader)`,
+          // The authoritative snapshot, straight from app.apply_transaction.
+          balanceAfter: result.balanceAfter ?? 0,
+          createdAt: new Date().toISOString(),
+        },
+      });
       return ok;
     },
-    [data.teams, data.users, currentTeamId],
+    [supabase, requireContext, data.users],
   );
 
-  const value = useMemo<TeamState>(() => {
-    // Only the user's own teams are selectable — leaving one must drop it from
-    // the switcher, not leave a team they can no longer act in reachable.
-    const myTeams = teamsOf(data.teams, currentUserId);
-    // The last fallback is unreachable today — deleting or leaving your only
-    // team is blocked — but it degrades to a read-only view instead of a crash
-    // rather than making `team` nullable for every consumer.
-    const team =
-      myTeams.find((t) => t.id === currentTeamId) ?? myTeams[0] ?? data.teams[0];
+  const session = useMemo<TeamSession>(
+    () => ({
+      status,
+      error: loadError,
+      teams: myTeams,
+      currentUserId,
+      setTeamId,
+      reload,
+      createTeam,
+      joinTeamByCode,
+    }),
+    [
+      status,
+      loadError,
+      myTeams,
+      currentUserId,
+      setTeamId,
+      reload,
+      createTeam,
+      joinTeamByCode,
+    ],
+  );
+
+  const value = useMemo<TeamState | null>(() => {
+    if (!team || !currentUserId) return null;
+
     const userById = (userId: string) => data.users.find((u) => u.id === userId);
-    // Fallback to a synthetic empty user only guards against unknown ids;
-    // currentUserId always resolves in the shipped mock data.
+    // A signed-in user always has a profile row (the Phase 4 signup trigger),
+    // so this fallback only guards the frame between a fresh signup and the
+    // load that follows it.
     const currentUser: User =
       userById(currentUserId) ??
-      ({ id: currentUserId, displayName: "?", nameColor: "#909592", avatar: "" } as User);
+      ({
+        id: currentUserId,
+        displayName: "?",
+        nameColor: "#909592",
+        avatar: "",
+      } as User);
 
     const member = team.members.find((m) => m.userId === currentUser.id) ?? null;
     const isLeader = team.leaderId === currentUser.id;
@@ -886,7 +950,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       member,
       isLeader,
       isModerator,
-      // Authorization lives in packages/shared permissions.ts and nowhere else.
+      // Authorization lives in packages/shared permissions.ts and nowhere else
+      // on the client; RLS and the Phase 5 RPCs are its server-side mirror.
       canCreateBet: permitCreateBet(team, currentUser.id),
       canInvite: permitInvite(team, currentUser.id),
       canManage: permitManageTeam(team, currentUser.id),
@@ -908,6 +973,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       closeBetEarly,
       resolveBet,
       deleteBet,
+      addComment,
       createTeam,
       joinTeamByCode,
       kickMember,
@@ -916,18 +982,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       deleteTeam,
       leaveTeam,
       updateProfile,
-      addComment,
       injectCoins,
     };
   }, [
     data,
-    currentTeamId,
+    team,
+    myTeams,
+    currentUserId,
     setTeamId,
     addBet,
     placeWager,
     closeBetEarly,
     resolveBet,
     deleteBet,
+    addComment,
     createTeam,
     joinTeamByCode,
     kickMember,
@@ -936,17 +1004,37 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     deleteTeam,
     leaveTeam,
     updateProfile,
-    addComment,
     injectCoins,
   ]);
 
-  return <TeamContext.Provider value={value}>{children}</TeamContext.Provider>;
+  return (
+    <TeamSessionContext.Provider value={session}>
+      <TeamContext.Provider value={value}>{children}</TeamContext.Provider>
+    </TeamSessionContext.Provider>
+  );
 }
 
+/**
+ * The current team and everything scoped to it. Only valid under `TeamGate`,
+ * which is what guarantees a loaded world with at least one team — every
+ * consumer of this hook renders a team, so a nullable return would buy nothing
+ * but a null check per module.
+ */
 export function useTeam(): TeamState {
   const ctx = useContext(TeamContext);
   if (!ctx) {
-    throw new Error("useTeam must be used within a TeamProvider");
+    throw new Error(
+      "useTeam must be used within a TeamProvider, behind <TeamGate> (no team is loaded)",
+    );
+  }
+  return ctx;
+}
+
+/** Load status + the team-independent actions. Valid anywhere under the provider. */
+export function useTeamSession(): TeamSession {
+  const ctx = useContext(TeamSessionContext);
+  if (!ctx) {
+    throw new Error("useTeamSession must be used within a TeamProvider");
   }
   return ctx;
 }

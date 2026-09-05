@@ -4,6 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AuthPage } from "@/components/auth/auth-page";
 import { DashboardPage } from "@/components/dashboard-page";
+import { TeamGate } from "@/components/team-gate";
 import { SMark } from "@/components/sl/s-mark";
 
 function Splash() {
@@ -42,10 +43,17 @@ export function AuthGated({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The dashboard's two gates, in the only order they work in: identity first
+ * (Phase 4), then the team world that identity owns (Phase 5). TeamGate is
+ * what makes `useTeam()` safe for everything below it.
+ */
 export function AppGate() {
   return (
     <AuthGated>
-      <DashboardPage />
+      <TeamGate>
+        <DashboardPage />
+      </TeamGate>
     </AuthGated>
   );
 }

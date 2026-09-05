@@ -6,10 +6,10 @@ import type { User } from "@supabase/supabase-js";
  *
  * Deliberately NOT `types.ts`'s `User`: that is the UX-022 PROFILE (display
  * name, name color, avatar) and lives in `public.users`, while this is the
- * auth identity from `auth.users`. Phase 4 owns only the identity — profile
- * data still comes from the in-memory fixtures until Phase 5 rewires
- * team-context to Postgres. Keeping the two shapes apart is what stops a
- * later phase from quietly treating one as the other.
+ * auth identity from `auth.users`. Since Phase 5 both are real Postgres rows,
+ * which is exactly when keeping the shapes apart starts to matter: the id they
+ * share is the only thing that ties them, and `useTeam().currentUser` — not
+ * this — is what the UI renders.
  *
  * Defined in its own module because both a server module (supabase/server.ts)
  * and a client one (auth-context.tsx) need it; parking it in either would make

@@ -18,6 +18,7 @@ import {
   type BetState,
 } from "@repo/shared";
 import { AuthGated } from "@/components/app-gate";
+import { TeamGate } from "@/components/team-gate";
 import { TopBar } from "@/components/shell/top-bar";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
@@ -38,16 +39,18 @@ const eyebrowClass =
 export function BetDetailPage({ betId }: { betId: string }) {
   return (
     <AuthGated>
-      <TopBar />
-      <main className="mx-auto w-full max-w-3xl px-4 py-5">
-        <Link
-          href="/"
-          className="font-mono text-xs text-muted-foreground transition-colors hover:text-jade"
-        >
-          / back to bets
-        </Link>
-        <BetDetail betId={betId} />
-      </main>
+      <TeamGate>
+        <TopBar />
+        <main className="mx-auto w-full max-w-3xl px-4 py-5">
+          <Link
+            href="/"
+            className="font-mono text-xs text-muted-foreground transition-colors hover:text-jade"
+          >
+            / back to bets
+          </Link>
+          <BetDetail betId={betId} />
+        </main>
+      </TeamGate>
     </AuthGated>
   );
 }

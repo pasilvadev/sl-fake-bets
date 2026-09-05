@@ -20,13 +20,19 @@ export function CreateTeamModal() {
   const [name, setName] = useState("");
   const [accessMode, setAccessMode] = useState<TeamAccessMode>("free-for-all");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const canSubmit = validateTeamDraft({ name, accessMode }).length === 0;
+  const canSubmit = validateTeamDraft({ name, accessMode }).length === 0 && !pending;
 
-  function submit() {
+  // Async since roadmap Phase 5: the team, its founding membership, its
+  // onboarding grant and its invite code are created by one Postgres
+  // transaction (the `create_team` RPC), not by local state.
+  async function submit() {
     if (!canSubmit) return;
     setSubmitError(null);
-    const result = createTeam({ name, accessMode });
+    setPending(true);
+    const result = await createTeam({ name, accessMode });
+    setPending(false);
     if (result.ok) {
       close();
     } else {
@@ -45,10 +51,10 @@ export function CreateTeamModal() {
           <button
             type="button"
             disabled={!canSubmit}
-            onClick={submit}
+            onClick={() => void submit()}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            Create team
+            {pending ? "Creating…" : "Create team"}
           </button>
           <p className="text-[11px] text-muted-foreground">
             You lead it, and start with {CONFIG.ONBOARDING_GRANT_COINS} coins.

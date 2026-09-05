@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "cn";
 import { Ban, UserX } from "lucide-react";
 import type { TeamAccessMode, TeamMember } from "@repo/shared";
+import type { MutationResult } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
@@ -79,6 +80,7 @@ function MemberRow({ member }: { member: TeamMember }) {
   const [action, setAction] = useState<RowAction | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const user = userById(member.userId);
   if (!user) return null;
@@ -98,7 +100,15 @@ function MemberRow({ member }: { member: TeamMember }) {
     setError(null);
   }
 
-  function run(result: { ok: true } | { ok: false; error: string }) {
+  // Every roster action is a Postgres write since roadmap Phase 5 (the
+  // `remove_membership` / `inject_coins` RPCs), so the row stays disabled
+  // until the database has answered rather than reporting a success the
+  // server has not agreed to.
+  async function run(pendingResult: Promise<MutationResult>) {
+    setPending(true);
+    setError(null);
+    const result = await pendingResult;
+    setPending(false);
     if (result.ok) reset();
     else setError(result.error);
   }
@@ -149,7 +159,7 @@ function MemberRow({ member }: { member: TeamMember }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            run(injectCoins(member.userId, Number(amount)));
+            void run(injectCoins(member.userId, Number(amount)));
           }}
           className="mt-2 flex items-center gap-2 pl-10"
         >
@@ -164,7 +174,8 @@ function MemberRow({ member }: { member: TeamMember }) {
           />
           <button
             type="submit"
-            className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
+            disabled={pending}
+            className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
           >
             Inject
           </button>
@@ -187,14 +198,15 @@ function MemberRow({ member }: { member: TeamMember }) {
           </span>
           <button
             type="button"
+            disabled={pending}
             onClick={() =>
-              run(
+              void run(
                 action === "kick"
                   ? kickMember(member.userId)
                   : banMember(member.userId),
               )
             }
-            className="cut-danger h-8 bg-destructive px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
+            className="cut-danger disabled:opacity-40 disabled:pointer-events-none h-8 bg-destructive px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
           >
             Confirm {action}
           </button>
@@ -219,11 +231,15 @@ function DeleteTeamPanel() {
   const { team, deleteTeam } = useTeam();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const matches = confirmText === team.name;
 
-  function submit() {
-    const result = deleteTeam();
+  async function submit() {
+    setPending(true);
+    setError(null);
+    const result = await deleteTeam();
+    setPending(false);
     if (result.ok) close();
     else setError(result.error);
   }
@@ -254,11 +270,11 @@ function DeleteTeamPanel() {
       />
       <button
         type="button"
-        disabled={!matches}
-        onClick={submit}
+        disabled={!matches || pending}
+        onClick={() => void submit()}
         className="cut-danger h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-destructive opacity-40 pointer-events-none transition-opacity enabled:opacity-100 enabled:pointer-events-auto"
       >
-        Delete team
+        {pending ? "Deleting…" : "Delete team"}
       </button>
       {error && <p className="text-xs text-negative">{error}</p>}
     </div>
@@ -271,8 +287,8 @@ export function TeamSettingsModal() {
   const { team, isLeader, canManage, canDelete, updateTeamSettings } = useTeam();
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
-  function changeAccessMode(accessMode: TeamAccessMode) {
-    const result = updateTeamSettings({ accessMode });
+  async function changeAccessMode(accessMode: TeamAccessMode) {
+    const result = await updateTeamSettings({ accessMode });
     setSettingsError(result.ok ? null : result.error);
   }
 
@@ -299,7 +315,7 @@ export function TeamSettingsModal() {
           <AccessModeToggle
             accessMode={team.accessMode}
             editable={canManage}
-            onChange={changeAccessMode}
+            onChange={(next) => void changeAccessMode(next)}
           />
           {settingsError && (
             <p className="text-xs text-negative">{settingsError}</p>

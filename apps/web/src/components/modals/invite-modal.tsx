@@ -7,14 +7,29 @@ import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { SMark } from "@/components/sl/s-mark";
 
-/** UX-023: invite-friends modal — OG-preview mock + copyable link. */
+/**
+ * UX-023: invite-friends modal — preview card + copyable link.
+ *
+ * The link is real since roadmap Phase 5: it carries the team's active
+ * `invite_codes` row and points at `/join/[code]`, the route that spends it
+ * (UX-012). Codes never expire (UX-005/DOM-005); revoke/regenerate is open
+ * decision #6.
+ *
+ * The origin comes from `window` — a hardcoded host would hand a teammate a
+ * link to somebody else's machine. Safe to read during render: ModalRoot only
+ * mounts a modal in response to a click, so this component never renders on
+ * the server. The guard is there for the type, not for a real code path.
+ */
 export function InviteModal() {
   const { close } = useModal();
   const { team, bets } = useTeam();
   const [copied, setCopied] = useState(false);
+  const [origin] = useState(() =>
+    typeof window === "undefined" ? "" : window.location.origin,
+  );
 
   const openCount = bets.filter((b) => b.state === "open").length;
-  const inviteUrl = `https://sl.bet/i/${team.inviteCode}`;
+  const inviteUrl = `${origin}/join/${team.inviteCode}`;
 
   async function copyLink() {
     try {

@@ -3,9 +3,10 @@ import type { Bet, Team, TeamRole } from "./types";
 /**
  * Single home for authorization logic — every rule derived purely from
  * TeamRole + accessMode + leader status, with A-1 applied throughout: the
- * leader holds all moderator powers plus leader-only ones. team-context
- * migrates its inline computation onto these in Phase 2; server RPCs and RLS
- * policies mirror them in Phases 3–7.
+ * leader holds all moderator powers plus leader-only ones. team-context has
+ * computed every permission through these since Phase 2; the `app.*` helpers
+ * (Phase 3) and the team RPCs (Phase 5) are their server-side mirror, which is
+ * where they are actually ENFORCED — the client copy is advice.
  */
 
 function roleOf(team: Team, userId: string): TeamRole | null {

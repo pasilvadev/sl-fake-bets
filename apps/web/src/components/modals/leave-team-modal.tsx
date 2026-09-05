@@ -16,9 +16,13 @@ export function LeaveTeamModal() {
   const { close } = useModal();
   const { team, balance, canLeave, leaveTeam } = useTeam();
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  function submit() {
-    const result = leaveTeam();
+  async function submit() {
+    setPending(true);
+    setError(null);
+    const result = await leaveTeam();
+    setPending(false);
     if (result.ok) close();
     else setError(result.error);
   }
@@ -42,11 +46,11 @@ export function LeaveTeamModal() {
             </button>
             <button
               type="button"
-              disabled={!canLeave}
-              onClick={submit}
+              disabled={!canLeave || pending}
+              onClick={() => void submit()}
               className="cut-danger h-9 flex-1 bg-destructive px-5 text-xs font-semibold uppercase tracking-wide text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
             >
-              Leave team
+              {pending ? "Leaving…" : "Leave team"}
             </button>
           </div>
         </div>

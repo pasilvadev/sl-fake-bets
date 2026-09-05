@@ -169,7 +169,7 @@ export interface ProfileDraft {
   displayName: string;
   /** One of the 10 curated hexes (NAME_COLORS) — see design-visual-identity §2.4. */
   nameColor: string;
-  /** Platform icon id today; an uploaded-image URL once Storage exists (Phase 5). */
+  /** A platform icon id, or an avatars-bucket URL once uploaded (UX-022). */
   avatar: string;
 }
 

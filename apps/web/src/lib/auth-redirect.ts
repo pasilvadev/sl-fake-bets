@@ -3,11 +3,13 @@ import type { Route } from "next";
 /**
  * `?next=` destination handling for the auth flows (roadmap Phase 4, task 3).
  *
- * This is the groundwork UX-012 builds on in Phase 5: a visitor who lands on
- * an invite or bet-share link while logged out must come back to that exact
- * destination after signing in, not to a generic landing page. Phase 4 makes
- * the parameter round-trip through both the OTP flow and the OAuth callback;
- * Phase 5 adds the `/join/[code]` route that spends it.
+ * The groundwork UX-012 builds on: a visitor who lands on an invite or
+ * bet-share link while logged out must come back to that exact destination
+ * after signing in, not to a generic landing page. Phase 4 made the parameter
+ * round-trip through both the OTP flow and the OAuth callback; Phase 5 added
+ * `/join/[code]`, which in practice needs no parameter at all — AuthGated
+ * renders the auth screen at the visitor's own URL, so the pathname IS the
+ * destination. `?next=` remains the explicit override.
  */
 
 /** Where a signed-in user goes when no destination was preserved (UX-011). */

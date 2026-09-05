@@ -24,7 +24,11 @@ export interface User {
   displayName: string;
   /** Hex color applied everywhere the name renders (chats and bets). */
   nameColor: string;
-  /** Platform icon id or uploaded-image URL. Mock data uses icon ids. */
+  /**
+   * One of three things, all discriminated by `user-avatar.tsx`: a platform
+   * icon id, an avatars-bucket URL (UX-022 upload), or an OAuth provider's
+   * picture URL (the Phase 4 signup default).
+   */
   avatar: string;
 }
 

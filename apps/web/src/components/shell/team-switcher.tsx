@@ -48,12 +48,15 @@ export function TeamSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
 
   // UX-005/DOM-005: codes never expire; joinTeamByCode seeds the onboarding
   // grant (decision §4.2) and re-scopes the app to the joined team (UX-010).
-  function submitJoin(e: React.FormEvent) {
+  async function submitJoin(e: React.FormEvent) {
     e.preventDefault();
-    const result = joinTeamByCode(joinCode);
+    setJoining(true);
+    const result = await joinTeamByCode(joinCode);
+    setJoining(false);
     if (result.ok) {
       setJoinCode("");
       setJoinError(null);
@@ -117,7 +120,10 @@ export function TeamSwitcher() {
             </button>
 
             {/* Inline join-code form, one fewer hop than a modal. */}
-            <form onSubmit={submitJoin} className="mt-2 flex items-center gap-1.5">
+            <form
+              onSubmit={(e) => void submitJoin(e)}
+              className="mt-2 flex items-center gap-1.5"
+            >
               <input
                 value={joinCode}
                 onChange={(e) => {
@@ -129,9 +135,10 @@ export function TeamSwitcher() {
               />
               <button
                 type="submit"
-                className="h-7 shrink-0 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+                disabled={joining}
+                className="h-7 shrink-0 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               >
-                Join
+                {joining ? "…" : "Join"}
               </button>
             </form>
             {joinError && (
