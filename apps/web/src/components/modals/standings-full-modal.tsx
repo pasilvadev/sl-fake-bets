@@ -38,7 +38,9 @@ export function StandingsFullModal() {
               className={cn(
                 "flex-1 border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors",
                 tab === t
-                  ? "border-jade bg-jade-wash text-jade"
+                  ? t === "poorest"
+                    ? "border-rust-border bg-rust-wash text-rust"
+                    : "border-jade bg-jade-wash text-jade"
                   : "border-border text-muted-foreground hover:border-border-strong",
               )}
             >
@@ -66,22 +68,31 @@ export function StandingsFullModal() {
                   className={cn(
                     "relative flex items-center gap-3 border-b border-border py-2.5",
                     isRichestTop && "cut-sm bg-jade-wash",
-                    isPoorestTop && "cut-mirror",
+                    isPoorestTop && "cut-mirror bg-rust-wash",
                   )}
                 >
                   {isRichestTop && (
                     <div className="absolute inset-x-0 top-0 h-px bg-jade" />
                   )}
+                  {/* Mirror of the richest board's jade top line: the poor
+                      podium's hairline sits on the bottom edge, in rust. */}
+                  {isPoorestTop && (
+                    <div className="absolute inset-x-0 bottom-0 h-px bg-rust" />
+                  )}
                   <span
                     className={cn(
                       "w-8 shrink-0 text-center font-mono font-semibold tabular-nums",
                       rankSize(rank),
-                      // §5.6: the poor podium is mirrored SHAPE, never a
-                      // different hue — its digits stay muted at every rank
-                      // and only size carries the ranking. Jade and full-white
-                      // digits belong to the richest board alone.
+                      // The poor podium mirrors the richest board's shape AND
+                      // its emphasis ramp, in rust instead of jade (owner
+                      // ruling 2026-09-05, supersedes the original §5.6
+                      // "mirrored shape, never a different hue").
                       tab === "poorest"
-                        ? "text-muted-foreground"
+                        ? isPoorestTop
+                          ? "text-rust"
+                          : rank <= 3
+                            ? "text-rust/80"
+                            : "text-muted-foreground"
                         : isRichestTop
                           ? "text-jade"
                           : rank <= 3
@@ -95,7 +106,7 @@ export function StandingsFullModal() {
                   <div className="min-w-0 flex-1">
                     <UserName user={user} badge />
                     {isPoorestTop && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-rust">
                         House&apos;s favorite donor
                       </p>
                     )}

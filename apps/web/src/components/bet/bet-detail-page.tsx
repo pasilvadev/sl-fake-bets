@@ -20,7 +20,7 @@ import {
 import { AuthGated } from "@/components/app-gate";
 import { TeamGate } from "@/components/team-gate";
 import { TopBar } from "@/components/shell/top-bar";
-import { useTeam } from "@/lib/team-context";
+import { useLiveBetThread, useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useNow } from "@/lib/use-now";
 import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
@@ -60,6 +60,12 @@ export function BetDetailPage({ betId }: { betId: string }) {
 
 function BetDetail({ betId }: { betId: string }) {
   const { bets, team } = useTeam();
+  // Roadmap Phase 8: this page's own channel — the comment thread (UX-018).
+  // The bet itself, its wagers and its pool arrive on the team channel the
+  // provider already holds. Subscribed before the not-found branch below on
+  // purpose: a bet created moments ago in another session shows up here rather
+  // than leaving the visitor on a dead end until they refresh.
+  useLiveBetThread(betId);
   const bet = bets.find((b) => b.id === betId);
 
   if (!bet) {
@@ -192,14 +198,22 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                 key={opt.optionId}
                 className={cn(
                   "relative overflow-hidden rounded-sm border p-3",
-                  isWinner ? "border-jade bg-jade-wash" : "border-border",
+                  isWinner
+                    ? "border-jade bg-jade-wash"
+                    : isLoser
+                      ? "border-rust-border"
+                      : "border-border",
                 )}
               >
                 {/* live pool-share fill behind the row content */}
                 <div
                   className={cn(
                     "absolute inset-y-0 left-0",
-                    isWinner ? "bg-jade/10" : "bg-surface-2",
+                    isWinner
+                      ? "bg-jade/10"
+                      : isLoser
+                        ? "bg-rust-wash"
+                        : "bg-surface-2",
                   )}
                   style={{ width: `${Math.round(opt.share * 100)}%` }}
                 />
@@ -212,7 +226,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                         isWinner
                           ? "font-semibold text-text-strong"
                           : isLoser
-                            ? "text-muted-foreground"
+                            ? "text-negative"
                             : "text-foreground",
                       )}
                     >
@@ -224,7 +238,12 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                       </span>
                     )}
                   </span>
-                  <span className="flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground">
+                  <span
+                    className={cn(
+                      "flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums",
+                      isLoser ? "text-negative" : "text-muted-foreground",
+                    )}
+                  >
                     <CoinAmount amount={opt.total} />
                     <span>{Math.round(opt.share * 100)}%</span>
                     <span className={cn(isLoser && "line-through")}>

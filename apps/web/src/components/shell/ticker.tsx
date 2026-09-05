@@ -47,7 +47,7 @@ function Chip({
  * tabular-nums chips split by hairlines. No click targets.
  */
 export function Ticker() {
-  const { bets, wagers, team, richest, currentUser } = useTeam();
+  const { bets, wagers, team, richest, currentUser, rankBadgeFor } = useTeam();
   const now = useNow();
 
   const openBets = bets.filter((b) => b.state === "open");
@@ -75,7 +75,16 @@ export function Ticker() {
 
       <Chip label="Pool (open)">{formatCoins(openPool)}</Chip>
 
-      <Chip label="Your rank">{rank === null ? "—" : `#${rank} richest`}</Chip>
+      {/* Bottom-five standing reads in rust — same signal the inline rank
+          badge carries, so the ticker doesn't quietly flatter a loser. */}
+      <Chip
+        label="Your rank"
+        valueClassName={
+          rankBadgeFor(currentUser.id) === "bottom5" ? "text-rust" : undefined
+        }
+      >
+        {rank === null ? "—" : `#${rank} richest`}
+      </Chip>
 
       <Chip label="Team">
         {team.members.length}/{CONFIG.TEAM_TARGET_SIZE}

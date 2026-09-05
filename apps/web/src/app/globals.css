@@ -65,6 +65,11 @@
   --color-ember-wash: var(--ember-wash);
   --color-ember-border: var(--ember-border);
 
+  --color-rust: var(--rust-base);
+  --color-rust-wash: var(--rust-wash);
+  --color-rust-border: var(--rust-border);
+  --color-rust-muted: var(--rust-muted);
+
   --color-void: var(--void);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
@@ -100,7 +105,7 @@
   --secondary-foreground: oklch(0.895 0.004 158);  /* #DADDDB  N7 */
 
   --muted: oklch(0.225 0.007 158);                 /* #191D1A  N2 */
-  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 — doubles as --negative */
+  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 */
 
   --accent: oklch(0.240 0.050 158);                /* #052616  jade-wash */
   --accent-foreground: oklch(0.755 0.175 158);     /* #0CD083  jade-base */
@@ -143,6 +148,12 @@
   --jade-glow: oklch(0.860 0.195 158);   /* #25F69E  live/pulse effects only */
   --jade-raw: oklch(0.879 0.214 155.7);  /* #00FF98  logo/marketing reference only */
 
+  /* ---- rust (outcome: loss / bad odds / bottom of the board) ---- */
+  --rust-wash: oklch(0.240 0.044 25);    /* #311614  loss-row bg tint */
+  --rust-border: oklch(0.345 0.065 25);  /* #562B28  loss-card border, podium hairline */
+  --rust-muted: oklch(0.500 0.088 25);   /* #8F4E49  fills/hairlines only, 3.16:1 vs N0 */
+  --rust-base: oklch(0.660 0.108 25);    /* #CC7770  == --negative; numerals and labels */
+
   /* ---- ember (destructive/warning) ---- */
   --ember-wash: oklch(0.240 0.045 45);   /* #31180C */
   --ember-border: oklch(0.340 0.065 45); /* #532C1A */
@@ -150,7 +161,7 @@
 
   /* ---- semantic aliases ---- */
   --positive: oklch(0.755 0.175 158);    /* == jade-base, "+" / "/" prefix */
-  --negative: oklch(0.665 0.007 158);    /* == N6, "−" / "\" prefix */
+  --negative: oklch(0.660 0.108 25);     /* == rust-base, "−" / "\" prefix */
   --void: oklch(0.520 0.008 158);        /* N5, pairs with diagonal hairline */
 
   /* ---- name colors (curated 10) ---- */

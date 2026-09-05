@@ -30,6 +30,8 @@ import {
   computeEffectiveState,
   generateId,
   removeMemberWagersInTeam,
+  reverseBet,
+  settleBet,
   validateBetDraft,
   validateCommentBody,
   validateInjection,
@@ -51,13 +53,23 @@ import {
   type Wager,
 } from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
+import { trackSignupCompleted } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth-context";
 import {
   EMPTY_TEAM_DATA,
+  fetchBet,
   loadTeamData,
+  toComment,
+  toResolution,
+  toWager,
   type OnboardingInfo,
   type TeamData,
 } from "@/lib/data/team-data";
+import {
+  subscribeBetChannel,
+  subscribeTeamChannel,
+  type RemoteEvent,
+} from "@/lib/data/realtime";
 import { reportConsistency } from "@/lib/data/consistency-guard";
 import * as db from "@/lib/data/team-mutations";
 import * as betDb from "@/lib/data/bet-mutations";
@@ -248,10 +260,16 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
     case "replace":
       return action.data;
     case "add-bet":
+      // The id guard is Phase 8's: Realtime delivers at least once, and the
+      // client that created the bet also receives its own INSERT event. Every
+      // insert action below is idempotent on the row id for the same reason —
+      // it is cheaper to state that here, once, than to trust five callers.
+      if (data.bets.some((b) => b.id === action.bet.id)) return data;
       return { ...data, bets: [...data.bets, action.bet] };
     case "place-wager": {
       // The stake leaves the balance at placement (decision §4.6 money model).
       const { wager } = action;
+      if (data.wagers.some((w) => w.id === wager.id)) return data;
       return {
         ...data,
         wagers: [...data.wagers, wager],
@@ -359,6 +377,7 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         },
       };
     case "add-comment":
+      if (data.comments.some((c) => c.id === action.comment.id)) return data;
       return { ...data, comments: [...data.comments, action.comment] };
     case "add-transaction": {
       const { transaction } = action;
@@ -383,6 +402,16 @@ function teamsOf(teams: Team[], userId: string): Team[] {
 const TeamContext = createContext<TeamState | null>(null);
 const TeamSessionContext = createContext<TeamSession | null>(null);
 
+/**
+ * Roadmap Phase 8. The bet-detail page owns a channel of its own — one open
+ * bet's comment thread — but not the state it feeds, which is the reducer up
+ * here. This context is the whole seam: subscribe, get a teardown back.
+ */
+interface TeamRealtime {
+  subscribeBet: (betId: string) => () => void;
+}
+const TeamRealtimeContext = createContext<TeamRealtime | null>(null);
+
 export function TeamProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const currentUserId = user?.id ?? null;
@@ -396,6 +425,24 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const setTeamId = useCallback((id: string) => {
     setCurrentTeamId(id);
   }, []);
+
+  /**
+   * The realtime handlers' view of the current world (roadmap Phase 8).
+   *
+   * A ref rather than the `data` closure: the channels must be created once per
+   * team and torn down once, so their handlers cannot re-close over every
+   * render's state without resubscribing on every keystroke of activity.
+   */
+  const dataRef = useRef(data);
+  // Synced in an effect, not during render: effects run on commit, and the
+  // only things that read this ref are network callbacks, which cannot fire
+  // before the commit that produced the state they would read.
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+  const reloadInFlight = useRef(false);
+  const pendingRemote = useRef<RemoteEvent[]>([]);
+  const [flushTick, setFlushTick] = useState(0);
 
   /**
    * Pull the whole world down again. Used on sign-in, on team switching
@@ -413,15 +460,24 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       setStatus("ready");
       return;
     }
+    // Phase 8, task 3: a realtime event that lands while these nine queries are
+    // in flight would be applied to a world the snapshot is about to overwrite,
+    // and the snapshot may predate the event. Queue instead, and replay after
+    // the replace — the id guards make a replay of something the snapshot
+    // already contains a no-op.
+    reloadInFlight.current = true;
     const { data: loaded, error } = await loadTeamData(supabase);
+    reloadInFlight.current = false;
     if (error) {
       setLoadError(error);
       setStatus("error");
+      setFlushTick((t) => t + 1);
       return;
     }
     dispatch({ type: "replace", data: loaded });
     setLoadError(null);
     setStatus("ready");
+    setFlushTick((t) => t + 1);
   }, [supabase, currentUserId]);
 
   // Identity change (sign-in, sign-out, a different account) is the only thing
@@ -435,6 +491,29 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     void reload();
   }, [currentUserId, reload]);
 
+  /**
+   * Metric 2's conversion event (ARC-017, roadmap Phase 9 task 1): this
+   * identity is brand new.
+   *
+   * `onboarded_at IS NULL` is the signal, and it is the only durable one the
+   * client has. "The auth state just changed to signed-in" cannot tell a signup
+   * apart from the returning user ARC-007 works hard to keep signed in, and a
+   * localStorage marker would be per-device rather than per-account. The stamp
+   * is written exactly once per account, by either exit from the Phase 7.5
+   * profile step, so an account is in this state for precisely its first run.
+   *
+   * It sits in the provider rather than in `OnboardingGate` because the
+   * provider is mounted on every route — someone who signs up through an
+   * invite link is on `/join/[code]`, which never mounts that gate. The insert
+   * is fire-and-forget and the metric counts distinct users, so a reload
+   * during first run costs a duplicate row and changes no number.
+   */
+  useEffect(() => {
+    if (status !== "ready" || !currentUserId) return;
+    const mine = data.onboarding[currentUserId];
+    if (mine && mine.onboardedAt === null) trackSignupCompleted(currentUserId);
+  }, [status, currentUserId, data.onboarding]);
+
   const myTeams = useMemo(
     () => (currentUserId ? teamsOf(data.teams, currentUserId) : []),
     [data.teams, currentUserId],
@@ -446,6 +525,154 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   // user can no longer read.
   const team =
     myTeams.find((t) => t.id === currentTeamId) ?? myTeams[0] ?? null;
+
+  // --- realtime propagation (roadmap Phase 8) ---------------------------------
+
+  /**
+   * Turn one Postgres Changes event into the same local action the acting
+   * client already dispatches for it (ARC-005 / UX-013 / UX-018).
+   *
+   * Two invariants hold every case together:
+   *
+   *   * **Apply the payload, never refetch the world.** The only read in here
+   *     is `fetchBet` — one row — and it exists because a `bets` INSERT arrives
+   *     without its options. Answering events with `reload()` would cost more
+   *     than the polling Realtime replaced (design-realtime.md §2).
+   *   * **Ignore any id you do not already hold.** That single rule does three
+   *     jobs at once: it drops the DELETE events RLS cannot filter (§4.3), it
+   *     drops the client's own echo of a change it has already applied — which
+   *     is what keeps money from moving twice — and it makes at-least-once
+   *     delivery harmless.
+   *
+   * Balances move here without `team_members` ever being subscribed (§5 rule
+   * 3): a resolution or a deletion carries enough to recompute the same deltas
+   * Postgres applied, through the same `settleBet` / `reverseBet` the RPCs are
+   * SQL twins of.
+   */
+  const applyRemote = useCallback(
+    async (event: RemoteEvent) => {
+      switch (event.kind) {
+        case "bet-insert": {
+          if (dataRef.current.bets.some((b) => b.id === event.betId)) return;
+          const bet = await fetchBet(supabase, event.betId);
+          // No rows means RLS said no — a bet in a team this client cannot read.
+          if (bet) dispatch({ type: "add-bet", bet });
+          return;
+        }
+        case "bet-update": {
+          const bet = dataRef.current.bets.find((b) => b.id === event.row.id);
+          if (!bet) return;
+          const resolution = toResolution(event.row);
+          if (event.row.state === "resolved" && bet.state !== "resolved") {
+            if (!resolution) return;
+            dispatch({
+              type: "resolve-bet",
+              teamId: bet.teamId,
+              betId: bet.id,
+              resolution,
+              // The deltas `resolve_bet` wrote, recomputed rather than shipped:
+              // the RPC is settleBet's SQL twin over the same wagers, and this
+              // client holds those wagers because they arrived on this channel.
+              deltas: settleBet(bet, dataRef.current.wagers, resolution),
+            });
+            return;
+          }
+          // DOM-012: an early close moves closes_at to when it happened, so the
+          // countdown and "closed Xm ago" stay honest on every screen.
+          if (event.row.state === "closed" && bet.state === "open") {
+            dispatch({
+              type: "close-bet",
+              betId: bet.id,
+              closedAt: event.row.closes_at,
+            });
+          }
+          return;
+        }
+        case "bet-delete": {
+          const bet = dataRef.current.bets.find((b) => b.id === event.betId);
+          if (!bet) return;
+          dispatch({
+            type: "delete-bet",
+            teamId: bet.teamId,
+            betId: bet.id,
+            deltas: reverseBet(bet, dataRef.current.wagers),
+          });
+          return;
+        }
+        case "wager-insert": {
+          const wager = toWager(event.row);
+          const bet = dataRef.current.bets.find((b) => b.id === wager.betId);
+          if (!bet) return;
+          dispatch({ type: "place-wager", teamId: bet.teamId, wager });
+          return;
+        }
+        case "comment-insert": {
+          const comment = toComment(event.row);
+          if (!dataRef.current.bets.some((b) => b.id === comment.betId)) return;
+          dispatch({ type: "add-comment", comment });
+        }
+      }
+    },
+    [supabase],
+  );
+
+  /** Hold events aside while a full load is in flight; see `reload`. */
+  const handleRemote = useCallback(
+    (event: RemoteEvent) => {
+      if (reloadInFlight.current) {
+        pendingRemote.current.push(event);
+        return;
+      }
+      void applyRemote(event);
+    },
+    [applyRemote],
+  );
+
+  // Replay what arrived during a load, once the snapshot has been committed —
+  // `data` in the deps is what guarantees dataRef is the post-replace world.
+  useEffect(() => {
+    if (reloadInFlight.current || pendingRemote.current.length === 0) return;
+    const queued = pendingRemote.current;
+    pendingRemote.current = [];
+    for (const event of queued) void applyRemote(event);
+  }, [flushTick, data, applyRemote]);
+
+  /**
+   * One channel per team, for as long as that team is the current one — the
+   * coarse granularity design-stack.md §4 rule 1 and design-realtime.md §5 rule
+   * 1 both require. Keyed on the id and not on `team`, whose identity changes
+   * with every state patch: a channel that resubscribed on each new wager would
+   * drop events in the gap it opened.
+   */
+  const teamId = team?.id ?? null;
+  useEffect(() => {
+    if (!currentUserId || !teamId) return;
+    const channel = subscribeTeamChannel(supabase, teamId, {
+      onEvent: handleRemote,
+      // Recovery, not the normal path: the events from the dropped window are
+      // gone, so the only way back to a correct world is to fetch it.
+      onResubscribe: () => void reload(),
+    });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, currentUserId, teamId, handleRemote, reload]);
+
+  const realtime = useMemo<TeamRealtime>(
+    () => ({
+      subscribeBet: (betId: string) => {
+        const channel = subscribeBetChannel(supabase, betId, {
+          onEvent: handleRemote,
+          onResubscribe: () => void reload(),
+        });
+        return () => {
+          void supabase.removeChannel(channel);
+        };
+      },
+    }),
+    [supabase, handleRemote, reload],
+  );
+
 
   /**
    * DOM-022 / A-2 / decision §4.3: the daily reward is claimed lazily, on team
@@ -1248,7 +1475,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   return (
     <TeamSessionContext.Provider value={session}>
-      <TeamContext.Provider value={value}>{children}</TeamContext.Provider>
+      <TeamRealtimeContext.Provider value={realtime}>
+        <TeamContext.Provider value={value}>{children}</TeamContext.Provider>
+      </TeamRealtimeContext.Provider>
     </TeamSessionContext.Provider>
   );
 }
@@ -1276,4 +1505,21 @@ export function useTeamSession(): TeamSession {
     throw new Error("useTeamSession must be used within a TeamProvider");
   }
   return ctx;
+}
+
+/**
+ * Subscribe the open bet page to its own comment thread (UX-018) for as long as
+ * it is mounted — roadmap Phase 8.
+ *
+ * A hook rather than something the page assembles itself, because the channel
+ * and the store it writes into must not be two decisions: the provider owns
+ * both, and the page only says which bet it is showing. Bets and wagers need no
+ * hook here — the team channel already carries them into the same store.
+ */
+export function useLiveBetThread(betId: string): void {
+  const realtime = useContext(TeamRealtimeContext);
+  useEffect(() => {
+    if (!realtime) return;
+    return realtime.subscribeBet(betId);
+  }, [realtime, betId]);
 }

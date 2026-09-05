@@ -15,10 +15,12 @@ type Tab = "richest" | "poorest";
 function TabButton({
   label,
   active,
+  tone = "jade",
   onClick,
 }: {
   label: string;
   active: boolean;
+  tone?: "jade" | "rust";
   onClick: () => void;
 }) {
   return (
@@ -32,14 +34,28 @@ function TabButton({
     >
       {label}
       {active && (
-        <span className="absolute inset-x-1 -bottom-px h-0.5 -skew-x-12 bg-jade" />
+        <span
+          className={cn(
+            "absolute inset-x-1 -bottom-px h-0.5 -skew-x-12",
+            tone === "rust" ? "bg-rust" : "bg-jade",
+          )}
+        />
       )}
     </button>
   );
 }
 
-/** Rank-1 is jade + text-lg, 2-3 full white text-base, 4+ muted text-sm (§5.6). */
-function rankClass(rank: number): string {
+/**
+ * Richest: rank-1 jade + text-lg, 2-3 full white text-base, 4+ muted text-sm
+ * (§5.6). Poorest is the mirror of that scale in rust — rank-1 (the deepest
+ * loss) is the loud one, and it fades to muted the same way.
+ */
+function rankClass(rank: number, tab: Tab): string {
+  if (tab === "poorest") {
+    if (rank === 0) return "text-rust text-lg";
+    if (rank <= 2) return "text-rust/80 text-base";
+    return "text-muted-foreground text-sm";
+  }
   if (rank === 0) return "text-jade text-lg";
   if (rank <= 2) return "text-foreground text-base";
   return "text-muted-foreground text-sm";
@@ -60,16 +76,14 @@ function StandingRow({
 
   return (
     <div className="flex items-center gap-2.5 py-1.5">
-      <span className={cn("w-4 shrink-0 font-mono tabular-nums", rankClass(rank))}>
+      <span className={cn("w-4 shrink-0 font-mono tabular-nums", rankClass(rank, tab))}>
         {rank + 1}
       </span>
       <UserAvatar user={user} size={20} />
       <div className="min-w-0 flex-1">
         <UserName user={user} badge className="truncate text-sm" />
         {tab === "poorest" && rank === 0 && (
-          <p className="text-[11px] text-muted-foreground">
-            House&apos;s favorite donor
-          </p>
+          <p className="text-[11px] text-rust">House&apos;s favorite donor</p>
         )}
       </div>
       {tab === "richest" ? (
@@ -114,6 +128,7 @@ export function StandingsModule() {
           <TabButton
             label="Poorest"
             active={tab === "poorest"}
+            tone="rust"
             onClick={() => setTab("poorest")}
           />
         </div>

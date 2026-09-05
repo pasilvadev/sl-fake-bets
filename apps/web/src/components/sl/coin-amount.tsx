@@ -37,7 +37,9 @@ export function CoinAmount({
 
 /**
  * Win/loss delta glyph vocabulary (§5.2/§5.5): gain "/ +240" jade,
- * loss "\ −180" muted N6, zero "±0" muted. font-mono tabular-nums.
+ * loss "\ −180" rust (--negative), zero "±0" muted. font-mono tabular-nums.
+ * The glyph still carries the meaning on its own — rust is a second channel on
+ * top of "/" vs "\", not a replacement for it.
  */
 export function CoinDelta({
   amount,

@@ -6,6 +6,8 @@ Dark-mode-only design system for SL Fake Bets. Synthesizes color science, typogr
 
 ### 0.1 Spec deviation from AGENT_SPEC
 
+**Owner ruling 2026-09-05 — the rust hue.** Principle 2 below ("no traffic lights, ever") is relaxed for *outcome polarity only*: a low-chroma reddish brown, `--rust-*` (H=25°), now carries loss, bad odds and the bottom of the leaderboard. It is deliberately **not** a stoplight red — it sits at the same lightness as N6, so it reads as a muted terracotta rather than an alarm, and every glyph/weight/shape signal it accompanies (`\` prefix, line-through, `cut-mirror`) stays in place: rust is a *second* channel, never the only one. Rust is distinct in role from ember: **ember = the action you are about to take is destructive; rust = the outcome already went badly.** See §2.3b. Proposed-and-applied per AGENT_SPEC §0.
+
 Supersedes AGENT_SPEC **UX-020** ("visual identity strictly black and white") per owner-approved jade accent + the ember/name-color exceptions in §2.2–2.4. `AGENT_SPEC.md` UX-020 has been updated in lockstep to read: "Visual identity is black/white with jade as the sole brand accent, plus the ember destructive hue and 10 curated name colors as sanctioned exceptions (see `design-visual-identity.md`); no other decorative brand colors; traffic-light red/green/yellow banned for state." Proposed-and-applied, not a silent divergence, per AGENT_SPEC §0.
 
 ---
@@ -23,6 +25,7 @@ The ~10 values you'd actually reach for. Each links to its section/token.
 | **Diagonal motif angle** | the offset ratio in each `@utility cut-*` rule (vertical px ÷ horizontal px, ~2.48 everywhere) — `--brand-slash-angle`/`--brand-slash-rad` are reference constants only, not wired to any utility | §4.3 |
 | **Corner radius (roundedness)** | `--radius` — the one lever; `--radius-sm/md/lg` are `calc()`-derived from it | §2.5 |
 | **The one supporting/destructive hue** | `--ember-*` ramp (H=45, copper) | §2.3 |
+| **The loss/"bad outcome" hue** | `--rust-*` ramp (H=25, reddish brown) | §2.3b |
 | **Name-color palette (usernames)** | `--name-color-1..10` | §2.4 |
 | **Win/loss visual language** | Slash-glyph system (`/` jade vs `\` muted), §5.2 | §2.3, §5.2 |
 | **Motion speed budget** | Duration table | §6 |
@@ -35,7 +38,7 @@ SL is a black-and-white app with exactly one loud color: jade. It borrows the st
 
 ### Design principles (memorize these seven)
 1. **One accent, one job.** Jade means gain / brand / open / alive. It is never a decoration, never a random highlight, never a second "info" color.
-2. **No traffic lights, ever.** Win/loss/open/closed/void/error are told apart by shape, glyph, weight, motion, or jade-vs-neutral — never red, green, or yellow text/fill. This is the single most-repeated rule in the whole system.
+2. **No traffic lights — one exception.** Open/closed/void/error are told apart by shape, glyph, weight, motion, or jade-vs-neutral; nothing in the system is ever stoplight red, green, or yellow. The single sanctioned exception is `--rust` on *bad outcomes* (loss, bad odds, bottom of the board) — a muted reddish brown, always stacked on top of the glyph/weight/shape signal rather than replacing it (§2.3b, owner ruling 2026-09-05).
 3. **Scarcity is the brand.** Max one diagonal cut visible per viewport, max one jade glow per screen, max one drop-shadow (the modal overlay) in the whole app. Repetition of a "signature" element turns it into wallpaper — the fastest way to look generic.
 4. **Weight over color for hierarchy.** Two text colors handle 90% of the UI (white full-emphasis, muted-gray secondary). A third tier of emphasis is jade, never a third gray.
 5. **Numbers are mono, prose is sans.** Any figure the user compares or scans (odds, coins, timers, ranks) is Geist Mono + `tabular-nums`. Numbers embedded in a sentence stay Geist Sans.
@@ -101,13 +104,13 @@ Two different concerns, two different treatments:
 
 | Concern | Frequency | Treatment |
 |---|---|---|
-| **Outcome polarity** (won/lost a bet) | Constant, routine | Never looks like an error. Asymmetric emphasis: wins pop in jade, losses quietly recede to muted gray. |
+| **Outcome polarity** (won/lost a bet) | Constant, routine | Never looks like an error. Asymmetric emphasis: wins pop in jade, losses recede into rust — same lightness as the muted gray it replaced, so it dims rather than shouts. |
 | **Destructive/irreversible action** (delete team, remove member) | Rare | Gets a real warning language — the one sanctioned supporting hue, ember. |
 
 | State | Color | Mechanism |
 |---|---|---|
 | Win / profit | `--positive` = jade-base `#0CD083` | `/` glyph prefix (mirrors logo's forward cut), e.g. `/ +240` |
-| Loss / negative | `--negative` = N6 `#909592` | `\` glyph prefix (mirrors logo's second cut), e.g. `\ −180`. Deliberately recedes — no red, ever |
+| Loss / negative | `--negative` = rust-base `#CC7770` | `\` glyph prefix (mirrors logo's second cut), e.g. `\ −180`. The glyph still carries it alone; rust is the second channel (§2.3b) |
 | Void / draw / refunded | `--void` = N5 `#656A67` | No pill badge (pills are reserved for team tags, see Banned List #2). Label `VOID · REFUNDED` in N6 + a single thin diagonal hairline drawn across the row |
 | Open | jade-base solid dot | "Open" = alive = brand |
 | Closing soon | Same jade dot, animated pulse (opacity 100→60→100, 1.6s) + countdown promoted to N8 | Urgency = motion + weight, not a new hue |
@@ -129,9 +132,26 @@ Contrast on ember-solid: black text 5.01:1 ✅ / white text 4.19:1 ❌. `--destr
 
 **Hard rule**: ember never colors a state *word*. Never `−R$50` in ember, never "LOST" in ember. It only fills icons, thin borders, and the one final confirm-button background.
 
+### 2.3b The rust ramp — bad outcomes (owner ruling 2026-09-05)
+
+H=25°, reddish brown. Chosen to sit **below** ember in chroma and **above** it in lightness, so the two never compete: ember is a saturated copper you only meet on destructive controls, rust is a desaturated terracotta you meet constantly on numbers. `--rust-base` is pinned to N6's lightness on purpose — swapping N6 for it changes hue, not perceived weight, so no layout re-reads as louder than before.
+
+| Step | Token | Use | OKLCH | Hex |
+|---|---|---|---|---|
+| rust-wash | `--rust-wash` | Losing-option fill, poor-podium row bg | `oklch(0.240 0.044 25)` | `#311614` |
+| rust-border | `--rust-border` | Losing-option card border, `BOTTOM 5` badge edge | `oklch(0.345 0.065 25)` | `#562B28` |
+| rust-muted | `--rust-muted` | Fills and hairlines only (3.16:1 vs N0 — never text) | `oklch(0.500 0.088 25)` | `#8F4E49` |
+| **rust-base** | `--rust-base` / `--negative` | Loss numerals, losing labels/odds, poor-podium digits | `oklch(0.660 0.108 25)` | `#CC7770` |
+
+Contrast of rust-base: **6.06:1** on N0, 5.70 on N1, 5.23 on N2, 4.67 on N3, and **5.09:1 on rust-wash** — clears 4.5:1 small-text on every surface it is used over.
+
+**Where rust is allowed**: loss/negative deltas (`CoinDelta`), the losing options of a resolved bet (label, pool figures, line-through odds, row fill and border), the Poorest leaderboard tab and its podium (digits, tab tick, row wash, mirrored bottom hairline, "House's favorite donor" line), the `BOTTOM 5` rank badge, a bottom-five "Your rank" ticker chip, and an overdrawn wallet balance.
+
+**Where rust is banned**: any *action* (that's ember), open/closed/void state (void is a refund, not a loss — it stays N5/N6), category or identity color, and as the sole signal for anything. If you delete the `\` prefix, the line-through or the `cut-mirror` and the meaning survives only because of the hue, the treatment is wrong.
+
 ### 2.4 Name colors (Twitch-style, 10 curated) (UX-022)
 
-The **one deliberate exception** to black/white/jade — user display names need individual color. Excludes 130–190° (jade collision), 25–65° (ember collision), and 65–130° (yellow-green, reads as caution) entirely. What's left: one coherent cool-to-magenta "electric jewel-tone" family, same lightness recipe (L≈0.60–0.65). All 10 verified ≥4.5:1 against N2 (the strictest surface — modal/popover), meaning they clear N0/N1 by a wider margin. Minimum safe usage: **≥14px, weight ≥500** — these margins assume non-subpixel-thin glyph strokes.
+The **one deliberate exception** to black/white/jade — user display names need individual color. Excludes 130–190° (jade collision), 25–65° (ember/rust collision), and 65–130° (yellow-green, reads as caution) entirely. What's left: one coherent cool-to-magenta "electric jewel-tone" family, same lightness recipe (L≈0.60–0.65). All 10 verified ≥4.5:1 against N2 (the strictest surface — modal/popover), meaning they clear N0/N1 by a wider margin. Minimum safe usage: **≥14px, weight ≥500** — these margins assume non-subpixel-thin glyph strokes.
 
 | Name | OKLCH | Hex | vs N0 | vs N1 | vs N2 |
 |---|---|---|---|---|---|
@@ -175,7 +195,7 @@ Dark-only — collapse the shadcn light/`.dark` split into a single `:root`.
   --secondary-foreground: oklch(0.895 0.004 158);  /* #DADDDB  N7 */
 
   --muted: oklch(0.225 0.007 158);                 /* #191D1A  N2 */
-  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 — doubles as --negative */
+  --muted-foreground: oklch(0.665 0.007 158);      /* #909592  N6 */
 
   --accent: oklch(0.240 0.050 158);                /* #052616  jade-wash */
   --accent-foreground: oklch(0.755 0.175 158);     /* #0CD083  jade-base */
@@ -220,6 +240,12 @@ Dark-only — collapse the shadcn light/`.dark` split into a single `:root`.
   --jade-glow: oklch(0.860 0.195 158);   /* #25F69E  live/pulse effects only */
   --jade-raw: oklch(0.879 0.214 155.7);  /* #00FF98  logo/marketing reference only */
 
+  /* ---- rust (outcome: loss / bad odds / bottom of the board) ---- */
+  --rust-wash: oklch(0.240 0.044 25);    /* #311614 */
+  --rust-border: oklch(0.345 0.065 25);  /* #562B28 */
+  --rust-muted: oklch(0.500 0.088 25);   /* #8F4E49  fills/hairlines only */
+  --rust-base: oklch(0.660 0.108 25);    /* #CC7770  == --negative */
+
   /* ---- ember (destructive/warning) ---- */
   --ember-wash: oklch(0.240 0.045 45);   /* #31180C */
   --ember-border: oklch(0.340 0.065 45); /* #532C1A */
@@ -227,7 +253,7 @@ Dark-only — collapse the shadcn light/`.dark` split into a single `:root`.
 
   /* ---- semantic aliases ---- */
   --positive: oklch(0.755 0.175 158);    /* == jade-base, "+" / "/" prefix */
-  --negative: oklch(0.665 0.007 158);    /* == N6, "−" / "\" prefix */
+  --negative: oklch(0.660 0.108 25);     /* == rust-base, "−" / "\" prefix */
   --void: oklch(0.520 0.008 158);        /* N5, pairs with diagonal hairline */
 
   /* ---- name colors (curated 10) ---- */
@@ -278,6 +304,11 @@ Dark-only — collapse the shadcn light/`.dark` split into a single `:root`.
   --color-ember: var(--ember-icon);
   --color-ember-wash: var(--ember-wash);
   --color-ember-border: var(--ember-border);
+
+  --color-rust: var(--rust-base);
+  --color-rust-wash: var(--rust-wash);
+  --color-rust-border: var(--rust-border);
+  --color-rust-muted: var(--rust-muted);
 
   --color-void: var(--void);
   --color-positive: var(--positive);
@@ -472,8 +503,8 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 
 **Winners vs losers on a resolved bet — position + weight + slash glyph, never color:**
 - Winning option: full-opacity N8 text, jade `/` prefix, sorts to top.
-- Losing options: solid N6 (full alpha — no opacity dilution, which drops below 3:1 and becomes unreadable) + font-weight 400 (vs the winner's 600/700) + odds column `line-through`, no prefix, sorts below. Weight and line-through carry the "quietly recedes" effect, not transparency.
-- Your own outcome (CTA cell / bet-detail header): `/ WON +240` in jade mono, or `\ LOST 180` in N6 mono — the backslash literally mirrors the logo's second diagonal cut, doing the job a red minus sign does elsewhere, without red.
+- Losing options: solid rust-base (full alpha — no opacity dilution, which drops below 3:1 and becomes unreadable) + font-weight 400 (vs the winner's 600/700) + odds column `line-through`, no prefix, sorts below; on the detail page the row also takes a `rust-border` edge and a `rust-wash` pool-share fill. Weight and line-through carry the "quietly recedes" effect, not transparency.
+- Your own outcome (CTA cell / bet-detail header): `/ WON +240` in jade mono, or `\ LOST 180` in rust mono — the backslash literally mirrors the logo's second diagonal cut, doing the job a red minus sign does elsewhere, without red.
 - Did-not-participate (4th de-facto state): neutral, no glyph, no emphasis — must not read as a loss.
 
 ### 5.3 Buttons
@@ -503,7 +534,7 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 
 - Glyph: ≈12–14px inline SVG, the logo's two-diagonal-cut mark at miniature scale, `currentColor` (white by default, jade only on a live/positive delta). Placed before every amount.
 - All amounts: `font-mono tabular-nums`, comma-grouped.
-- Gain: `/ +240` jade. Loss: `\ −180` muted. Same pairing reused identically across leaderboard deltas, chat mentions, toasts, and the per-user aggregated P/L view (one row per team the user is in, lifetime net delta only, same glyph+mono treatment as a transaction row, sorted by magnitude) — **one glyph vocabulary everywhere**, established once here.
+- Gain: `/ +240` jade. Loss: `\ −180` rust. Same pairing reused identically across leaderboard deltas, chat mentions, toasts, and the per-user aggregated P/L view (one row per team the user is in, lifetime net delta only, same glyph+mono treatment as a transaction row, sorted by magnitude) — **one glyph vocabulary everywhere**, established once here.
 - Transaction history rows: dense, `py-2.5 border-b`, columns date (mono, N6) · description (N7) · delta (glyph-prefixed mono, right) · balance-after (mono, N6, smaller, right).
 - Wager input "cap reached" state: disabled/greyed at the balance/max-bet ceiling, never a red-bordered invalid state.
 
@@ -511,8 +542,8 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 
 - **No 3D podium graphic.** Both boards are lists using the bet-row anatomy: oversized mono rank digit (rank 1 largest, stepping down by rank 5+), avatar, name (in the user's own name-color, §2.4), balance right-aligned mono.
 - **Richest list**: rank-1 row gets `cut-sm` on its right edge + a 1px jade top line + jade rank digit. Ranks 2–3 full-opacity white digit, 4+ muted (N6).
-- **Poor podium**: mirrored motif, not an inverted color — `cut-mirror` (opposite corner), rank digit muted (N6, never ember/red), and *copy* carries the "loser" signal (dry/ironic tag line under rank 1, e.g. "House's favorite donor") rather than hue. This is the hardest single spot for the no-traffic-light rule — resolved entirely through humor + shape mirroring, zero color difference from the richest board's structure.
-- **Inline rank badges** (chat, participant lists): small **slanted parallelogram tag** (not a pill) — `#1` jade fill/black text; `#2`/`#3` jade border/jade text on transparent; `TOP 5` neutral border/N6 text; `BOTTOM 5` same shape mirrored horizontally, `\` prefix instead of a down-arrow icon, N6 text.
+- **Poor podium**: mirrored motif *and* the rust hue (owner ruling 2026-09-05 — this bullet previously read "never ember/red, zero color difference"). `cut-mirror` (opposite corner) + a 1px rust **bottom** hairline mirroring the richest board's jade top line + `rust-wash` row fill; rank digit rust at 1, `rust/80` at 2–3, muted from 4 down — the exact emphasis ramp of the richest board, in the other hue. Copy still does the heavy lifting (dry/ironic tag line under rank 1, e.g. "House's favorite donor", itself in rust). The Poorest tab's active tick is rust, the Richest tab's is jade.
+- **Inline rank badges** (chat, participant lists): small **slanted parallelogram tag** (not a pill) — `#1` jade fill/black text; `#2`/`#3` jade border/jade text on transparent; `TOP 5` neutral border/N6 text; `BOTTOM 5` same shape mirrored horizontally, `\` prefix instead of a down-arrow icon, rust border + rust text.
 - **Role badges** (moderator/member) are visually distinct from rank badges: rank badges are the slanted parallelogram; role badges are a plain square-cornered label with an icon (shield/star glyph), never the parallelogram shape — the two "badge" concepts must not be visually confusable in the same name-adjacent slot.
 
 ### 5.7 Chat / comments
@@ -534,7 +565,7 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 | Color swatch picker | name color (§2.4), 10 curated swatches, `rounded-full` swatches |
 | Icon-set grid picker | avatar / bet emoji, `cut-sm` chip per option, selected state = jade border, not a filled background |
 | File upload | custom avatar — same `cut-sm` frame as generated avatars, no circle crop for uploads on non-avatar contexts |
-| Validation error | icon/border/weight-based only — never red text. Ember icon + ember border on the field, body copy stays N7 |
+| Validation error | Ember icon + ember border on the *field*; the error **message** reads `--negative` (rust) — it shares the token with losses because both mean "this went badly", and gray-on-gray error copy was the previous rule's real cost. Surrounding body copy still stays N7, and saturated red is still banned |
 | Focus ring | jade, 1–2px, on every interactive element — the **only** focus color in the app |
 
 ### 5.9 Toasts
@@ -612,7 +643,7 @@ Rule: humor replaces color as the "this is the losing board" signal (§5.6) — 
 | 5 | Emoji-in-colored-circle placeholder avatars | Stencil-style avatar icon set in a `cut-sm` square frame, never a circle for the icon-set itself (uploaded photos get `rounded-full`, §4.1) |
 | 6 | Gray-on-gray text soup (3+ indistinguishable grays) | Two tiers only — N7 (primary) / N6 (secondary) — third emphasis tier is jade, not a third gray |
 | 7 | Default shadcn zinc palette left untouched | Full token replacement (§2.5) — no stock oklch zinc survives |
-| 8 | Green-for-win / red-for-loss text | Slash-glyph system: `/` jade for gain, `\` muted for loss (§5.2, §5.5) — direction + glyph, never hue |
+| 8 | Green-for-win / **stoplight**-red-for-loss text | Slash-glyph system first: `/` jade for gain, `\` rust for loss (§5.2, §5.5) — direction + glyph, with rust as a second channel on top. Saturated `#F00`-family red stays banned; rust (H=25, C=0.108) is the only red-side hue in the system |
 | 9 | Rainbow per-category hue assignment | All categories render identically (white label + icon glyph); color is never a category-differentiation channel |
 | 10 | Centered hero + blurred gradient blob landing (UX-021) | Left-aligned wordmark lockup, hard black bg, the slash used as an actual compositional divider — no blob |
 | 11 | Neon glow on every icon/button/hover | Glow Ration: max 1 per screen, tied to real urgency only (§6) |

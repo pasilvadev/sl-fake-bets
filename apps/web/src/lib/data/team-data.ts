@@ -121,7 +121,7 @@ interface BetOptionRow {
   position: number;
 }
 
-interface BetRow {
+export interface BetRow {
   id: string;
   team_id: string;
   creator_id: string;
@@ -136,7 +136,7 @@ interface BetRow {
   bet_options: BetOptionRow[];
 }
 
-interface WagerRow {
+export interface WagerRow {
   id: string;
   bet_id: string;
   option_id: string;
@@ -156,7 +156,7 @@ interface TransactionRow {
   created_at: string;
 }
 
-interface CommentRow {
+export interface CommentRow {
   id: string;
   bet_id: string;
   user_id: string;
@@ -185,8 +185,16 @@ function toMember(row: MemberRow): TeamMember {
   };
 }
 
-/** Flattened resolution columns → types.ts's discriminated union (DOM-018/019). */
-function toResolution(row: BetRow): BetResolution | undefined {
+/**
+ * Flattened resolution columns → types.ts's discriminated union (DOM-018/019).
+ *
+ * Takes just the two columns rather than a whole `BetRow` because a Realtime
+ * UPDATE payload (Phase 8) carries the bet's own columns and no embedded
+ * options — the same two fields, arriving without the rest of the row.
+ */
+export function toResolution(
+  row: Pick<BetRow, "resolution_kind" | "winning_option_id">,
+): BetResolution | undefined {
   if (row.resolution_kind === "winner" && row.winning_option_id) {
     return { kind: "winner", winningOptionId: row.winning_option_id };
   }
@@ -214,7 +222,7 @@ function toBet(row: BetRow): Bet {
   };
 }
 
-function toWager(row: WagerRow): Wager {
+export function toWager(row: WagerRow): Wager {
   return {
     id: row.id,
     betId: row.bet_id,
@@ -238,7 +246,7 @@ function toTransaction(row: TransactionRow): Transaction {
   };
 }
 
-function toComment(row: CommentRow): Comment {
+export function toComment(row: CommentRow): Comment {
   return {
     id: row.id,
     betId: row.bet_id,
@@ -246,6 +254,42 @@ function toComment(row: CommentRow): Comment {
     body: row.body,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * The bets select, shared by the full load and Phase 8's single-bet hydration.
+ *
+ * The embed names its foreign key explicitly because `bets` and `bet_options`
+ * are related BOTH ways (an option belongs to a bet; a resolved bet points at
+ * its winning option), and PostgREST refuses to guess which one an unqualified
+ * embed meant.
+ */
+const BET_SELECT =
+  "id, team_id, creator_id, title, icon_emoji, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, created_at, bet_options!bet_options_bet_id_fkey(id, label, position)";
+
+/**
+ * One bet, by id — the only read Phase 8's realtime layer performs.
+ *
+ * A `bets` INSERT event carries the bet's own columns and nothing from
+ * `bet_options`, and a bet without its options is not renderable, so a new
+ * remote bet costs exactly one scoped round trip for one row. That is the
+ * shape design-realtime.md §5 rule 2 permits: a single row, not the world —
+ * `loadTeamData`'s nine unbounded queries are what a handler must never call.
+ *
+ * RLS answers the authorization question for free: a bet in a team the caller
+ * does not belong to comes back as no rows.
+ */
+export async function fetchBet(
+  supabase: Client,
+  betId: string,
+): Promise<Bet | null> {
+  const { data, error } = await supabase
+    .from("bets")
+    .select(BET_SELECT)
+    .eq("id", betId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return toBet(data as unknown as BetRow);
 }
 
 // --- the load -----------------------------------------------------------------
@@ -277,15 +321,7 @@ export async function loadTeamData(
         .select("team_id, user_id, role, coin_balance, profit_loss, joined_at"),
       supabase.from("team_bans").select("team_id, user_id"),
       supabase.from("invite_codes").select("team_id, code").is("revoked_at", null),
-      supabase
-        .from("bets")
-        .select(
-          // The embed names its foreign key explicitly because `bets` and
-          // `bet_options` are related BOTH ways (an option belongs to a bet;
-          // a resolved bet points at its winning option), and PostgREST
-          // refuses to guess which one an unqualified embed meant.
-          "id, team_id, creator_id, title, icon_emoji, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, created_at, bet_options!bet_options_bet_id_fkey(id, label, position)",
-        ),
+      supabase.from("bets").select(BET_SELECT),
       supabase.from("wagers").select("id, bet_id, option_id, user_id, amount, placed_at"),
       supabase
         .from("transactions")

@@ -142,7 +142,11 @@ export function AuthPage() {
   }, [supabase, destination]);
 
   return (
-    <div className="flex min-h-svh flex-col bg-background lg:flex-row">
+    // <main>, not <div> (UX-017, roadmap Phase 9 task 4): signed out, this IS
+    // the landing page — the only page in the app a crawler or an AI answer
+    // engine ever reaches — so it needs a landmark and real prose, not just a
+    // wordmark and a form.
+    <main className="flex min-h-svh flex-col bg-background lg:flex-row">
       <div className="relative flex flex-1 items-end overflow-hidden p-8 lg:items-center lg:p-12">
         {/* The one sanctioned gradient in the system (§9 banned-list #3
             exception): monochrome black -> jade-at-1%, this hero only. */}
@@ -154,9 +158,26 @@ export function AuthPage() {
               "linear-gradient(135deg, transparent, color-mix(in oklch, var(--jade-base), transparent 99%))",
           }}
         />
-        <div className="relative flex items-center gap-3">
-          <SMark className="size-10 text-text-strong" />
-          <span className="text-2xl font-semibold tracking-tight text-text-strong">SL</span>
+        <div className="relative max-w-md">
+          <div className="flex items-center gap-3">
+            <SMark className="size-10 text-text-strong" />
+            <span className="text-2xl font-semibold tracking-tight text-text-strong">SL</span>
+          </div>
+
+          {/* The crawlable half of UX-017. Three sentences, present in the
+              server-rendered HTML, saying what the product is in the words
+              someone would actually search ("bet with friends", "fake coins",
+              "no real money"). Kept to muted body copy so the hero stays the
+              wordmark-over-black lockup design-visual-identity.md §9 specifies. */}
+          <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
+            Fake-coin betting for a group of friends. Start a team, post a bet
+            on anything at all, and let the pool decide what it pays.
+          </p>
+          <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
+            <li>Free, private teams — invite by link, no app store.</li>
+            <li>Pari-mutuel odds that move as your friends stake.</li>
+            <li>No real money is involved, ever.</li>
+          </ul>
         </div>
       </div>
 
@@ -198,7 +219,7 @@ export function AuthPage() {
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

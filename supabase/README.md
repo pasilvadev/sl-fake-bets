@@ -45,6 +45,9 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
 | `migrations/20260905160000_delete_bet_may_overdraw.sql` | Owner ruling: deleting a RESOLVED bet claws its payout back and may overdraw (the one negative-balance exception) |
 | `migrations/20260905170000_resolution_rewards_ledger.sql` | Phase 7: `resolve_bet`, `claim_daily_reward`, and the non-negative-balance trigger |
 | `migrations/20260905180000_onboarding_profile_step.sql` | Phase 7.5: `users.onboarded_at` / `users.profile_prefill`, the signup trigger that sets the prefill kind, and a backfill so existing accounts skip the first-run step |
+| `migrations/20260905190000_realtime_publication.sql` | Phase 8: adds `bets`, `wagers`, `comments` to the `supabase_realtime` publication — and nothing else |
+| `migrations/20260905200000_share_previews.sql` | Phase 9: `bet_preview` (UX-024 social cards), plus the `coming-soon-teasers` flag that gives ARC-016 a live reader |
+| `queries/arc-017-metrics.sql` | The two ARC-017 metrics, as SQL. This is the entire analytics product — run it in Studio; there is no dashboard |
 | `seed.sql` | `mock-data.ts` as Postgres rows; re-runs on every `db reset` |
 | `templates/magic_link.html` | Why email login is a CODE, not a link (decision §4.1) |
 | `.env` | Google OAuth dev credentials. Gitignored — never commit |
@@ -95,14 +98,16 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
 
 ## State of the backend
 
-Roadmap **Phases 3–7 are done**, and every money path now lives in Postgres as a
-`SECURITY DEFINER` RPC — nothing mutates coins from the client any more:
+Roadmap **Phases 3–9 are done** — the local-MVP checkpoint. Every money path
+lives in Postgres as a `SECURITY DEFINER` RPC; nothing mutates coins from the
+client:
 
 | Path | RPC |
 |---|---|
 | Teams & membership | `create_team`, `team_preview_by_code`, `join_team_with_code`, `remove_membership` (kick/ban + wager cascade), `inject_coins` |
 | Bets & wagers | `create_bet`, `place_wager`, `close_bet_early`, `delete_bet` |
 | Money out | `resolve_bet`, `claim_daily_reward` |
+| Share previews (no session needed) | `team_preview_by_code` (UX-023), `bet_preview` (UX-024) |
 
 RLS is therefore no longer the Phase 3 first pass on the write side. Phases 5–6
 dropped the direct write policies and **revoked** the grants behind them from
@@ -112,17 +117,49 @@ because leaving a policy beside the RPC that replaced it would have been a
 second, weaker path to the same rows. SELECT policies are still Phase 3's,
 deliberately: membership-scoped reads are what `loadTeamData` relies on.
 
-**Still not built:**
+**Two functions are readable with no session at all, on purpose.**
+`team_preview_by_code` and `bet_preview` are granted to `anon` because their
+audience is a link unwrapper — Slack's, WhatsApp's, Twitter's — which carries no
+cookie. Holding the invite code or the bet id IS the authorization, and both
+return only what a preview card shows: no balances, no wagerer identities, no
+comments. Anything added to either function is published to whoever holds the
+link.
 
-- **Realtime (Phase 8).** No subscriptions exist; `apps/web` refetches on its own
-  after each mutation, so a teammate's new bet or wager needs a refresh.
-- **Analytics & flags (Phase 9).** `analytics_events` and `feature_flags` exist
-  and are empty — nothing reads or writes either table yet.
-- **The onboarding step (Phase 7.5).** Specced in the roadmap, not migrated:
-  `users.onboarded_at` and `users.profile_prefill` do not exist yet.
-- **Hosted anything (ARC-012).** Still gated by ARC-013 and outside the roadmap.
+**Realtime (Phase 8):** the publication carries `bets`, `wagers` and `comments`
+and must keep carrying only those — `team_members` and `transactions` would cost
+~450 messages per bet resolution and re-apply money the acting client already
+moved. Replica identity stays at the default. `agent-docs/design-realtime.md` §5
+is the binding rule set.
 
-**Known unverified:** Phase 7's exit criteria were proven at the database and
-PostgREST layers, but the two-real-accounts browser walkthrough — two signed-in
-users resolving a bet in the UI and balances surviving a restart — has never been
-driven. Worth doing before Phase 8 builds realtime on top of those write paths.
+**Analytics & flags (Phase 9):** both infra tables now have exactly one writer
+and one reader each.
+
+- `analytics_events` is written by `apps/web/src/lib/analytics.ts` and by nothing
+  else, with exactly two event families (ARC-017's cap, enforced by the
+  `ANALYTICS_EVENTS` constant in `packages/shared/src/infra.ts`). It has **no
+  SELECT policy for anyone** — reading is a Studio/`service_role` action, which
+  is what keeps a reporting surface from growing inside the app. The queries live
+  in `queries/arc-017-metrics.sql` and count DISTINCT actors, never rows.
+- `feature_flags` is read once per request by the root layout and handed to the
+  tree (`apps/web/src/lib/feature-flags.tsx`). Toggling a row in Studio changes
+  the app on the next load — verified by flipping `coming-soon-teasers` and
+  watching the chat teaser leave and return. Writes are `service_role` only, by
+  design: Studio IS the admin UI.
+
+**Still not built:** hosted anything (ARC-012) — gated by ARC-013 and outside the
+roadmap. That is the only `[mvp]` item left.
+
+**Verification note for agents.** Real local sessions need no owner accounts:
+`auth.admin.createUser({ email_confirm: true })` with the `SERVICE_ROLE_KEY`
+mints them outright, the genuine OTP path is drivable by calling
+`signInWithOtp` and reading the code from Mailpit
+(`http://127.0.0.1:54324/api/v1/search?query=to:…`), and the seeded fixtures all
+share the local dev password `slfakebets`, which the `token?grant_type=password`
+endpoint will exchange for a session without sending mail at all — the way to
+drive a signed-in browser without spending the OTP rate limit. Phase 9 drove
+headless Chrome over CDP directly (no Playwright/Puppeteer in this repo); Google
+OAuth remains the one flow that cannot be automated.
+
+**`[auth.rate_limit] email_sent = 2`** in `config.toml` is per hour and
+project-wide. A script that signs up a third account in the same hour silently
+receives no mail and looks like a broken auth page.

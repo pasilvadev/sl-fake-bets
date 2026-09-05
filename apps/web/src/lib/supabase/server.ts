@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { SessionUser } from "@/lib/session-user";
 
@@ -48,8 +49,12 @@ export async function createClient() {
  * round-trip per render once the local stack signs asymmetrically. The token
  * it reads has already been refreshed by src/proxy.ts for this navigation.
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
-  const supabase = await createClient();
+export async function getSessionUser(
+  client?: SupabaseClient,
+): Promise<SessionUser | null> {
+  // The root layout also reads feature flags on the same request (Phase 9), so
+  // it passes its client in rather than making a second one per render.
+  const supabase = client ?? (await createClient());
   const { data, error } = await supabase.auth.getClaims();
 
   if (error || !data?.claims?.sub) return null;

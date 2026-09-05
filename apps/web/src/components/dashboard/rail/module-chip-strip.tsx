@@ -5,6 +5,7 @@ import { CONFIG } from "@repo/shared";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { useTeam } from "@/lib/team-context";
+import { useFeatureFlag } from "@/lib/feature-flags";
 import { WalletModule } from "./wallet-module";
 import { StandingsModule } from "./standings-module";
 import { TeamModule } from "./team-module";
@@ -23,9 +24,15 @@ const SHEET_EYEBROWS: Record<SheetId, string> = {
  * Mobile/tablet (<1024px) replacement for the rail (design-dashboard.md §6):
  * a horizontal chip strip under the ticker. Each chip opens its module as a
  * bottom sheet via ModalShell, reusing the exact same module component.
+ *
+ * The chat chip reads the same `coming-soon-teasers` flag the rail does
+ * (ARC-016, roadmap Phase 9) — one flag, both breakpoints, because a toggle
+ * that hides a module on desktop and leaves it on mobile is a bug that only
+ * shows up on someone else's phone.
  */
 export function ModuleChipStrip() {
   const { team, balance, richest, currentUser } = useTeam();
+  const showTeasers = useFeatureFlag("coming-soon-teasers");
   const [active, setActive] = useState<SheetId | null>(null);
 
   const richestRankIndex = richest.findIndex((m) => m.userId === currentUser.id);
@@ -65,16 +72,18 @@ export function ModuleChipStrip() {
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActive("chat")}
-          className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
-        >
-          Chat
-          <span className="rounded-sm border border-border px-1.5 text-[10px] uppercase text-muted-foreground">
-            SOON
-          </span>
-        </button>
+        {showTeasers && (
+          <button
+            type="button"
+            onClick={() => setActive("chat")}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
+          >
+            Chat
+            <span className="rounded-sm border border-border px-1.5 text-[10px] uppercase text-muted-foreground">
+              SOON
+            </span>
+          </button>
+        )}
       </div>
 
       {active && (

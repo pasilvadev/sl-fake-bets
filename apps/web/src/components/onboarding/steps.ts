@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { trackOnboardingStep } from "@/lib/analytics";
 
 /**
- * Onboarding as discrete, named steps (UX-028) — roadmap Phase 7.5, task 7.
+ * Onboarding as discrete, named steps (UX-028) — roadmap Phase 7.5, task 7,
+ * instrumented by Phase 9, task 1.
  *
  * The order is decision §4.7: an account signs up, gets into a team (created or
  * joined), confirms its profile, and lands on the dashboard. Every one of those
@@ -11,12 +14,12 @@ import { useEffect } from "react";
  * in one place, which made "is onboarding structured as steps?" a question you
  * answered by reading four components and forming an opinion.
  *
- * **This module writes nothing.** ARC-017's instrumentation is Phase 9 task 1,
- * whose first line is "verify onboarding is structured as discrete steps" —
- * this is the thing that makes that verifiable rather than interpretive, and
- * `reachOnboardingStep` below is the single seam that phase inserts the
- * `analytics_events` insert into. Adding the write here would be Phase 9's work
- * done early and without its ARC-017 scope guard.
+ * Phase 9 verified exactly that and then replaced this module's no-op with the
+ * `analytics_events` insert it was reserved for — **the call sites did not
+ * move**, which was the point of building the seam a phase early. What is
+ * measured is *reaching* a step, so drop-off is the difference between two
+ * consecutive steps' distinct actors; the `signup` step is necessarily counted
+ * against an anonymous id, because no account exists while that screen is up.
  */
 
 export const ONBOARDING_STEPS = ["signup", "team", "profile", "dashboard"] as const;
@@ -31,15 +34,20 @@ export const ONBOARDING_STEP_DESCRIPTIONS: Record<OnboardingStep, string> = {
   dashboard: "Onboarding complete — the team dashboard (dashboard-page.tsx).",
 };
 
-/**
- * The last step this session reached. Read it in the console while walking the
- * flow; that is its whole job today. Phase 9 replaces the assignment with an
- * `analytics_events` insert and keeps the call sites exactly where they are.
- */
+/** The last step this session reached — kept for reading in the console. */
 let lastReached: OnboardingStep | null = null;
 
-export function reachOnboardingStep(step: OnboardingStep): void {
+/**
+ * The single seam. Writes one `analytics_events` row per step per identity per
+ * page session; `track` swallows every failure, so nothing here can keep a step
+ * from rendering.
+ */
+export function reachOnboardingStep(
+  step: OnboardingStep,
+  userId: string | null = null,
+): void {
   lastReached = step;
+  trackOnboardingStep(step, userId);
 }
 
 export function lastOnboardingStepReached(): OnboardingStep | null {
@@ -48,7 +56,13 @@ export function lastOnboardingStepReached(): OnboardingStep | null {
 
 /** Mark a step reached for as long as its screen is mounted. */
 export function useOnboardingStep(step: OnboardingStep): void {
+  // The auth identity, not the UX-022 profile: on the `signup` step there is
+  // no account yet and this is null, which is exactly the case the anonymous
+  // id exists for.
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   useEffect(() => {
-    reachOnboardingStep(step);
-  }, [step]);
+    reachOnboardingStep(step, userId);
+  }, [step, userId]);
 }

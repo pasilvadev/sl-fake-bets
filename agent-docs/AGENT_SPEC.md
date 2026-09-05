@@ -66,7 +66,7 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 - **UX-019 [future]** Team-wide global chat channel (separate from per-bet threads).
 
 **Identity, profile, platform**
-- **UX-020 [mvp]** Visual identity is black/white with jade as the sole brand accent, plus the ember destructive hue and 10 curated name colors as sanctioned exceptions (see `design-visual-identity.md` §0.1, §2.2–2.4); no other decorative brand colors; traffic-light red/green/yellow banned for state.
+- **UX-020 [mvp]** Visual identity is black/white with jade as the sole brand accent, plus the ember destructive hue, the rust bad-outcome hue, and 10 curated name colors as sanctioned exceptions (see `design-visual-identity.md` §0.1, §2.2–2.4); no other decorative brand colors. Traffic-light green/yellow and saturated stoplight red remain banned for state; the muted reddish-brown rust ramp (H=25, owner ruling 2026-09-05) is the one red-side hue, allowed only on bad *outcomes* (loss, bad odds, bottom of the leaderboard) and never as the sole signal.
 - **UX-021 [mvp]** Brand is "SL", never spelled out as "Soulless" anywhere in the product, no explanation given. `old-soulless-bg.jpeg` (project root) is the design ancestor: never use the file directly in-app; generate new icons inspired by it; the stylized "S" glyph may be reused 1:1.
 - **UX-022 [mvp]** Twitch-style profile customization: display name, name color (applied everywhere the name renders — chats and bets), platform icon set for avatar, plus custom image upload. All with defaults per UX-002.
 - **UX-025 [mvp]** Fully responsive web app; good mobile-browser experience. Native mobile is far-future (empty `mobile/` folder only).

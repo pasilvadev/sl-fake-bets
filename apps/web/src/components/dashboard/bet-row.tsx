@@ -32,7 +32,8 @@ function formatMultiplier(multiplier: number | null): string {
  * "2.40x". Rank dimming per §4.4 (leader N8, runner-up N7, rest N6 — N5 is
  * off-limits at text-sm, §2 contrast note). Resolved (§5.2): winner keeps the
  * jade "/" prefix + N8 600 on a jade-wash chip (§2.2 "positive chip bg");
- * losers recede chipless — N6 400, line-through odds, no prefix.
+ * losers recede chipless — rust 400, line-through odds, no prefix. Rust is the
+ * "bad odds" channel here; weight and line-through still carry it on their own.
  */
 function OptionLine({
   opt,
@@ -48,11 +49,13 @@ function OptionLine({
 
   const tone = isWinner
     ? "font-semibold text-text-strong"
-    : isLoser || rank >= 2
-      ? "text-muted-foreground"
-      : rank === 0
-        ? "text-text-strong"
-        : "text-foreground";
+    : isLoser
+      ? "text-negative"
+      : rank >= 2
+        ? "text-muted-foreground"
+        : rank === 0
+          ? "text-text-strong"
+          : "text-foreground";
 
   return (
     <span className="contents">

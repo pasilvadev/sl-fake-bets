@@ -6,7 +6,7 @@ import type { RankBadgeKind } from "@/lib/team-context";
 /**
  * Inline rank badge (§5.6): a slanted parallelogram tag, never a pill.
  * "1" jade fill/black text; "2"/"3" jade border/jade text; "top5" neutral
- * border/N6 "TOP 5"; "bottom5" mirrored skew, "\" prefix, N6 text.
+ * border/N6 "TOP 5"; "bottom5" mirrored skew, "\" prefix, rust border/text.
  */
 export function RankBadge({
   kind,
@@ -25,7 +25,9 @@ export function RankBadge({
       ? "bg-jade text-black"
       : kind === "2" || kind === "3"
         ? "border border-jade text-jade"
-        : "border border-border text-muted-foreground";
+        : mirrored
+          ? "border border-rust-border text-rust"
+          : "border border-border text-muted-foreground";
 
   return (
     <span
