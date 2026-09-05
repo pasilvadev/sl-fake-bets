@@ -118,7 +118,7 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 
 **Sizing:** ~10–12 files but the densest frontend phase (10 mutators, cascade + gating logic). A fresh session must **read Phase 1's `settlement.ts` and `permissions.ts` first** rather than re-derive their rules.
 
-### Phase 3 — Local backend bootstrap **[LOCAL BACKEND START — owner order required]**
+### Phase 3 — Local backend bootstrap ✅ COMPLETE (2026-09-05) **[LOCAL BACKEND START — owner order required]**
 
 **Goal:** execute the owner-gated transition (ARC-013; vision phase 1→2, ARC-011) at infrastructure level only: Supabase 100% local via CLI+Docker, FULL schema in one pass, RLS scoped to `permissions.ts` rules, storage bucket, local auth providers configured — so Phases 4–9 only add RPCs, tighten policies, and rewire UI against tables that already exist. **Do not run any command in this phase without the owner's separate, explicit, in-the-moment order.**
 
@@ -136,6 +136,16 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 - Seeded Postgres reproduces `mock-data.ts`'s teams/bets/wagers/users.
 - Manual RLS check: a non-leader cannot resolve a bet or inject coins into another member; a leader can. The avatars bucket accepts an upload in Studio under its policies.
 - `apps/web` still runs entirely on Phase 1/2 in-memory state, unaffected.
+
+**Execution notes (2026-09-05).** Owner gave the ARC-013 order for the vision 1→2 move; all seven tasks done and every exit criterion verified. Deviations and findings a later phase must know about:
+
+- **`team_bans` was added** beyond the roadmap's table list. `types.ts` names that exact table for this exact phase, and without it A-4's ban-blocks-rejoin (the only functional difference between kick and ban, DOM-031) has nowhere to persist — a schema migration in Phase 5, which "full schema in one pass" exists to prevent.
+- **`Team.inviteCode` became the `invite_codes` table**, as the roadmap's own table list implies. The scalar is reproduced by a partial unique index (one active row per team) and the shape now supports open decision #6 without redesign.
+- **Ids are `uuid`**, not `id.ts`'s prefixed strings: `public.users.id` must equal `auth.users.id`. TypeScript still sees `string`, so `types.ts` is unchanged — but Phase 6 must stop calling `generateId()` for anything the database now defaults.
+- **Two documented RLS departures** from this doc's one-line summary. `users` SELECT also covers teammates (own-row-only would make every wager, comment and leaderboard row unrenderable from Phase 5 on, since UX-022 renders names everywhere). `team_members` INSERT covers only the founder's own membership — RLS cannot verify possession of an invite code, so **Phase 5 must add a `join_team_with_code` SECURITY DEFINER RPC**; until it exists there is no join path at all.
+- **DOM-007's two-option floor is NOT enforced in the schema.** It is a row-count invariant, which no CHECK can express. `validateBetDraft` owns it today; **Phase 6's createBet RPC must enforce it server-side.**
+- **Trap, cost one silent authorization hole:** a write-gating trigger must never be `SECURITY DEFINER`. Inside a definer function `current_user` is `postgres`, so `app.is_service_context()` returns true for every caller and the trigger disarms itself — this let a moderator inject coins (DOM-024) until the exit check caught it. Phases 5–7 add more such triggers: keep them SECURITY INVOKER, and let the `app.*` helpers they call be the definers.
+- **Sizing was accurate on files, wrong on friction.** The Docker/CLI risk (#2) landed on the environment instead: macOS 12 has no Homebrew bottles, Colima is a dead end there (Lima's `vz` needs macOS 13+, and qemu has no Monterey bottle), and the resolution was Docker Desktop 4.41.2 — the last build supporting this OS.
 
 **Sizing:** ~13–15 files, almost entirely SQL/config — which is what makes a full-schema pass safe in one session. Expect Docker/CLI environment friction to consume real time despite the modest file count.
 

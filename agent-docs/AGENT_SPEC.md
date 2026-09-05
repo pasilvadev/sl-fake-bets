@@ -172,4 +172,8 @@ Consolidated list agents should surface when relevant, not block on:
 
 ## 7. Current dev phase
 
-**Phase 1 (ARC-010): frontend-only with mock data.** No DB, no backend. Do not leave this phase without explicit owner instruction (ARC-013).
+**Phase 2 (ARC-011): fully local backend.** Entered 2026-09-05 on the owner's explicit ARC-013 order for the 1→2 move. Supabase runs 100% on the developer machine via CLI + Docker: full schema, RLS, storage and local auth providers are in place (`supabase/`), seeded from `mock-data.ts`.
+
+The frontend has NOT been migrated onto it yet — `apps/web` still runs on in-memory state, and there are no RPCs. That migration is roadmap Phases 4–9 (`plan-mvp-roadmap.md`).
+
+Phase 3 (ARC-012, hosted backend) requires its own separate, explicit, in-the-moment owner order. Finishing Phase 2 does not authorize it.
