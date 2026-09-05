@@ -14,6 +14,14 @@ supabase status     # URLs and keys
 supabase stop       # tears the stack down, keeping the database
 ```
 
+Run them **from the project root**: the CLI locates the stack by reading
+`config.toml` and derives the project id from the folder name, which is why every
+container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
+(`/usr/local/bin/supabase`), so no `npx` is needed.
+
+**Runbook (start/stop, the destructive flag, ports, a normal session):**
+<https://claude.ai/code/artifact/f1ca0d3b-957b-474a-b292-a3fc87428a78>
+
 | Service | URL |
 |---|---|
 | API / PostgREST | http://127.0.0.1:54321 |
@@ -61,6 +69,17 @@ supabase stop       # tears the stack down, keeping the database
   nina, guiz, lele, pinto, xis), password `slfakebets`. Dev only. The product's
   real email flavor is OTP; the password exists so you can jump straight into a
   specific member's session while testing policies.
+- **`supabase stop --no-backup` deletes the database volume** — teams, bets and
+  your own OAuth account. Plain `supabase stop` keeps everything (`backup: true`
+  is the default); `supabase db reset` wipes and re-seeds by design. After any
+  wipe, a live browser session points at a `public.users` row that no longer
+  exists and team creation fails on `teams_leader_id_fkey` until you sign in
+  again.
+- **Don't stop the containers one at a time in Docker Desktop.** `kong` and
+  `vector` have restart policies and the rest have dependent healthchecks, so
+  stopping `db` alone makes half the stack thrash and restart. `supabase stop`
+  goes down in dependency order; the Docker-native equivalent is
+  `docker stop $(docker ps -q --filter name=sl-fake-bets)`.
 - **Google OAuth** needs `supabase/.env` present. Regenerate it from the
   `client_secret_*.json` in the repo root if it goes missing.
 
