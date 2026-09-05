@@ -1,22 +1,139 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
-import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
+import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
+
+/** Seconds before "Resend code" re-arms — a nudge, not a security control. */
+const RESEND_COOLDOWN_SECONDS = 30;
+
+/** UX-003: the lowest-friction check that still catches a typo'd address. */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type Pending = "none" | "google" | "request" | "verify" | "resend";
 
 /**
- * Fake auth screen (Phase 1, design-visual-identity.md §9 checklist): a
- * left-aligned wordmark lockup over a hard-black hero, the brand slash as a
- * compositional divider (banned-list #10 — no centered blob), minimal-field
- * card on the right. Every button is fake — Google and Verify sign in
- * immediately, nothing is validated, nothing is required.
+ * Auth screen (roadmap Phase 4 — real Supabase sessions behind the Phase 1
+ * visual design, design-visual-identity.md §9 checklist): a left-aligned
+ * wordmark lockup over a hard-black hero, the brand slash as a compositional
+ * divider (banned-list #10 — no centered blob), minimal-field card on the
+ * right.
+ *
+ * Two flows, both real, both the lowest-friction option available (UX-003,
+ * ARC-006): email OTP — a 6-digit CODE, not a magic link (decision §4.1, see
+ * supabase/templates/magic_link.html for why) — and Google OAuth.
+ *
+ * The destination survives both. A logged-out visitor on a deep link is
+ * rendered here by AuthGated at their own URL, so the current pathname IS the
+ * destination unless an explicit `?next=` overrides it — the groundwork
+ * UX-012's invite links spend in Phase 5.
  */
 export function AuthPage() {
-  const { signIn } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
+
+  const destination = useMemo(() => {
+    const explicit = searchParams.get("next");
+    return explicit ? safeNextPath(explicit) : safeNextPath(pathname);
+  }, [searchParams, pathname]);
+
   const [step, setStep] = useState<"landing" | "otp">("landing");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [pending, setPending] = useState<Pending>("none");
+  const [notice, setNotice] = useState<string | null>(null);
+  // Seeded once from the callback route's `?auth_error=` (a failed OAuth round
+  // trip lands back here); every later value comes from an action below.
+  const [error, setError] = useState<string | null>(() =>
+    searchParams.get("auth_error"),
+  );
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
+
+  const sendCode = useCallback(
+    async (kind: "request" | "resend") => {
+      const address = email.trim();
+      if (!EMAIL_SHAPE.test(address)) {
+        setError("Enter a valid email address.");
+        return;
+      }
+
+      setError(null);
+      setNotice(null);
+      setPending(kind);
+      // No `emailRedirectTo`: the template renders {{ .Token }}, so there is
+      // no link to come back through — the code is verified on this screen.
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: address,
+        options: { shouldCreateUser: true },
+      });
+      setPending("none");
+
+      if (otpError) {
+        setError(otpError.message);
+        return;
+      }
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setStep("otp");
+      if (kind === "resend") setNotice("New code sent.");
+    },
+    [email, supabase],
+  );
+
+  const verifyCode = useCallback(async () => {
+    const token = code.trim();
+    if (token.length === 0) {
+      setError("Enter the code from your email.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setPending("verify");
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token,
+      type: "email",
+    });
+
+    if (verifyError) {
+      setPending("none");
+      setError(verifyError.message);
+      return;
+    }
+
+    // The browser client has written the session cookies; AuthProvider's
+    // listener swaps the tree over. `pending` stays set so the button cannot
+    // be pressed twice during the navigation.
+    router.replace(destination);
+    router.refresh();
+  }, [code, email, supabase, router, destination]);
+
+  const signInWithGoogle = useCallback(async () => {
+    setError(null);
+    setNotice(null);
+    setPending("google");
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: authCallbackUrl(window.location.origin, destination) },
+    });
+    // Success navigates away to Google, so this only runs on failure.
+    if (oauthError) {
+      setPending("none");
+      setError(oauthError.message);
+    }
+  }, [supabase, destination]);
 
   return (
     <div className="flex min-h-svh flex-col bg-background lg:flex-row">
@@ -49,17 +166,28 @@ export function AuthPage() {
           {step === "landing" ? (
             <LandingStep
               email={email}
+              pending={pending}
+              error={error}
               onEmailChange={setEmail}
-              onGoogle={signIn}
-              onContinue={() => setStep("otp")}
+              onGoogle={signInWithGoogle}
+              onContinue={() => sendCode("request")}
             />
           ) : (
             <OtpStep
               email={email}
               code={code}
+              pending={pending}
+              error={error}
+              notice={notice}
+              cooldown={cooldown}
               onCodeChange={setCode}
-              onBack={() => setStep("landing")}
-              onVerify={signIn}
+              onBack={() => {
+                setError(null);
+                setNotice(null);
+                setStep("landing");
+              }}
+              onVerify={verifyCode}
+              onResend={() => sendCode("resend")}
             />
           )}
         </div>
@@ -68,19 +196,62 @@ export function AuthPage() {
   );
 }
 
+/**
+ * Inline feedback, per design-visual-identity.md §5: a validation error is
+ * told by an ember ICON and an ember BORDER — body copy stays neutral, and
+ * there is no red error text anywhere in this system. Success takes the jade
+ * `/` glyph rather than a check mark, same rule from the other direction.
+ */
+function Message({ error, notice }: { error: string | null; notice?: string | null }) {
+  if (error) {
+    return (
+      <p
+        role="alert"
+        className="flex items-start gap-2 border-l-2 border-ember-border bg-surface-2 px-3 py-2 text-xs text-foreground"
+      >
+        <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0 text-ember" />
+        {error}
+      </p>
+    );
+  }
+  if (notice) {
+    return (
+      <p className="flex items-start gap-2 border-l-2 border-jade-border bg-surface-2 px-3 py-2 text-xs text-foreground">
+        <span aria-hidden className="font-mono font-semibold text-jade">
+          /
+        </span>
+        {notice}
+      </p>
+    );
+  }
+  return null;
+}
+
 function LandingStep({
   email,
+  pending,
+  error,
   onEmailChange,
   onGoogle,
   onContinue,
 }: {
   email: string;
+  pending: Pending;
+  error: string | null;
   onEmailChange: (value: string) => void;
   onGoogle: () => void;
   onContinue: () => void;
 }) {
+  const busy = pending !== "none";
+
   return (
-    <div className="flex flex-col gap-6">
+    <form
+      className="flex flex-col gap-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onContinue();
+      }}
+    >
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-text-strong">Sign in to SL</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -91,10 +262,11 @@ function LandingStep({
       <Button
         type="button"
         variant="outline"
+        disabled={busy}
         onClick={onGoogle}
         className="h-10 w-full justify-center rounded-sm"
       >
-        Continue with Google
+        {pending === "google" ? "Redirecting…" : "Continue with Google"}
       </Button>
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -113,7 +285,9 @@ function LandingStep({
           </label>
           <input
             id="email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(e) => onEmailChange(e.target.value)}
             placeholder="you@example.com"
@@ -121,33 +295,53 @@ function LandingStep({
           />
         </div>
 
+        <Message error={error} />
+
         <Button
-          type="button"
-          onClick={onContinue}
+          type="submit"
+          disabled={busy}
           className="h-10 w-full cut-sm justify-center rounded-none font-semibold uppercase hover:bg-primary hover:brightness-110 active:brightness-95"
         >
-          Continue with email
+          {pending === "request" ? "Sending code…" : "Continue with email"}
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 
 function OtpStep({
   email,
   code,
+  pending,
+  error,
+  notice,
+  cooldown,
   onCodeChange,
   onBack,
   onVerify,
+  onResend,
 }: {
   email: string;
   code: string;
+  pending: Pending;
+  error: string | null;
+  notice: string | null;
+  cooldown: number;
   onCodeChange: (value: string) => void;
   onBack: () => void;
   onVerify: () => void;
+  onResend: () => void;
 }) {
+  const busy = pending !== "none";
+
   return (
-    <div className="flex flex-col gap-6">
+    <form
+      className="flex flex-col gap-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onVerify();
+      }}
+    >
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-text-strong">Enter your code</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -164,27 +358,34 @@ function OtpStep({
         </label>
         <input
           id="otp"
+          name="otp"
           inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
           maxLength={6}
           value={code}
-          onChange={(e) => onCodeChange(e.target.value)}
+          // Digits only: pasting the code out of a mail client drags spaces in.
+          onChange={(e) => onCodeChange(e.target.value.replace(/\D/g, ""))}
           placeholder="000000"
           className="h-12 w-full rounded-sm border border-border bg-surface-1 px-3 text-center font-mono text-2xl font-semibold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-jade focus:ring-1 focus:ring-jade/40"
         />
       </div>
 
+      <Message error={error} notice={notice} />
+
       <Button
-        type="button"
-        onClick={onVerify}
+        type="submit"
+        disabled={busy}
         className="h-10 w-full cut-sm justify-center rounded-none font-semibold uppercase hover:bg-primary hover:brightness-110 active:brightness-95"
       >
-        Verify
+        {pending === "verify" ? "Verifying…" : "Verify"}
       </Button>
 
       <div className="flex items-center justify-between">
         <Button
           type="button"
           variant="ghost"
+          disabled={busy}
           onClick={onBack}
           className="h-8 px-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground"
         >
@@ -193,11 +394,13 @@ function OtpStep({
         <Button
           type="button"
           variant="ghost"
+          disabled={busy || cooldown > 0}
+          onClick={onResend}
           className="h-8 px-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground"
         >
-          Resend code
+          {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
         </Button>
       </div>
-    </div>
+    </form>
   );
 }

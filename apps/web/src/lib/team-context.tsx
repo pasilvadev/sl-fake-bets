@@ -63,9 +63,14 @@ import {
 } from "@repo/shared";
 
 /**
- * The signed-in identity for the frontend-only phases. Phase 4 replaces this
- * with a real Supabase session; every mutator below reads it from here so
- * there is exactly one place to swap.
+ * The identity every mutator below reads, kept deliberately on the fixture id.
+ *
+ * Phase 4 made AUTH real (useAuth().user is a genuine Supabase identity), but
+ * teams, bets and wagers are still the in-memory Phase 1/2 fixtures, whose
+ * rows are keyed by `u-01` — pointing this at the real session's uuid would
+ * simply detach the signed-in user from every fixture they appear in. The swap
+ * belongs to Phase 5, together with the move of this whole context onto
+ * Supabase queries. One place to change, exactly as before.
  */
 const currentUserId = mockCurrentUserId;
 

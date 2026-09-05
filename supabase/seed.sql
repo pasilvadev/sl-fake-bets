@@ -81,6 +81,10 @@ where u.email like '%@sl.local';
 -- --- users (UX-022 profiles) --------------------------------------------------------
 -- nameColor values are the 10 curated NAME_COLORS (config.ts), one per user, in
 -- palette order — same as the fixture.
+--
+-- UPSERT, not a plain insert: since Phase 4 the `on_auth_user_created` trigger
+-- has already created a randomly pre-filled profile for each auth row inserted
+-- above. The fixture values are the ones that must win, so this overwrites them.
 
 insert into public.users (id, display_name, name_color, avatar, created_at) values
   ('00000000-0000-4000-a000-000000000001', 'Rafa',   '#2C9297', 'icon-dice',   '2026-08-01T18:00:00Z'),
@@ -92,7 +96,12 @@ insert into public.users (id, display_name, name_color, avatar, created_at) valu
   ('00000000-0000-4000-a000-000000000007', 'Guiz',   '#B45CF5', 'icon-skull',  '2026-08-05T09:20:00Z'),
   ('00000000-0000-4000-a000-000000000008', 'Lelê',   '#DB36E3', 'icon-moon',   '2026-08-07T21:10:00Z'),
   ('00000000-0000-4000-a000-000000000009', 'Pinto',  '#EC35B3', 'icon-fish',   '2026-08-10T16:40:00Z'),
-  ('00000000-0000-4000-a000-000000000010', 'Xis',    '#F33483', 'icon-target', '2026-09-01T12:00:00Z');
+  ('00000000-0000-4000-a000-000000000010', 'Xis',    '#F33483', 'icon-target', '2026-09-01T12:00:00Z')
+on conflict (id) do update set
+  display_name = excluded.display_name,
+  name_color   = excluded.name_color,
+  avatar       = excluded.avatar,
+  created_at   = excluded.created_at;
 
 -- --- teams ---------------------------------------------------------------------------
 

@@ -1,8 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { SessionUser } from "@/lib/session-user";
 
 /**
- * Server-side Supabase client (roadmap Phase 3, task 7).
+ * Server-side Supabase client (Phase 3, task 7; carrying the session since
+ * Phase 4).
  *
  * Reads the session from cookies so Server Components run as the signed-in
  * user and RLS applies to them exactly as it does in the browser. Must be
@@ -26,13 +28,33 @@ export async function createClient() {
               cookieStore.set(name, value, options);
             }
           } catch {
-            // Server Components cannot set cookies. Harmless here: token
-            // refresh is the middleware's job once Phase 4 adds it.
+            // Server Components cannot set cookies — only Route Handlers and
+            // Server Actions can. Harmless: token refresh is src/proxy.ts's
+            // job, and the auth callback route is where a write actually has
+            // to land.
           }
         },
       },
     },
   );
+}
+
+/**
+ * The signed-in identity for the current request, or null (roadmap Phase 4).
+ *
+ * `getClaims()` rather than `getUser()`: it is the call `@supabase/ssr`
+ * documents for triggering lazy session init, and it answers the only
+ * question the root layout asks — who is this request for — without a
+ * round-trip per render once the local stack signs asymmetrically. The token
+ * it reads has already been refreshed by src/proxy.ts for this navigation.
+ */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
+
+  if (error || !data?.claims?.sub) return null;
+  const { sub, email } = data.claims;
+  return { id: sub, email: typeof email === "string" ? email : null };
 }
 
 export interface SmokeTestResult {

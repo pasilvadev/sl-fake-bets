@@ -86,7 +86,12 @@ export function ProfileMenu() {
 
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
 
-          <DropdownMenu.Item className={itemClass} onSelect={signOut}>
+          <DropdownMenu.Item
+            className={itemClass}
+            // signOut is async since Phase 4 (it clears the Supabase session);
+            // Radix's onSelect wants a void handler.
+            onSelect={() => void signOut()}
+          >
             Sign out
           </DropdownMenu.Item>
         </DropdownMenu.Content>

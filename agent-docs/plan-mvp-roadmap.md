@@ -149,7 +149,7 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 
 **Sizing:** ~13–15 files, almost entirely SQL/config — which is what makes a full-schema pass safe in one session. Expect Docker/CLI environment friction to consume real time despite the modest file count.
 
-### Phase 4 — Real auth
+### Phase 4 — Real auth ✅ COMPLETE (2026-09-05)
 
 **Goal:** replace the fake `sl:signed-in` boolean with real Supabase Auth sessions (email OTP + Google OAuth — flavor per decision §4.1) against Phase 3's config, giving the app a genuine per-device identity with long-lived sessions (ARC-007).
 
@@ -166,7 +166,20 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 - A `?next=` destination round-trips intact through both the OTP flow and the OAuth callback.
 - AppGate gates on the real session; Phase 1/2 flows still run on in-memory state.
 
-**Sizing:** ~7–9 files, auth-only. Kept separate from bootstrap so two friction-prone concerns (Docker infra, external auth providers) never share a session.
+**Execution notes (2026-09-05).** Google dev credentials were already in place from Phase 3 (`supabase/.env`), so the pre-flight cost nothing. All six tasks done; exit criteria verified end-to-end in a real browser (Chrome via puppeteer-core, installed OUTSIDE the repo — no new dependency was added to `apps/web`). What a later phase needs to know:
+
+- **`middleware.ts` is `src/proxy.ts`.** Next 16 deprecated and renamed the convention; same runtime, same matcher. It exists because ARC-007 is delivered by the refresh token, not by the access token — the access token stays at the 1-hour default (that decision was already made and documented in Phase 3's `config.toml`), so something must spend the refresh token before the server renders. Verified: the session survives a full browser process restart, and the auth cookie carries a ~400-day expiry.
+- **Deviation from task 4, deliberate:** the null-until-mount pattern is gone from the normal path. It existed because fake auth lived in `localStorage`, which the server cannot read; a cookie session CAN be read server-side, so the root layout resolves the user and hands it to `AuthProvider` as `initialUser`. First client render matches the server render — same hydration safety, minus the splash frame every visit paid (UX-011 reads better for it). `AppGate` keeps its `signedIn === null` branch as a fallback for a provider mounted without a server value.
+- **Profile rows are created by a database trigger,** not by the client — `20260905130000_auth_profile_bootstrap.sql`. The Phase 3 schema comment on `public.users` ("Created on signup in Phase 4") assigned this here, and it is not in the task list above. A trigger rather than a client insert because there are three signup paths (OTP, OAuth, `seed.sql`) and a client-side insert leaves a profile-less identity behind whenever the tab closes mid-flow. UX-002 defaults are generated in SQL (display name from Google's name or the email local part, a random `NAME_COLORS` entry, a random avatar icon). **This is the one place the color palette is duplicated outside `config.ts`** — as a default only; `validateProfileDraft` still owns the palette.
+  - Consequence for `seed.sql`: the trigger now fires for the 10 fixture identities too, so the fixture profile insert became an **upsert**. Verified that fixture values still win after `db reset`.
+  - The avatar defaults are the **8 ids the profile modal can actually render**, not the 10 in `mock-data.ts` — `icon-fish` and `icon-target` are in the fixtures but not in the picker, so defaulting to one would be a dead end. That fixture/picker mismatch predates this phase and was left alone.
+- **`safeNextPath` is the single open-redirect guard**, and the single `as Route` assertion in the auth code (`typedRoutes` cannot type a value that arrives from a query string). Verified: `?next=https://evil.example` and `?next=//evil.example` both collapse to `/`.
+- **The callback swallows Supabase's exchange error** and logs it instead. Its PKCE message is three lines of SSR-framework advice aimed at a developer; provider errors from Google are still surfaced verbatim because those are the ones a user can act on.
+- **Google OAuth is verified up to Google's own consent screen** — the app hands off to `accounts.google.com` with the right dev `client_id` and `next` intact through `redirect_to`. The final leg needs a human entering Google credentials and is the owner's to confirm.
+- **`?next=` round-trips through both flows** and, because `AuthGated` renders the auth screen at the visitor's own URL, a logged-out deep link needs no parameter at all — the pathname IS the destination. Verified end-to-end: logged out at `/bet/b-01` → OTP signup → back at `/bet/b-01`.
+- **`mockCurrentUserId` stays** in `team-context.tsx` on purpose. Auth is real, but teams/bets/wagers are still Phase 1/2 fixtures keyed to `u-01`; pointing it at the real uuid would detach the signed-in user from every fixture they appear in. Phase 5 swaps it together with the move onto Supabase queries.
+
+**Sizing:** ~7–9 files, auth-only. Kept separate from bootstrap so two friction-prone concerns (Docker infra, external auth providers) never share a session. *Actual: 13 files (11 in `apps/web`, one migration, one seed edit) — the extra spend was the profile-bootstrap trigger inherited from Phase 3, not auth itself.*
 
 ### Phase 5 — Team & membership persistence
 

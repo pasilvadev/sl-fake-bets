@@ -6,50 +6,89 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-
-const STORAGE_KEY = "sl:signed-in";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { toSessionUser, type SessionUser } from "@/lib/session-user";
 
 export interface AuthState {
-  /** null until the client mounts and localStorage is read (hydration-safe). */
+  /**
+   * null = not yet resolved. With the session read on the server and handed
+   * down as `initialUser`, that state no longer occurs during a normal page
+   * load — it is kept because AppGate must still render something safe for a
+   * provider mounted without a server-resolved value.
+   */
   signedIn: boolean | null;
-  signIn: () => void;
-  signOut: () => void;
+  /** The auth identity (NOT the UX-022 profile — see session-user.ts). */
+  user: SessionUser | null;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
 /**
- * Fake auth (Phase 1, frontend-only, no backend): a boolean persisted in
- * localStorage. `signedIn` starts null so the first client render matches
- * the server render — resolved in an effect after mount to dodge hydration
- * mismatch and the logged-out flash (UX-011).
+ * Real Supabase auth (roadmap Phase 4), replacing the `sl:signed-in`
+ * localStorage boolean of Phases 1–2.
+ *
+ * The session lives in cookies (that is the whole point of `@supabase/ssr`),
+ * so unlike the fake auth it can be read during the server render. The root
+ * layout does exactly that and passes the result in as `initialUser`, which
+ * is what makes the first client render match the server one — the same
+ * hydration-safety the null-until-mount pattern bought, minus the splash
+ * frame that pattern forced on every visit (UX-011: returning users land on
+ * their dashboard, not on a loading state).
+ *
+ * Session RENEWAL is not this component's job: `src/proxy.ts` refreshes the
+ * token on every navigation, server-side, which is what actually delivers
+ * ARC-007's "returning users rarely see a login screen".
  */
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+export function AuthProvider({
+  initialUser,
+  children,
+}: {
+  initialUser: SessionUser | null;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [user, setUser] = useState<SessionUser | null>(initialUser);
+
+  // The identity the server tree was rendered for. Compared against, rather
+  // than `user`, so the effect below can stay mounted once with no deps churn.
+  const renderedUserId = useRef<string | null>(initialUser?.id ?? null);
 
   useEffect(() => {
-    // Reading a browser-only API post-mount, same idiom as use-now.ts —
-    // needed to keep the server/first-client render null (no flash/mismatch).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSignedIn(window.localStorage.getItem(STORAGE_KEY) === "true");
-  }, []);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const next = toSessionUser(session?.user);
+      // TOKEN_REFRESHED fires on a timer for the same person; only an actual
+      // change of identity is worth a re-render, and re-fetching the server
+      // tree on every silent refresh would make the app flicker hourly.
+      if ((next?.id ?? null) === renderedUserId.current) return;
+      renderedUserId.current = next?.id ?? null;
+      setUser(next);
+      // Server Components rendered for the old identity (and the layout's own
+      // session read) are now stale.
+      router.refresh();
+    });
 
-  const signIn = useCallback(() => {
-    window.localStorage.setItem(STORAGE_KEY, "true");
-    setSignedIn(true);
-  }, []);
+    return () => subscription.unsubscribe();
+  }, [supabase, router]);
 
-  const signOut = useCallback(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setSignedIn(false);
-  }, []);
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    // onAuthStateChange handles state + refresh; this only guarantees the user
+    // is not left standing on a deep link they can no longer read (UX-011).
+    router.replace("/");
+  }, [supabase, router]);
 
   const value = useMemo<AuthState>(
-    () => ({ signedIn, signIn, signOut }),
-    [signedIn, signIn, signOut],
+    () => ({ signedIn: user !== null, user, signOut }),
+    [user, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
