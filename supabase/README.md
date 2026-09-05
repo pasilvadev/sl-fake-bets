@@ -44,6 +44,7 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
 | `migrations/20260905150000_bet_rpcs.sql` | Phase 6: `create_bet`, `place_wager`, `close_bet_early`, `delete_bet`; withdraws the direct client writes those replace |
 | `migrations/20260905160000_delete_bet_may_overdraw.sql` | Owner ruling: deleting a RESOLVED bet claws its payout back and may overdraw (the one negative-balance exception) |
 | `migrations/20260905170000_resolution_rewards_ledger.sql` | Phase 7: `resolve_bet`, `claim_daily_reward`, and the non-negative-balance trigger |
+| `migrations/20260905180000_onboarding_profile_step.sql` | Phase 7.5: `users.onboarded_at` / `users.profile_prefill`, the signup trigger that sets the prefill kind, and a backfill so existing accounts skip the first-run step |
 | `seed.sql` | `mock-data.ts` as Postgres rows; re-runs on every `db reset` |
 | `templates/magic_link.html` | Why email login is a CODE, not a link (decision §4.1) |
 | `.env` | Google OAuth dev credentials. Gitignored — never commit |
@@ -69,6 +70,11 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
   captures every outgoing message, so signing in with a real address and
   waiting for an OTP in a real inbox will wait forever. The OTP screen says so
   in dev. This is a property of the local stack, not a bug.
+- **The fixtures are stamped as already onboarded** (`seed.sql`, Phase 7.5), so
+  signing in as Rafa lands on the dashboard rather than on the first-run profile
+  step. To see that step, sign up a fresh account — a brand-new identity is the
+  only case it exists for, and every existing row was backfilled by its
+  migration.
 - **Seeded accounts** are `<name>@sl.local` (rafa, duds, pri, tomate, careca,
   nina, guiz, lele, pinto, xis), password `slfakebets`. Dev only. The product's
   real email flavor is OTP; the password exists so you can jump straight into a

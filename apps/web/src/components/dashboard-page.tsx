@@ -6,6 +6,7 @@ import { ModuleChipStrip } from "@/components/dashboard/rail/module-chip-strip";
 import { BetFeed } from "@/components/dashboard/bet-feed";
 import { PulseRail } from "@/components/dashboard/rail/pulse-rail";
 import { CreateBetFab } from "@/components/shell/create-bet-fab";
+import { useOnboardingStep } from "@/components/onboarding/steps";
 
 /**
  * Dashboard shell (design-dashboard.md §1): top bar + ticker (both full
@@ -14,6 +15,10 @@ import { CreateBetFab } from "@/components/shell/create-bet-fab";
  * point live in the root layout (app-providers.tsx).
  */
 export function DashboardPage() {
+  // Onboarding's last step (UX-028, roadmap Phase 7.5): getting here IS
+  // completing the funnel. Every gate above has already been passed.
+  useOnboardingStep("dashboard");
+
   return (
     <>
       <TopBar />

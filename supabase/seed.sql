@@ -103,6 +103,15 @@ on conflict (id) do update set
   avatar       = excluded.avatar,
   created_at   = excluded.created_at;
 
+-- The fixtures are established personas with hand-picked names and colors, so
+-- none of them is on its first run (roadmap Phase 7.5): signing in as Rafa to
+-- test something must land on the dashboard, not on "confirm your profile".
+-- To see the step, sign up a fresh account — that is the case it exists for.
+update public.users
+   set onboarded_at = created_at
+ where id between '00000000-0000-4000-a000-000000000001'
+               and '00000000-0000-4000-a000-000000000010';
+
 -- --- teams ---------------------------------------------------------------------------
 
 insert into public.teams (id, name, leader_id, access_mode, created_at) values

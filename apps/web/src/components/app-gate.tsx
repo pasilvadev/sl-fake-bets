@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { AuthPage } from "@/components/auth/auth-page";
 import { DashboardPage } from "@/components/dashboard-page";
 import { TeamGate } from "@/components/team-gate";
+import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { SMark } from "@/components/sl/s-mark";
 
 function Splash() {
@@ -44,15 +45,23 @@ export function AuthGated({ children }: { children: ReactNode }) {
 }
 
 /**
- * The dashboard's two gates, in the only order they work in: identity first
- * (Phase 4), then the team world that identity owns (Phase 5). TeamGate is
- * what makes `useTeam()` safe for everything below it.
+ * The dashboard's three gates, in the only order they work in: identity first
+ * (Phase 4), then the team world that identity owns (Phase 5), then the
+ * first-run profile step (Phase 7.5) — which needs both, and is why it is last.
+ * TeamGate is what makes `useTeam()` safe for everything below it.
+ *
+ * These are onboarding's four steps in the order decision §4.7 fixes them:
+ * signup (AuthGated) → team (TeamGate) → profile (OnboardingGate) → dashboard.
+ * Only this route stacks them; the bet-detail route deliberately stops at the
+ * first two, so a shared bet link lands on the bet (UX-012).
  */
 export function AppGate() {
   return (
     <AuthGated>
       <TeamGate>
-        <DashboardPage />
+        <OnboardingGate>
+          <DashboardPage />
+        </OnboardingGate>
       </TeamGate>
     </AuthGated>
   );

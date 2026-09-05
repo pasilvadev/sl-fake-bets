@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
 import { createClient } from "@/lib/supabase/client";
 import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
+import { useOnboardingStep } from "@/components/onboarding/steps";
 
 /** Seconds before "Resend code" re-arms — a nudge, not a security control. */
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -33,6 +34,11 @@ type Pending = "none" | "google" | "request" | "verify" | "resend";
  * UX-012's invite links spend in Phase 5.
  */
 export function AuthPage() {
+  // Onboarding's first step (UX-028, roadmap Phase 7.5) — see
+  // `components/onboarding/steps.ts` for why the marker is here and what
+  // Phase 9 does with it.
+  useOnboardingStep("signup");
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

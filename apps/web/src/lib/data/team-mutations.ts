@@ -212,11 +212,20 @@ export async function deleteTeam(
   return error ? asFailure(error) : ok;
 }
 
-/** UX-022 profile edit — own row only, per the `users` UPDATE policy. */
+/**
+ * UX-022 profile edit — own row only, per the `users` UPDATE policy.
+ *
+ * `onboardedAt` folds roadmap Phase 7.5's first-run stamp into the SAME update
+ * rather than firing a second write after it: saving from the first-run step is
+ * one decision by the user, and two round trips could leave the profile saved
+ * with the step still owed, which would show it again over a profile that is
+ * already correct.
+ */
 export async function updateProfile(
   supabase: Client,
   userId: string,
   draft: ProfileDraft,
+  options: { onboardedAt?: string } = {},
 ): Promise<MutationResult> {
   const { error } = await supabase
     .from("users")
@@ -224,7 +233,27 @@ export async function updateProfile(
       display_name: draft.displayName.trim(),
       name_color: draft.nameColor,
       avatar: draft.avatar,
+      ...(options.onboardedAt ? { onboarded_at: options.onboardedAt } : {}),
     })
+    .eq("id", userId);
+  return error ? asFailure(error) : ok;
+}
+
+/**
+ * Phase 7.5's skip: the first-run step is done and the profile is untouched.
+ * `onboarded_at` is a marker, not an audited timestamp, so the client's clock
+ * is good enough — PostgREST cannot call `now()` in an update value, and
+ * inventing an RPC whose whole body is `users_update_self` would add a function
+ * to say what the policy already says.
+ */
+export async function markOnboarded(
+  supabase: Client,
+  userId: string,
+  onboardedAt: string,
+): Promise<MutationResult> {
+  const { error } = await supabase
+    .from("users")
+    .update({ onboarded_at: onboardedAt })
     .eq("id", userId);
   return error ? asFailure(error) : ok;
 }

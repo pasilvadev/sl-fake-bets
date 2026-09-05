@@ -52,13 +52,19 @@ import {
 } from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { EMPTY_TEAM_DATA, loadTeamData, type TeamData } from "@/lib/data/team-data";
+import {
+  EMPTY_TEAM_DATA,
+  loadTeamData,
+  type OnboardingInfo,
+  type TeamData,
+} from "@/lib/data/team-data";
 import { reportConsistency } from "@/lib/data/consistency-guard";
 import * as db from "@/lib/data/team-mutations";
 import * as betDb from "@/lib/data/bet-mutations";
 import { fail, ok, type MutationResult } from "@/lib/data/result";
 
 export type { MutationResult } from "@/lib/data/result";
+export type { OnboardingInfo, ProfilePrefill } from "@/lib/data/team-data";
 
 /** Inline rank-badge kinds (design-visual-identity.md §5.6). */
 export type RankBadgeKind = "1" | "2" | "3" | "top5" | "bottom5";
@@ -138,6 +144,19 @@ export interface TeamState {
   leaveTeam: () => Promise<MutationResult>;
   updateProfile: (draft: ProfileDraft) => Promise<MutationResult>;
   injectCoins: (userId: string, amount: number) => Promise<MutationResult>;
+  /**
+   * Roadmap Phase 7.5. `onboardedAt === null` is the whole gate condition —
+   * the first-run profile step is owed — and `prefill` is what decides which of
+   * its two actions is primary (see `components/onboarding/profile-step.tsx`).
+   */
+  onboarding: OnboardingInfo;
+  /**
+   * Finish the first-run step. With a draft it saves the profile AND stamps
+   * `onboarded_at` in one update; with `null` it stamps only (the skip). Both
+   * complete the step — a screen that comes back until it is satisfied is
+   * nagware, and re-firing would corrupt the Phase 9 funnel.
+   */
+  completeOnboarding: (draft: ProfileDraft | null) => Promise<MutationResult>;
 }
 
 /**
@@ -185,6 +204,7 @@ type TeamDataAction =
   | { type: "update-team-access"; teamId: string; accessMode: TeamAccessMode }
   | { type: "delete-team"; teamId: string }
   | { type: "update-user"; user: User }
+  | { type: "complete-onboarding"; userId: string; onboardedAt: string }
   | { type: "add-comment"; comment: Comment }
   | { type: "add-transaction"; transaction: Transaction };
 
@@ -323,6 +343,20 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       return {
         ...data,
         users: data.users.map((u) => (u.id === action.user.id ? action.user : u)),
+      };
+    case "complete-onboarding":
+      // Phase 7.5: the gate reads this, so the step falls away without a
+      // refetch. Any profile fields saved alongside it arrive as their own
+      // "update-user" — this action carries the stamp and nothing else.
+      return {
+        ...data,
+        onboarding: {
+          ...data.onboarding,
+          [action.userId]: {
+            prefill: data.onboarding[action.userId]?.prefill ?? "derived",
+            onboardedAt: action.onboardedAt,
+          },
+        },
       };
     case "add-comment":
       return { ...data, comments: [...data.comments, action.comment] };
@@ -975,6 +1009,54 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [supabase, currentUserId, data.users],
   );
 
+  /**
+   * Roadmap Phase 7.5: the first-run profile step's one exit, both ways out.
+   *
+   * A draft saves and stamps in a single UPDATE (see db.updateProfile); `null`
+   * is the skip and stamps only, changing nothing about the profile. Both come
+   * back through the same local dispatch, so the gate falls away on the same
+   * render either way.
+   *
+   * A save that fails leaves `onboarded_at` NULL, which is correct: the step is
+   * still owed, and the user still has the skip. It must never trap them.
+   */
+  const completeOnboarding = useCallback(
+    async (draft: ProfileDraft | null): Promise<MutationResult> => {
+      if (!currentUserId) return fail("You must be signed in.");
+      const user = data.users.find((u) => u.id === currentUserId);
+      if (!user) return fail("Profile not found.");
+
+      const onboardedAt = new Date().toISOString();
+
+      if (draft) {
+        const firstIssue = validateProfileDraft(draft)[0];
+        if (firstIssue) return fail(firstIssue.message);
+
+        const result = await db.updateProfile(supabase, currentUserId, draft, {
+          onboardedAt,
+        });
+        if (!result.ok) return result;
+
+        dispatch({
+          type: "update-user",
+          user: {
+            ...user,
+            displayName: draft.displayName.trim(),
+            nameColor: draft.nameColor,
+            avatar: draft.avatar,
+          },
+        });
+      } else {
+        const result = await db.markOnboarded(supabase, currentUserId, onboardedAt);
+        if (!result.ok) return result;
+      }
+
+      dispatch({ type: "complete-onboarding", userId: currentUserId, onboardedAt });
+      return ok;
+    },
+    [supabase, currentUserId, data.users],
+  );
+
   /** DOM-024/025: leader-only credit, written as an "injection" ledger row. */
   const injectCoins = useCallback(
     async (userId: string, amount: number): Promise<MutationResult> => {
@@ -1130,6 +1212,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       leaveTeam,
       updateProfile,
       injectCoins,
+      // Same unreachable frame as the `currentUser` fallback above — a member
+      // of a team whose own profile row is missing contradicts the
+      // `team_members.user_id` foreign key. If it ever happened, showing a
+      // step that skips in one click is the harmless direction.
+      onboarding: data.onboarding[currentUserId] ?? {
+        onboardedAt: null,
+        prefill: "derived" as const,
+      },
+      completeOnboarding,
     };
   }, [
     data,
@@ -1152,6 +1243,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     leaveTeam,
     updateProfile,
     injectCoins,
+    completeOnboarding,
   ]);
 
   return (

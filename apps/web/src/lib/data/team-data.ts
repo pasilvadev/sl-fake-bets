@@ -32,8 +32,29 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /** The subset of supabase-js this module needs — untyped rows, mapped below. */
 type Client = SupabaseClient;
 
+/** How good the signup-time profile prefill was (roadmap Phase 7.5). */
+export type ProfilePrefill = "provider" | "derived";
+
+/**
+ * The first-run profile step's two facts about one account: whether the step
+ * is still owed (`onboardedAt === null`), and which of its two actions should
+ * be primary when it is.
+ *
+ * Deliberately NOT on `@repo/shared`'s `User`. Every teammate object in the app
+ * is a `User`, and these are a per-viewer concern about exactly one of them —
+ * putting them there would make every fixture in `mock-data.ts` carry an
+ * onboarding state it has no opinion about. They ride the `users` select, so
+ * they cost no extra round trip.
+ */
+export interface OnboardingInfo {
+  onboardedAt: string | null;
+  prefill: ProfilePrefill;
+}
+
 export interface TeamData {
   users: User[];
+  /** Keyed by user id — see OnboardingInfo for why this is not on `User`. */
+  onboarding: Record<string, OnboardingInfo>;
   teams: Team[];
   bets: Bet[];
   wagers: Wager[];
@@ -43,6 +64,7 @@ export interface TeamData {
 
 export const EMPTY_TEAM_DATA: TeamData = {
   users: [],
+  onboarding: {},
   teams: [],
   bets: [],
   wagers: [],
@@ -60,6 +82,10 @@ interface UserRow {
   display_name: string;
   name_color: string;
   avatar: string;
+  // Phase 7.5. Readable for teammates too (users_select_self_or_teammate is
+  // row-wide), which is harmless — only the current user's pair is ever read.
+  onboarded_at: string | null;
+  profile_prefill: ProfilePrefill;
 }
 
 interface TeamRow {
@@ -242,7 +268,9 @@ export async function loadTeamData(
 ): Promise<{ data: TeamData; error: string | null }> {
   const [users, teams, members, bans, codes, bets, wagers, transactions, comments] =
     await Promise.all([
-      supabase.from("users").select("id, display_name, name_color, avatar"),
+      supabase
+        .from("users")
+        .select("id, display_name, name_color, avatar, onboarded_at, profile_prefill"),
       supabase.from("teams").select("id, name, leader_id, access_mode, created_at"),
       supabase
         .from("team_members")
@@ -290,10 +318,18 @@ export async function loadTeamData(
   // reproduces the `Team.inviteCode` scalar without a choice to make.
   const codeByTeam = new Map(codeRows.map((row) => [row.team_id, row.code]));
 
+  const userRows = (users.data ?? []) as UserRow[];
+
   return {
     error: null,
     data: {
-      users: ((users.data ?? []) as UserRow[]).map(toUser),
+      users: userRows.map(toUser),
+      onboarding: Object.fromEntries(
+        userRows.map((row) => [
+          row.id,
+          { onboardedAt: row.onboarded_at, prefill: row.profile_prefill },
+        ]),
+      ),
       teams: ((teams.data ?? []) as TeamRow[]).map((row) => ({
         id: row.id,
         name: row.name,

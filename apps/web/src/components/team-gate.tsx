@@ -6,6 +6,7 @@ import { CONFIG, type TeamAccessMode } from "@repo/shared";
 import { useTeamSession } from "@/lib/team-context";
 import { useAuth } from "@/lib/auth-context";
 import { SMark } from "@/components/sl/s-mark";
+import { useOnboardingStep } from "@/components/onboarding/steps";
 
 /**
  * The team world is real Postgres data since roadmap Phase 5, so it has the
@@ -55,6 +56,11 @@ const fieldClass =
  * the same screen because a new arrival usually already has one of the two.
  */
 export function NoTeamsScreen() {
+  // Onboarding's second step (UX-028, roadmap Phase 7.5): signup → **team** →
+  // profile → dashboard. Marked on the screen rather than on the mutation
+  // because reaching the step is what the funnel measures drop-off from.
+  useOnboardingStep("team");
+
   const { createTeam, joinTeamByCode } = useTeamSession();
   const { signOut } = useAuth();
 
