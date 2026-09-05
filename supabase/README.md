@@ -40,6 +40,10 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
 | `migrations/20260905120400_rls_policies.sql` | Row Level Security for every table |
 | `migrations/20260905120500_storage_avatars.sql` | Avatars bucket + per-user folder policies (UX-022) |
 | `migrations/20260905130000_auth_profile_bootstrap.sql` | Phase 4: pre-filled `public.users` row for every new auth identity (UX-002) |
+| `migrations/20260905140000_team_rpcs.sql` | Phase 5: team/membership RPCs — create, join by code, kick/ban cascade, `inject_coins` |
+| `migrations/20260905150000_bet_rpcs.sql` | Phase 6: `create_bet`, `place_wager`, `close_bet_early`, `delete_bet`; withdraws the direct client writes those replace |
+| `migrations/20260905160000_delete_bet_may_overdraw.sql` | Owner ruling: deleting a RESOLVED bet claws its payout back and may overdraw (the one negative-balance exception) |
+| `migrations/20260905170000_resolution_rewards_ledger.sql` | Phase 7: `resolve_bet`, `claim_daily_reward`, and the non-negative-balance trigger |
 | `seed.sql` | `mock-data.ts` as Postgres rows; re-runs on every `db reset` |
 | `templates/magic_link.html` | Why email login is a CODE, not a link (decision §4.1) |
 | `.env` | Google OAuth dev credentials. Gitignored — never commit |
@@ -83,17 +87,36 @@ container is named `supabase_*_sl-fake-bets`. The CLI is installed globally
 - **Google OAuth** needs `supabase/.env` present. Regenerate it from the
   `client_secret_*.json` in the repo root if it goes missing.
 
-## Not built yet
+## State of the backend
 
-Phases 3–4 built schema, policies, connection, and **auth**. Sessions are real
-(email OTP + Google OAuth, `apps/web/src/lib/auth-context.tsx`, refreshed by
-`apps/web/src/proxy.ts`) and every new identity gets a profile row. But there
-are still **no RPCs**: joining by invite code, placing a wager, resolving a bet,
-the kick/ban cascade and the daily reward all remain in-memory in `apps/web`,
-and move to the database in roadmap Phases 5–9. RLS here is a deliberate first
-pass — roadmap risk #5 expects Phases 5–7 to tighten it against real access
-patterns.
+Roadmap **Phases 3–7 are done**, and every money path now lives in Postgres as a
+`SECURITY DEFINER` RPC — nothing mutates coins from the client any more:
 
-Phase 5's first blocker is unchanged: `team_members` INSERT covers only a
-founder's own membership, so **there is no join path** until the
-`join_team_with_code` SECURITY DEFINER RPC exists.
+| Path | RPC |
+|---|---|
+| Teams & membership | `create_team`, `team_preview_by_code`, `join_team_with_code`, `remove_membership` (kick/ban + wager cascade), `inject_coins` |
+| Bets & wagers | `create_bet`, `place_wager`, `close_bet_early`, `delete_bet` |
+| Money out | `resolve_bet`, `claim_daily_reward` |
+
+RLS is therefore no longer the Phase 3 first pass on the write side. Phases 5–6
+dropped the direct write policies and **revoked** the grants behind them from
+`authenticated` — all three writes on `bets` and `bet_options`, insert+delete on
+`wagers`, `team_members` and (insert only) `teams`, `team_bans`, `transactions` —
+because leaving a policy beside the RPC that replaced it would have been a
+second, weaker path to the same rows. SELECT policies are still Phase 3's,
+deliberately: membership-scoped reads are what `loadTeamData` relies on.
+
+**Still not built:**
+
+- **Realtime (Phase 8).** No subscriptions exist; `apps/web` refetches on its own
+  after each mutation, so a teammate's new bet or wager needs a refresh.
+- **Analytics & flags (Phase 9).** `analytics_events` and `feature_flags` exist
+  and are empty — nothing reads or writes either table yet.
+- **The onboarding step (Phase 7.5).** Specced in the roadmap, not migrated:
+  `users.onboarded_at` and `users.profile_prefill` do not exist yet.
+- **Hosted anything (ARC-012).** Still gated by ARC-013 and outside the roadmap.
+
+**Known unverified:** Phase 7's exit criteria were proven at the database and
+PostgREST layers, but the two-real-accounts browser walkthrough — two signed-in
+users resolving a bet in the UI and balances surviving a restart — has never been
+driven. Worth doing before Phase 8 builds realtime on top of those write paths.
