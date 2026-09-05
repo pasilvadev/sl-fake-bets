@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "cn";
 
 /**
- * Modal chrome (§5.4): flat black/75 backdrop (no blur, click closes),
- * Escape closes, floating N2 panel with a real border, desktop centered
- * (one cut-md corner) / mobile bottom sheet (mirrored cut-md, drag handle
- * bar). The one sanctioned box-shadow in the whole app lives here.
+ * Modal chrome (§5.4): flat black/75 backdrop (no blur; a click that both
+ * starts and ends on it closes), Escape closes, floating N2 panel with a real
+ * border, desktop centered (one cut-md corner) / mobile bottom sheet (mirrored
+ * cut-md, drag handle bar). The one sanctioned box-shadow in the whole app
+ * lives here.
  */
 export function ModalShell({
   eyebrow,
@@ -25,6 +26,12 @@ export function ModalShell({
   footer?: ReactNode;
   danger?: boolean;
 }) {
+  /**
+   * Where the pointer went DOWN, not where the click landed — see the comment
+   * on the backdrop's onClick.
+   */
+  const pressStartedOnBackdrop = useRef(false);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -41,7 +48,21 @@ export function ModalShell({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 sm:items-center sm:p-4"
-      onClick={onClose}
+      onPointerDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        // Both halves matter. `e.target === e.currentTarget` alone is not
+        // enough: a click event is dispatched on the nearest common ancestor
+        // of its press and release, so selecting text inside a field and
+        // dragging past the panel edge lands the click on the backdrop even
+        // though the gesture began inside the modal. That is how editing a
+        // display name — select the old one, overshoot by a few pixels —
+        // closed the modal and threw the edit away.
+        if (e.target === e.currentTarget && pressStartedOnBackdrop.current) {
+          onClose();
+        }
+      }}
     >
       <div
         className={cn(
@@ -49,7 +70,6 @@ export function ModalShell({
           "cut-md",
           "sm:max-w-lg",
         )}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* the cut line — 1px brand edge across the very top */}
         <div
