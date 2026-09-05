@@ -35,7 +35,13 @@ export interface User {
 export interface TeamMember {
   userId: string;
   role: TeamRole;
-  /** Coin balance is per-team, never global (DOM-013). */
+  /**
+   * Per-team, never global (DOM-013). Non-negative in normal play (DOM-014:
+   * wagers are capped at this value) with exactly one exception, per the owner
+   * ruling of 2026-09-05: deleting a RESOLVED bet claws its payout back, and
+   * that may leave a member who already spent it overdrawn. A leader injection
+   * is how they get out.
+   */
   coinBalance: number;
   /** Aggregated profit/loss standing (DOM-026) — feeds the "podium of the poor" (DOM-028). */
   profitLoss: number;

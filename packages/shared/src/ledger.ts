@@ -37,8 +37,14 @@ export function applyTransaction(input: ApplyTransactionInput): {
     );
   }
   const balanceAfter = input.member.coinBalance + input.amount;
-  if (balanceAfter < 0) {
-    throw new Error("Transaction would make the balance negative (DOM-014)");
+  // DOM-014's debit half. Deliberately not "balanceAfter < 0": since the owner
+  // ruling of 2026-09-05, deleting a resolved bet may leave a member
+  // overdrawn, and a CREDIT onto that balance — the leader's injection that
+  // digs them out (DOM-024) — is exactly what has to keep working even though
+  // its result is still negative. What may never happen is a DEBIT that takes
+  // a balance below zero.
+  if (input.amount < 0 && balanceAfter < 0) {
+    throw new Error("Transaction would take the balance below zero (DOM-014)");
   }
   return {
     member: { ...input.member, coinBalance: balanceAfter },

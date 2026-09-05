@@ -193,9 +193,11 @@ export function WagerModal({ betId }: { betId: string }) {
           )}
           {cap === 0 && acceptingWagers && (
             <p className="text-xs text-negative">
-              {balance === 0
-                ? "No coins left to wager."
-                : "You reached the per-user max for this bet."}
+              {balance < 0
+                ? "You're in the red — a leader injection has to clear it before you can bet."
+                : balance === 0
+                  ? "No coins left to wager."
+                  : "You reached the per-user max for this bet."}
             </p>
           )}
           {atCap && cap > 0 && (

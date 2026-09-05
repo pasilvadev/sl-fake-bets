@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "cn";
 import { CONFIG } from "@repo/shared";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 import { useModal } from "@/lib/modal-context";
@@ -20,10 +21,22 @@ export function WalletModule() {
         WALLET
       </p>
 
+      {/* A negative balance is reachable by exactly one route — a resolved bet
+          being deleted out from under its payout (owner ruling 2026-09-05) —
+          and it has to read as a debt, not as an ordinary number. */}
       <CoinAmount
         amount={balance}
-        className="text-3xl font-mono font-semibold text-text-strong"
+        className={cn(
+          "text-3xl font-mono font-semibold",
+          balance < 0 ? "text-negative" : "text-text-strong",
+        )}
       />
+      {balance < 0 && (
+        <p className="mt-1 text-xs text-negative">
+          Overdrawn — a deleted bet took back a payout. No wagers until a
+          leader injection clears it.
+        </p>
+      )}
 
       <p className="mt-2 text-xs text-muted-foreground">
         Daily login:{" "}
