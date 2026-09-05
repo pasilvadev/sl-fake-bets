@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./infra";
 export * from "./config";
 export * from "./pari-mutuel";
 export * from "./validation";

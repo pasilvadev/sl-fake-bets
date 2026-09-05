@@ -1,0 +1,24 @@
+<!--
+  Email sign-in template — SL Fake Bets.
+
+  This file is the whole reason email login is an OTP CODE rather than a magic
+  link (decision §4.1 on the open ARC-006 question). GoTrue sends this template
+  for signInWithOtp; a default template renders {{ .ConfirmationURL }} and the
+  user gets a link. Rendering {{ .Token }} instead is what turns the same flow
+  into a 6-digit code.
+
+  Why the code wins here (UX-001/UX-029, onboarding friction is a product
+  pillar): a magic link opened on a different device or browser than the one
+  that asked for it lands in a session that cannot continue, which is exactly
+  what happens when someone requests the link on a laptop and taps it in their
+  phone's mail app. A code is retyped wherever the user already is.
+
+  Copy stays English-only (UX-026) and says "SL", never spelled out (UX-021).
+-->
+<h2>Your SL sign-in code</h2>
+
+<p>Enter this code to finish signing in:</p>
+
+<p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">{{ .Token }}</p>
+
+<p>The code expires in one hour. If you didn't ask for it, ignore this email.</p>
