@@ -2,13 +2,13 @@
 
 import { useMemo, useRef, useState } from "react";
 import { cn } from "cn";
-import { Crown, Dice5, Flame, Ghost, Moon, Skull, Star, Zap } from "lucide-react";
 import { NAME_COLORS, validateProfileDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { createClient } from "@/lib/supabase/client";
 import { AVATAR_MAX_BYTES, uploadAvatar } from "@/lib/data/team-mutations";
 import { ModalShell } from "@/components/sl/modal-shell";
+import { AVATAR_ICONS } from "@/components/sl/avatar-icons";
 import { UserAvatar } from "@/components/sl/user-avatar";
 
 // Literal class names, not interpolated — Tailwind v4 only generates
@@ -27,17 +27,6 @@ const NAME_COLOR_SWATCHES = [
   "bg-name-color-10",
 ] as const;
 
-const AVATAR_ICONS = [
-  { id: "icon-dice", Icon: Dice5 },
-  { id: "icon-crown", Icon: Crown },
-  { id: "icon-ghost", Icon: Ghost },
-  { id: "icon-flame", Icon: Flame },
-  { id: "icon-bolt", Icon: Zap },
-  { id: "icon-star", Icon: Star },
-  { id: "icon-skull", Icon: Skull },
-  { id: "icon-moon", Icon: Moon },
-] as const;
-
 /**
  * UX-022: profile editor — display name, one of the 10 curated name colors
  * (§2.4), and an avatar: either a platform icon or, since roadmap Phase 5, a
@@ -47,7 +36,8 @@ const AVATAR_ICONS = [
  * The image is uploaded when it is PICKED, not when the form is saved, so the
  * value stored in `users.avatar` is always a URL that already resolves.
  * `user-avatar.tsx` discriminates icon ids from URLs, which is what lets one
- * column hold both.
+ * column hold both — and the icon set itself lives in `avatar-icons.ts`, so
+ * the grid below and every avatar on screen are reading one list.
  */
 export function ProfileModal() {
   const { close } = useModal();
