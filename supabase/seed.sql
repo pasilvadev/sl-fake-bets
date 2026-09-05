@@ -137,10 +137,17 @@ insert into public.team_members (team_id, user_id, role, coin_balance, profit_lo
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000009', 'member',    100,   0, '2026-08-10T16:40:00Z'),
   -- Newest member: the 100-coin grant minus the 20 still in flight on b-02 (w-07).
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000010', 'member',     80,   0, '2026-09-01T12:00:00Z'),
-  -- t-02 "Lanhouse Legends" (restricted)
-  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000002', 'member',    300, 200, '2026-07-15T20:00:00Z'),
-  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000001', 'moderator',  80, -20, '2026-07-15T20:10:00Z'),
-  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000007', 'member',    115,  15, '2026-07-16T10:00:00Z'),
+  -- t-02 "Lanhouse Legends" (restricted) and t-03 "Churrasco FC" exist to give
+  -- the team switcher somewhere to switch TO (UX-009/010); neither has a single
+  -- bet. Their balances are therefore their ledger and nothing else — grants
+  -- plus the daily rewards below — and their profit/loss is 0, because DOM-026
+  -- P/L is the realized outcome of resolved bets and there are none to realize.
+  -- (These rows used to carry 300/±200-style figures with no ledger and no bets
+  -- behind them; Phase 7's consistency guard is what found that, which is the
+  -- entire reason it exists.)
+  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000002', 'member',    110,   0, '2026-07-15T20:00:00Z'),
+  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000001', 'moderator', 100,   0, '2026-07-15T20:10:00Z'),
+  ('10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000007', 'member',    105,   0, '2026-07-16T10:00:00Z'),
   -- t-03 "Churrasco FC"
   ('10000000-0000-4000-a000-000000000003', '00000000-0000-4000-a000-000000000005', 'member',    100,   0, '2026-08-20T12:00:00Z'),
   ('10000000-0000-4000-a000-000000000003', '00000000-0000-4000-a000-000000000001', 'member',    100,   0, '2026-08-21T09:00:00Z');
@@ -235,6 +242,19 @@ insert into public.transactions (id, team_id, user_id, kind, amount, description
   ('60000000-0000-4000-a000-000000000014', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000002', 'daily-reward',       5, 'Daily login reward', 110, '2026-09-03T09:40:00Z'),
   ('60000000-0000-4000-a000-000000000015', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000009', 'injection',         20, 'Injected by Rafa (leader)', 100, '2026-09-03T14:00:00Z'),
   ('60000000-0000-4000-a000-000000000016', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000001', 'daily-reward',       5, 'Daily login reward',  45, '2026-09-04T07:30:00Z'),
-  ('60000000-0000-4000-a000-000000000017', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000006', 'daily-reward',       5, 'Daily login reward', 105, '2026-09-04T08:15:00Z');
+  ('60000000-0000-4000-a000-000000000017', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000006', 'daily-reward',       5, 'Daily login reward', 105, '2026-09-04T08:15:00Z'),
+  -- t-02 / t-03. Decision §4.2 is per MEMBERSHIP, not per user: u-01 belongs to
+  -- all three teams and is granted in all three, because DOM-013 balances are
+  -- per-team. With no bets in either team these rows ARE the balances above.
+  ('60000000-0000-4000-a000-000000000018', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000002', 'onboarding-grant', 100, 'Onboarding grant',   100, '2026-07-15T20:00:00Z'),
+  ('60000000-0000-4000-a000-000000000019', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000001', 'onboarding-grant', 100, 'Onboarding grant',   100, '2026-07-15T20:10:00Z'),
+  ('60000000-0000-4000-a000-000000000020', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000007', 'onboarding-grant', 100, 'Onboarding grant',   100, '2026-07-16T10:00:00Z'),
+  ('60000000-0000-4000-a000-000000000021', '10000000-0000-4000-a000-000000000003', '00000000-0000-4000-a000-000000000005', 'onboarding-grant', 100, 'Onboarding grant',   100, '2026-08-20T12:00:00Z'),
+  ('60000000-0000-4000-a000-000000000022', '10000000-0000-4000-a000-000000000003', '00000000-0000-4000-a000-000000000001', 'onboarding-grant', 100, 'Onboarding grant',   100, '2026-08-21T09:00:00Z'),
+  -- Two members who opened Lanhouse Legends on a day they were around for.
+  -- Per (user, team, day), so these coexist with u-02's t-01 rewards above.
+  ('60000000-0000-4000-a000-000000000023', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000002', 'daily-reward',       5, 'Daily login reward', 105, '2026-09-01T10:03:00Z'),
+  ('60000000-0000-4000-a000-000000000024', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000007', 'daily-reward',       5, 'Daily login reward', 105, '2026-09-02T19:20:00Z'),
+  ('60000000-0000-4000-a000-000000000025', '10000000-0000-4000-a000-000000000002', '00000000-0000-4000-a000-000000000002', 'daily-reward',       5, 'Daily login reward', 110, '2026-09-03T09:41:00Z');
 
 commit;

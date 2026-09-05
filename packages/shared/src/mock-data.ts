@@ -62,6 +62,12 @@ export const mockCurrentUserId = "u-01";
  * Extra teams the current user belongs to, so the team switcher (UX-009/010)
  * renders a real multi-team state. Only mockTeam has bets/wagers/comments;
  * the others exist to populate the switcher.
+ *
+ * Because they have no bets, their balances are their ledger and nothing else
+ * (the grants and rewards in `mockTransactions`) and their profitLoss is 0 —
+ * DOM-026 P/L is the realized outcome of resolved bets, and there are none
+ * here to realize. Kept in step with supabase/seed.sql, whose copy of these
+ * rows Phase 7's consistency guard checks.
  */
 export const mockTeams: Team[] = [
   mockTeam,
@@ -74,9 +80,9 @@ export const mockTeams: Team[] = [
     bannedUserIds: [],
     createdAt: "2026-07-15T20:00:00Z",
     members: [
-      { userId: "u-02", role: "member", coinBalance: 300, profitLoss: 200, joinedAt: "2026-07-15T20:00:00Z" },
-      { userId: "u-01", role: "moderator", coinBalance: 80, profitLoss: -20, joinedAt: "2026-07-15T20:10:00Z" },
-      { userId: "u-07", role: "member", coinBalance: 115, profitLoss: 15, joinedAt: "2026-07-16T10:00:00Z" },
+      { userId: "u-02", role: "member", coinBalance: 110, profitLoss: 0, joinedAt: "2026-07-15T20:00:00Z" },
+      { userId: "u-01", role: "moderator", coinBalance: 100, profitLoss: 0, joinedAt: "2026-07-15T20:10:00Z" },
+      { userId: "u-07", role: "member", coinBalance: 105, profitLoss: 0, joinedAt: "2026-07-16T10:00:00Z" },
     ],
   },
   {
@@ -257,6 +263,18 @@ export const mockTransactions: Transaction[] = [
   { id: "tx-15", teamId: "t-01", userId: "u-09", kind: "injection", amount: 20, description: "Injected by Rafa (leader)", balanceAfter: 100, createdAt: "2026-09-03T14:00:00Z" },
   { id: "tx-16", teamId: "t-01", userId: "u-01", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 45, createdAt: "2026-09-04T07:30:00Z" },
   { id: "tx-17", teamId: "t-01", userId: "u-06", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-04T08:15:00Z" },
+  // t-02 / t-03. The grant is per MEMBERSHIP (decision §4.2), not per user, so
+  // u-01 is granted in all three teams — balances are per-team (DOM-013).
+  // With no bets in either team, these rows ARE those teams' balances.
+  { id: "tx-18", teamId: "t-02", userId: "u-02", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-07-15T20:00:00Z" },
+  { id: "tx-19", teamId: "t-02", userId: "u-01", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-07-15T20:10:00Z" },
+  { id: "tx-20", teamId: "t-02", userId: "u-07", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-07-16T10:00:00Z" },
+  { id: "tx-21", teamId: "t-03", userId: "u-05", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-20T12:00:00Z" },
+  { id: "tx-22", teamId: "t-03", userId: "u-01", kind: "onboarding-grant", amount: 100, description: "Onboarding grant", balanceAfter: 100, createdAt: "2026-08-21T09:00:00Z" },
+  // Per (user, team, day), so these sit alongside the same users' t-01 rewards.
+  { id: "tx-23", teamId: "t-02", userId: "u-02", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-01T10:03:00Z" },
+  { id: "tx-24", teamId: "t-02", userId: "u-07", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 105, createdAt: "2026-09-02T19:20:00Z" },
+  { id: "tx-25", teamId: "t-02", userId: "u-02", kind: "daily-reward", amount: 5, description: "Daily login reward", balanceAfter: 110, createdAt: "2026-09-03T09:41:00Z" },
 ];
 
 /** Convenience lookup for rendering names/colors from a wager or comment. */

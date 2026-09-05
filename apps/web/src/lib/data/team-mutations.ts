@@ -138,6 +138,54 @@ export async function injectCoins(
   return error ? asFailure(error) : { ok: true, balanceAfter: data as number };
 }
 
+export interface DailyReward {
+  /** Its own uuid and the server's clock — the ledger row, as written. */
+  transactionId: string;
+  amount: number;
+  balanceAfter: number;
+  createdAt: string;
+}
+
+/**
+ * DOM-022 / A-2 / decision §4.3 (roadmap Phase 7): the unconditional daily
+ * reward, once per (user, team, calendar day in UTC), claimed lazily whenever
+ * a team loads. Calling it a second time is not an error and not a no-op to
+ * apologise for — it is the normal case, and it comes back with no reward.
+ *
+ * Idempotence is the database's, not this function's: the partial unique index
+ * on `transactions` is the arbiter, so two tabs opening at once still grant one
+ * reward.
+ */
+export async function claimDailyReward(
+  supabase: Client,
+  teamId: string,
+): Promise<MutationResult & { reward?: DailyReward }> {
+  const { data, error } = await supabase.rpc("claim_daily_reward", {
+    p_team_id: teamId,
+  });
+
+  if (error) return asFailure(error);
+
+  const row = data as {
+    granted: boolean;
+    transaction_id?: string;
+    amount?: number;
+    balance_after?: number;
+    created_at?: string;
+  };
+  if (!row.granted) return ok;
+
+  return {
+    ok: true,
+    reward: {
+      transactionId: row.transaction_id!,
+      amount: row.amount!,
+      balanceAfter: row.balance_after!,
+      createdAt: row.created_at!,
+    },
+  };
+}
+
 /** DOM-002: access mode — a one-row update the `teams` UPDATE policy covers. */
 export async function updateTeamSettings(
   supabase: Client,

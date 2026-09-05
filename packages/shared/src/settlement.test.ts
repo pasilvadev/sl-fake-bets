@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { applyTransaction, deriveProfitLoss } from "./ledger";
-import { mockBets, mockTeam, mockTransactions, mockWagers } from "./mock-data";
+import {
+  mockBets,
+  mockTeam,
+  mockTeams,
+  mockTransactions,
+  mockWagers,
+} from "./mock-data";
 import {
   removeMemberActiveWagers,
   settleBet,
@@ -124,6 +130,50 @@ describe("fixture regression — b-05/b-06 reproduce the hand-typed member field
         ledgerTotal - stakedTotal + settledCredits,
         `coinBalance of ${member.userId}`,
       ).toBe(member.coinBalance);
+    }
+  });
+
+  /**
+   * The same arithmetic as Phase 7's consistency guard
+   * (apps/web/src/lib/data/consistency-guard.ts), applied to EVERY fixture
+   * team rather than just the busy one. t-02 and t-03 have no bets, so this is
+   * really the check that their balances are backed by ledger rows and their
+   * P/L is zero — which is exactly what they were missing before Phase 7, and
+   * what supabase/seed.sql now mirrors row for row.
+   */
+  it("every fixture team's stored balances agree with the events behind them", () => {
+    for (const team of mockTeams) {
+      const teamBets = mockBets.filter((b) => b.teamId === team.id);
+      const betIds = new Set(teamBets.map((b) => b.id));
+      const teamWagers = mockWagers.filter((w) => betIds.has(w.betId));
+
+      for (const member of team.members) {
+        const ledger = mockTransactions
+          .filter((t) => t.teamId === team.id && t.userId === member.userId)
+          .reduce((s, t) => s + t.amount, 0);
+        const stakes = teamWagers
+          .filter((w) => w.userId === member.userId)
+          .reduce((s, w) => s + w.amount, 0);
+        const credits = teamBets.reduce(
+          (s, bet) =>
+            s +
+            (bet.state === "resolved" && bet.resolution
+              ? (settleBet(bet, teamWagers, bet.resolution).find(
+                  (d) => d.userId === member.userId,
+                )?.balanceDelta ?? 0)
+              : 0),
+          0,
+        );
+
+        expect(
+          ledger + credits - stakes,
+          `${team.id} coinBalance of ${member.userId}`,
+        ).toBe(member.coinBalance);
+        expect(
+          deriveProfitLoss(member.userId, teamBets, teamWagers),
+          `${team.id} profitLoss of ${member.userId}`,
+        ).toBe(member.profitLoss);
+      }
     }
   });
 });

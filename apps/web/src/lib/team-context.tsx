@@ -30,7 +30,6 @@ import {
   computeEffectiveState,
   generateId,
   removeMemberWagersInTeam,
-  settleBet,
   validateBetDraft,
   validateCommentBody,
   validateInjection,
@@ -54,6 +53,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { EMPTY_TEAM_DATA, loadTeamData, type TeamData } from "@/lib/data/team-data";
+import { reportConsistency } from "@/lib/data/consistency-guard";
 import * as db from "@/lib/data/team-mutations";
 import * as betDb from "@/lib/data/bet-mutations";
 import { fail, ok, type MutationResult } from "@/lib/data/result";
@@ -114,19 +114,11 @@ export interface TeamState {
   openBetCountFor: (teamId: string) => number;
   // --- mutators ---
   //
-  // Every mutator writes to Postgres first (its RPC and the policies behind
-  // it) and only then applies the same change locally, so what the screen
-  // shows is what the database accepted. That is now the rule with two
-  // exceptions, and both are the next phase's job rather than a style choice:
-  //
-  //  * resolveBet pays out — it has to move every wagerer's stored
-  //    coin_balance and profit_loss from settlement.ts's deltas.
-  //  * addComment writes to the `comments` table.
-  //
-  // Both are roadmap Phase 7 (tasks 1 and 4). Until then they LOAD from
-  // Postgres like everything else, but a change made through them lives for
-  // the session only — which is also why `reload` is not called after a bet
-  // mutation. The synchronous signature is what marks them.
+  // Every mutator writes to Postgres first (its RPC, or the policy behind its
+  // table write) and only then applies the same change locally, so what the
+  // screen shows is what the database accepted. Since roadmap Phase 7 that has
+  // no exceptions left: resolveBet pays out through `resolve_bet` and
+  // addComment inserts into `comments`, which is why both are async now.
   addBet: (draft: NewBetDraft) => Promise<MutationResult>;
   placeWager: (
     betId: string,
@@ -135,8 +127,8 @@ export interface TeamState {
   ) => Promise<MutationResult>;
   closeBetEarly: (betId: string) => Promise<MutationResult>;
   deleteBet: (betId: string) => Promise<MutationResult>;
-  resolveBet: (betId: string, resolution: BetResolution) => MutationResult;
-  addComment: (betId: string, body: string) => MutationResult;
+  resolveBet: (betId: string, resolution: BetResolution) => Promise<MutationResult>;
+  addComment: (betId: string, body: string) => Promise<MutationResult>;
   createTeam: (draft: TeamDraft) => Promise<MutationResult>;
   joinTeamByCode: (code: string) => Promise<MutationResult>;
   kickMember: (userId: string) => Promise<MutationResult>;
@@ -376,10 +368,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * between accounts, and after the two mutations that change which teams the
    * user belongs to (create/join a team) — those re-scope everything.
    *
-   * Every other mutation applies its own local change instead. Since Phase 6
-   * that is an ordinary avoid-a-round-trip decision for most of them, but it
-   * is still load-bearing for two: resolveBet and addComment are session-local
-   * until Phase 7, and a reload would discard them.
+   * Every other mutation applies its own local change instead — an ordinary
+   * avoid-a-round-trip decision now that Phase 7 has put the last two
+   * session-local mutators (resolveBet, addComment) on Postgres: a reload
+   * after any of them would return exactly what is already on screen.
    */
   const reload = useCallback(async () => {
     if (!currentUserId) {
@@ -420,6 +412,63 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   // user can no longer read.
   const team =
     myTeams.find((t) => t.id === currentTeamId) ?? myTeams[0] ?? null;
+
+  /**
+   * DOM-022 / A-2 / decision §4.3: the daily reward is claimed lazily, on team
+   * load, once per (user, team, calendar day). "Once" is the database's word —
+   * `claim_daily_reward` is idempotent against a unique index — so the ref
+   * below is only there to keep a re-render from issuing a round trip that is
+   * already known to return nothing.
+   *
+   * It runs per team rather than once per session because balances are
+   * per-team (DOM-013): switching to a team you have not opened today owes you
+   * that team's reward.
+   */
+  const claimedRewards = useRef(new Set<string>());
+  useEffect(() => {
+    if (!currentUserId || !team) return;
+    const key = `${currentUserId}:${team.id}`;
+    if (claimedRewards.current.has(key)) return;
+    claimedRewards.current.add(key);
+
+    const teamId = team.id;
+    void (async () => {
+      const result = await db.claimDailyReward(supabase, teamId);
+      // A failure here is not worth a visible error: the reward is a gift, and
+      // the next load asks again. Let the ref forget so it does.
+      if (!result.ok) {
+        claimedRewards.current.delete(key);
+        return;
+      }
+      if (!result.reward) return;
+      dispatch({
+        type: "add-transaction",
+        transaction: {
+          id: result.reward.transactionId,
+          teamId,
+          userId: currentUserId,
+          kind: "daily-reward",
+          amount: result.reward.amount,
+          description: "Daily login reward",
+          balanceAfter: result.reward.balanceAfter,
+          createdAt: result.reward.createdAt,
+        },
+      });
+    })();
+  }, [supabase, currentUserId, team]);
+
+  /**
+   * The consistency guard (Phase 7, task 3). Stored balances are the model
+   * (decision §4.6), so nothing structurally forces them to match the events
+   * behind them; in development this recomputes what they ought to be and
+   * complains when they do not. Keyed on `data` rather than on the load, so it
+   * covers the local patches every mutator applies as well as what Postgres
+   * returned.
+   */
+  useEffect(() => {
+    if (status !== "ready" || !currentUserId) return;
+    reportConsistency(data, currentUserId);
+  }, [data, status, currentUserId]);
 
   const requireContext = useCallback(
     (): { team: Team; userId: string } | null =>
@@ -579,8 +628,21 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [supabase, data.bets, data.teams, currentUserId],
   );
 
+  /**
+   * DOM-016/018/019: the payout, for real (roadmap Phase 7). `resolve_bet`
+   * moves the state, the resolution columns and every wagerer's stored balance
+   * and P/L in one transaction, and hands back the deltas it applied — the
+   * same SQL twin of settleBet that `delete_bet` would later unwind, so the
+   * two can never disagree. No ledger rows: resolution is not a transfer
+   * (decision §4.6).
+   *
+   * The stored state may still read 'open' for a bet whose closes_at has
+   * passed — nothing persists that transition on its own — which is why the
+   * gate below is computeEffectiveState and not `bet.state`. The RPC writes
+   * the missing open→closed step itself before resolving.
+   */
   const resolveBet = useCallback(
-    (betId: string, resolution: BetResolution): MutationResult => {
+    async (betId: string, resolution: BetResolution): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
@@ -602,16 +664,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       ) {
         return fail("Pick one of the bet's options as the winner.");
       }
+
+      const result = await betDb.resolveBet(supabase, { betId: bet.id, resolution });
+      if (!result.ok) return result;
+
       dispatch({
         type: "resolve-bet",
         teamId: bet.teamId,
         betId: bet.id,
         resolution,
-        deltas: settleBet(bet, data.wagers, resolution),
+        deltas: result.deltas ?? [],
       });
       return ok;
     },
-    [data.bets, data.teams, data.wagers, currentUserId],
+    [supabase, data.bets, data.teams, currentUserId],
   );
 
   /**
@@ -644,9 +710,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [supabase, data.bets, data.teams, currentUserId],
   );
 
-  /** UX-018 + DOM-030: any member of the bet's team, no content filtering. */
+  /**
+   * UX-018 + DOM-030: any member of the bet's team, no content filtering.
+   * Persisted since roadmap Phase 7 — a plain insert, because
+   * `comments_insert_own` already states the whole rule and DOM-030 rules out
+   * the moderation surface that would justify an RPC. The id and timestamp
+   * come back from the row so the thread does not re-sort on the next reload.
+   */
   const addComment = useCallback(
-    (betId: string, body: string): MutationResult => {
+    async (betId: string, body: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
@@ -656,19 +728,28 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const firstIssue = validateCommentBody(body)[0];
       if (firstIssue) return fail(firstIssue.message);
 
+      const result = await betDb.addComment(supabase, {
+        betId: bet.id,
+        userId: currentUserId,
+        body: body.trim(),
+      });
+      if (!result.ok || !result.comment) {
+        return result.ok ? fail("Could not post the comment.") : result;
+      }
+
       dispatch({
         type: "add-comment",
         comment: {
-          id: generateId("c"),
+          id: result.comment.id,
           betId: bet.id,
           userId: currentUserId,
           body: body.trim(),
-          createdAt: new Date().toISOString(),
+          createdAt: result.comment.createdAt,
         },
       });
       return ok;
     },
-    [data.bets, data.teams, currentUserId],
+    [supabase, data.bets, data.teams, currentUserId],
   );
 
   // --- team lifecycle: real Postgres writes (roadmap Phase 5) ---

@@ -92,7 +92,12 @@ export function StandingsModule() {
   const [tab, setTab] = useState<Tab>("richest");
 
   const list = (tab === "richest" ? richest : poorest).slice(0, 5);
-  const allSolvent = tab === "poorest" && poorest.every((m) => m.profitLoss === 0);
+  // DOM-028's board is about LOSSES, so "solvent" is nobody in the red — the
+  // same test the full modal uses. (It read `=== 0` while the modal read
+  // `>= 0`, which only diverged once real resolutions started producing
+  // winners: one member up, everyone else flat, and the two surfaces
+  // disagreed about whether there was a podium at all.)
+  const allSolvent = tab === "poorest" && poorest.every((m) => m.profitLoss >= 0);
 
   return (
     <section className="rounded-sm border border-border bg-surface-1 p-4">

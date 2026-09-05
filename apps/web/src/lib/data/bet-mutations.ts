@@ -1,15 +1,19 @@
-import type { SettlementDelta } from "@repo/shared";
+import type { BetResolution, SettlementDelta } from "@repo/shared";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { fail, type MutationResult } from "./result";
 
 /**
- * The bet & wager write layer (roadmap Phase 6).
+ * The bet & wager write layer (roadmap Phase 6, extended in Phase 7).
  *
- * Every function here is one call to a SECURITY DEFINER RPC from
- * `20260905150000_bet_rpcs.sql` — none of these tables accept a direct client
- * write any more, and that file's header says why for each. Unlike the team
- * layer (team-mutations.ts), there is no "stays a plain table write" half: a
- * bet is never one row, and a wager always moves money.
+ * Almost every function here is one call to a SECURITY DEFINER RPC from
+ * `20260905150000_bet_rpcs.sql` or `20260905170000_resolution_rewards_ledger.sql`
+ * — the bet, option and wager tables accept no direct client write at all, and
+ * those files' headers say why for each. A bet is never one row, and anything
+ * touching a wager moves money.
+ *
+ * `addComment` is the single exception, for the reason team-mutations.ts keeps
+ * a plain-table-write half: one row, no money, and a policy that already states
+ * the whole rule.
  *
  * The RPCs return the values the client cannot predict — database-generated
  * ids, the server's clock, the deltas a delete actually applied — so
@@ -151,4 +155,64 @@ export async function deleteBet(
       profitLossDelta: row.profit_loss_delta,
     })),
   };
+}
+
+/**
+ * DOM-016/018/019 + DOM-012. The returned deltas are the payouts (or void
+ * refunds) Postgres actually applied — the SQL twin of `settleBet`, the same
+ * one `delete_bet` later unwinds — so what the screen shows is what the
+ * database wrote rather than a second, local computation of it.
+ *
+ * Per decision §4.6 this produces no ledger rows: resolution moves stored
+ * balances and realized P/L, and is not a transfer.
+ */
+export async function resolveBet(
+  supabase: Client,
+  input: { betId: string; resolution: BetResolution },
+): Promise<MutationResult & { deltas?: SettlementDelta[] }> {
+  const { data, error } = await supabase.rpc("resolve_bet", {
+    p_bet_id: input.betId,
+    p_kind: input.resolution.kind,
+    p_winning_option_id:
+      input.resolution.kind === "winner" ? input.resolution.winningOptionId : null,
+  });
+
+  if (error) return asFailure(error);
+
+  const rows = (data ?? []) as {
+    user_id: string;
+    balance_delta: number;
+    profit_loss_delta: number;
+  }[];
+  return {
+    ok: true,
+    deltas: rows.map((row) => ({
+      userId: row.user_id,
+      balanceDelta: row.balance_delta,
+      profitLossDelta: row.profit_loss_delta,
+    })),
+  };
+}
+
+/**
+ * UX-018 + DOM-030. The one write in this file that is NOT an RPC: a comment
+ * is a single row, moves no money, and `comments_insert_own` (Phase 3) already
+ * states the whole rule — membership of the bet's team, and authorship pinned
+ * to the caller. DOM-030 rules out the moderation surface that would be the
+ * only other reason to funnel it through a function.
+ */
+export async function addComment(
+  supabase: Client,
+  input: { betId: string; userId: string; body: string },
+): Promise<MutationResult & { comment?: { id: string; createdAt: string } }> {
+  const { data, error } = await supabase
+    .from("comments")
+    .insert({ bet_id: input.betId, user_id: input.userId, body: input.body })
+    .select("id, created_at")
+    .single();
+
+  if (error) return asFailure(error);
+
+  const row = data as { id: string; created_at: string };
+  return { ok: true, comment: { id: row.id, createdAt: row.created_at } };
 }

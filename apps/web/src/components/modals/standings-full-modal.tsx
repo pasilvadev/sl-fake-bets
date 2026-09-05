@@ -76,10 +76,14 @@ export function StandingsFullModal() {
                     className={cn(
                       "w-8 shrink-0 text-center font-mono font-semibold tabular-nums",
                       rankSize(rank),
-                      isRichestTop
-                        ? "text-jade"
-                        : isPoorestTop
-                          ? "text-muted-foreground"
+                      // §5.6: the poor podium is mirrored SHAPE, never a
+                      // different hue — its digits stay muted at every rank
+                      // and only size carries the ranking. Jade and full-white
+                      // digits belong to the richest board alone.
+                      tab === "poorest"
+                        ? "text-muted-foreground"
+                        : isRichestTop
+                          ? "text-jade"
                           : rank <= 3
                             ? "text-text-strong"
                             : "text-muted-foreground",

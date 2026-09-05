@@ -36,7 +36,8 @@ const eyebrowClass =
  * and the moderation controls — early close (DOM-011), resolve (DOM-018/019)
  * and hard delete (DOM-033/034) — gated through packages/shared
  * permissions.ts, with the same rules enforced again by the RPCs behind them.
- * Resolve is the one control still writing session-local state (Phase 7).
+ * Since roadmap Phase 7 every one of them — resolve and the comment thread
+ * included — is a real Postgres write.
  */
 export function BetDetailPage({ betId }: { betId: string }) {
   return (
@@ -289,16 +290,22 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
   const now = useNow();
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const thread = comments
     .filter((c) => c.betId === betId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const canSubmit = canPost && validateCommentBody(body).length === 0;
+  const canSubmit = canPost && !pending && validateCommentBody(body).length === 0;
 
-  function submit(e: React.FormEvent) {
+  // Async since roadmap Phase 7: the comment is a row in `comments` now, and
+  // the input stays filled until the insert is accepted so a failed post never
+  // silently eats what someone typed.
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    const result = addComment(betId, body);
+    setPending(true);
+    const result = await addComment(betId, body);
+    setPending(false);
     if (result.ok) {
       setBody("");
       setError(null);
@@ -336,7 +343,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
       )}
 
       <form
-        onSubmit={submit}
+        onSubmit={(e) => void submit(e)}
         className="mt-2 flex items-center gap-2 border-t border-border bg-surface-1 pt-2"
       >
         <input
@@ -493,15 +500,24 @@ function ResolvePanel({ bet }: { bet: Bet }) {
   const { resolveBet } = useTeam();
   const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  function confirm() {
-    if (!choice) return;
+  // Async since roadmap Phase 7: `resolve_bet` writes the resolution AND every
+  // wagerer's balance and P/L in one transaction, and the deltas that come
+  // back are the ones Postgres applied.
+  async function confirm() {
+    if (!choice || pending) return;
+    setError(null);
+    setPending(true);
     const resolution: BetResolution =
       choice === "void"
         ? { kind: "void" }
         : { kind: "winner", winningOptionId: choice };
-    const result = resolveBet(bet.id, resolution);
-    if (!result.ok) setError(result.error);
+    const result = await resolveBet(bet.id, resolution);
+    if (!result.ok) {
+      setPending(false);
+      setError(result.error);
+    }
     // On success the bet leaves "closed" and this panel unmounts.
   }
 
@@ -539,11 +555,15 @@ function ResolvePanel({ bet }: { bet: Bet }) {
       </div>
       <button
         type="button"
-        disabled={!choice}
-        onClick={confirm}
+        disabled={!choice || pending}
+        onClick={() => void confirm()}
         className="cut-sm mt-3 h-9 px-4 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
       >
-        {choice === "void" ? "Confirm void" : "Confirm result"}
+        {pending
+          ? "Paying out…"
+          : choice === "void"
+            ? "Confirm void"
+            : "Confirm result"}
       </button>
       {error && <p className="mt-2 text-xs text-negative">{error}</p>}
     </section>
