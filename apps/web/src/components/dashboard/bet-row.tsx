@@ -9,6 +9,7 @@ import { useNow } from "@/lib/use-now";
 import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
+import { useToast } from "@/lib/toast-context";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
 import { AvatarCluster } from "@/components/sl/avatar-cluster";
@@ -211,7 +212,17 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
 export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
   const { wagers, userById } = useTeam();
   const { open } = useModal();
+  const { show } = useToast();
   const now = useNow();
+
+  // Same origin idiom as invite-modal.tsx. The difference worth knowing: that
+  // modal only ever renders after a click, so its guard is there for the type;
+  // a row genuinely does render on the server, and the "" it takes there is
+  // replaced by the real origin on the hydration render. Nothing renders the
+  // value — it is only ever read inside a click handler, which is client-only.
+  const [origin] = useState(() =>
+    typeof window === "undefined" ? "" : window.location.origin,
+  );
 
   const betWagers = wagers.filter((w) => w.betId === bet.id);
   const poolStats = getPoolStats(bet, wagers);
@@ -229,9 +240,31 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
   function handleShare(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const url = `https://sl.bet/b/${bet.id}`;
+    // This was `https://sl.bet/b/${bet.id}` — a fictional host that resolves
+    // nowhere, while the title above it links to the real `/bet/[id]`. Task 9's
+    // toast is what forced the dead link into the open: "Link copied." over a
+    // URL that goes nowhere makes the app worse rather than better.
+    const url = `${origin}/bet/${bet.id}`;
+    // One key literal on both branches (D6). Nothing debounces this icon, so
+    // ten rapid clicks — or a success followed by a failure — must land on one
+    // card, replacing its text in place.
+    const onCopied = () =>
+      show({ kind: "success", text: "Link copied.", key: "share-copy" });
+    const onFailed = () =>
+      show({ kind: "failure", text: "Couldn't copy the link.", key: "share-copy" });
+
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(url).catch(() => {});
+      // `.then(ok, fail)` and not `await`: the handler stays synchronous, so
+      // `onClick` gets no floating promise. The rejection handler is the point
+      // — this call used to end in an empty `.catch(() => {})` on an icon-only
+      // control in a row with no space for an inline error (§5.8's field-owns-
+      // its-error has nothing to own here), so a denied clipboard said nothing.
+      navigator.clipboard.writeText(url).then(onCopied, onFailed);
+    } else {
+      // Insecure context or an older browser: no Clipboard API, therefore no
+      // promise to reject, therefore the old guard took no branch at all. This
+      // is the real-world silent case, not the exotic one.
+      onFailed();
     }
   }
 
@@ -331,6 +364,7 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
           type="button"
           onClick={handleShare}
           title="Copy share link"
+          aria-label="Copy share link"
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
           <Share2 className="size-3.5" />

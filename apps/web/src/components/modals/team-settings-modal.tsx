@@ -7,6 +7,8 @@ import type { TeamAccessMode, TeamMember } from "@repo/shared";
 import type { MutationResult } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
+import { useToast } from "@/lib/toast-context";
+import { formatCoins } from "@/lib/format";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -77,6 +79,7 @@ function AccessModeToggle({
 function MemberRow({ member }: { member: TeamMember }) {
   const { team, canManage, canInject, userById, kickMember, banMember, injectCoins } =
     useTeam();
+  const { show } = useToast();
   const [action, setAction] = useState<RowAction | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -104,13 +107,22 @@ function MemberRow({ member }: { member: TeamMember }) {
   // `remove_membership` / `inject_coins` RPCs), so the row stays disabled
   // until the database has answered rather than reporting a success the
   // server has not agreed to.
-  async function run(pendingResult: Promise<MutationResult>) {
+  //
+  // `successText` comes from the call site already composed, for two reasons:
+  // `run` cannot tell which of the three actions it is running (the `action`
+  // state does not narrow inside this closure), and the sentence names a member
+  // who is gone from context by the time the promise resolves.
+  async function run(pendingResult: Promise<MutationResult>, successText: string) {
     setPending(true);
     setError(null);
     const result = await pendingResult;
     setPending(false);
-    if (result.ok) reset();
-    else setError(result.error);
+    if (result.ok) {
+      reset();
+      // D3: a completed kick, ban or injection is destructive, not a jade
+      // success. Unkeyed — kicking Ana and kicking Bruno each deserve a row.
+      show({ kind: "destructive", text: successText });
+    } else setError(result.error);
   }
 
   return (
@@ -159,7 +171,18 @@ function MemberRow({ member }: { member: TeamMember }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void run(injectCoins(member.userId, Number(amount)));
+            // `amount` is a string state — format the parsed number, or a typed
+            // "0500" reaches the person verbatim.
+            const coins = Number(amount);
+            void run(
+              injectCoins(member.userId, coins),
+              // `min={1}` and the RPC's own `p_amount < 1` guard both allow
+              // exactly 1, and this is the only pluralised noun in the nine
+              // call sites — "1 coins added" would be the one ungrammatical
+              // sentence in the set (§7: a plain statement, and plain means
+              // correct English).
+              `${formatCoins(coins)} coin${coins === 1 ? "" : "s"} added to ${user.displayName}.`,
+            );
           }}
           className="mt-2 flex items-center gap-2 pl-10"
         >
@@ -204,6 +227,9 @@ function MemberRow({ member }: { member: TeamMember }) {
                 action === "kick"
                   ? kickMember(member.userId)
                   : banMember(member.userId),
+                action === "kick"
+                  ? `${user.displayName} removed from the team.`
+                  : `${user.displayName} banned from the team.`,
               )
             }
             className="cut-danger disabled:opacity-40 disabled:pointer-events-none h-8 bg-destructive px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
@@ -229,6 +255,7 @@ function MemberRow({ member }: { member: TeamMember }) {
 function DeleteTeamPanel() {
   const { close } = useModal();
   const { team, deleteTeam } = useTeam();
+  const { show } = useToast();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -238,10 +265,17 @@ function DeleteTeamPanel() {
   async function submit() {
     setPending(true);
     setError(null);
+    // Captured before the await: a successful delete pulls the team out of
+    // context, so `team.name` is not there to read afterwards.
+    const name = team.name;
     const result = await deleteTeam();
     setPending(false);
-    if (result.ok) close();
-    else setError(result.error);
+    if (result.ok) {
+      close();
+      // D1/D3: the store sits above ModalRoot, so this outlives the modal that
+      // closes on the line before — order between the two does not matter.
+      show({ kind: "destructive", text: `Team "${name}" deleted.` });
+    } else setError(result.error);
   }
 
   return (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
+import { useToast } from "@/lib/toast-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { CoinAmount } from "@/components/sl/coin-amount";
 
@@ -15,16 +16,25 @@ import { CoinAmount } from "@/components/sl/coin-amount";
 export function LeaveTeamModal() {
   const { close } = useModal();
   const { team, balance, canLeave, leaveTeam } = useTeam();
+  const { show } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function submit() {
     setPending(true);
     setError(null);
+    // Captured before the await: leaving drops the membership, so the team is
+    // gone from context by the time the promise resolves.
+    const name = team.name;
     const result = await leaveTeam();
     setPending(false);
-    if (result.ok) close();
-    else setError(result.error);
+    if (result.ok) {
+      close();
+      // D3: leaving is one of the six destructive successes, so it takes the
+      // ember rail. The store is above ModalRoot and above the TeamGate this
+      // tears down, which is why the toast survives both (D1).
+      show({ kind: "destructive", text: `You left "${name}".` });
+    } else setError(result.error);
   }
 
   return (

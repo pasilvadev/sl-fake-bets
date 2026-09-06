@@ -91,11 +91,16 @@ export function ModalShell({
             </p>
             <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           </div>
+          {/* §5.8's ring is "jade, 1–2px, on every interactive element" — this
+              control had none. `ring-1`/`jade/40` is the app's idiom for a
+              hand-written control (profile-menu.tsx, bet-row.tsx,
+              team-settings-modal.tsx); `ui/button.tsx`'s `ring-3` is 3px and
+              outside that range. */}
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-muted-foreground transition-colors hover:text-foreground"
+            className="text-muted-foreground transition-colors hover:text-foreground outline-none focus-visible:ring-1 focus-visible:ring-jade/40"
           >
             <X className="size-4" />
           </button>

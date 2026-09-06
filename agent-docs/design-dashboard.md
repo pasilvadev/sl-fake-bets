@@ -10,7 +10,7 @@ Grid rows: **top bar 56px (sticky)** · **stat ticker 40px (not sticky)** · **b
 
 ### 1.1 Top bar (`sticky top-0`, `bg-surface-1 border-b`)
 Left: SL S-mark (20px, currentColor) · **team switcher** trigger (team initial chip + name + chevron) opening a popover:
-- One row per team in `mockTeams`: 3px jade left rail on the active row (reuses the bet-row rail motif — no second "selected" language), team name, per-team open-bet count (mono), and a reserved slot for a future per-team notification pip (ARC-015).
+- One row per team in `mockTeams`: 3px jade left rail on the active row (reuses the bet-row rail motif — no second "selected" language), team name, per-team open-bet count (mono), and a reserved slot for a future per-team notification pip (ARC-015 — still empty and still unread after Extra Phase 4: nothing derives a pip from a toast, D5).
 - Footer: "Create a team" row (modal stub) + **inline** "Join with invite code" input (one fewer hop than a modal; graft from retention proposal).
 - Switching re-scopes everything (UX-010): feed, balance, ticker, rail, all via `TeamProvider` context.
 
@@ -18,7 +18,7 @@ Right, fixed order:
 1. **Balance pill** — coin glyph + mono balance (current team, DOM-013); jade `+5` micro-tag docked for the daily grant (DOM-022/A-2 — automatic, never a claim button); click opens Wallet popover-equivalent (transactions modal).
 2. **Invite Friends** (outline) → invite modal (UX-023 preview).
 3. **Create Bet** (primary jade/black, `rounded-sm`, **no cut-sm here** — see §3 scarcity ruling) → create-bet modal. Disabled with tooltip when team is `restricted` and user is a plain member (DOM-002/006).
-4. **Notifications bell** — permanent slot, `opacity-40 pointer-events-none`, tooltip "Notifications — coming soon" (ARC-014/015 future-stub).
+4. **Notifications bell** — permanent slot, `opacity-40 pointer-events-none`, tooltip "Notifications — coming soon" (ARC-014/015 future-stub; still inert after Extra Phase 4's toast system — no count, dot or badge is ever derived from a toast, D5).
 5. **Profile avatar** (rounded-full, 1px ring in own name-color) → dropdown: Edit Profile (modal, UX-022) · Team Settings (leader/mod) / Team Info (member) · Leave team (ordinary-destructive style) · Language: English (inert stub, UX-027) · Sign out (inert Phase 1).
 
 ### 1.2 Stat ticker (40px, scrolls away, `bg-surface-0`, `overflow-x-auto` single line)
@@ -57,7 +57,8 @@ The dashboard's **one** diagonal cut = the single soonest-closing OPEN row (icon
 ## 6. Responsive tiers (one structural swap only)
 - **≥1280px** full grid. **1024–1279px** rail 320px.
 - **768–1023px** rail column removed → **module chip strip** (~56px, horizontal scroll) under the ticker: Wallet / Standings / Team / Chat chips, each opening its module as a bottom sheet (mirrored `cut-md`, §5.4). Feed full width. Below `lg`, that sheet **is** the whole chat experience (Extra Phase 1): "See earlier messages" pages further history in place inside the sheet, rather than stacking the full-scrollback modal on top of a sheet that already holds the same surface.
-- **<768px** top bar keeps S-mark + switcher + balance + avatar (Invite & bell move into avatar sheet); **Create Bet becomes a 56px circular jade FAB** bottom-right (circle sanctioned via §4.1 icon-button exception; it also frees the one-cut budget for the closing-soon row). Bet rows use §5.1 stacked mobile layout (~96px). Modals = bottom sheets.
+- **<768px** top bar keeps S-mark + switcher + balance + avatar (Invite & bell move into avatar sheet). Bet rows use §5.1 stacked mobile layout (~96px). Modals = bottom sheets. The Create-Bet swap is **not** in this tier — it has its own bound, below.
+- **<640px** (Tailwind's `sm`; everything in the `<768px` tier still applies, so 640–767px keeps Create Bet as a top-bar button) **Create Bet leaves the top bar and becomes a 56px circular jade FAB** bottom-right (circle sanctioned via §4.1 icon-button exception; it also frees the one-cut budget for the closing-soon row) (Extra Phase 4, task 6 — this clause previously sat inside the `<768px` bullet and read "**Create Bet becomes a 56px circular jade FAB** bottom-right"). `create-bet-fab.tsx` gates on `sm:hidden` and the top bar's button on `sm:inline-flex`; Tailwind's `sm` is 640px and this codebase declares no `--breakpoint-*` override, so the swap has been at 640px since Phase 1 — the doc moves to the code, because moving the code instead would re-lay-out every `sm:` in the app. A toast strip also clears this tier by `--fab-stack-height` (`design-visual-identity.md` §5.9).
 
 ## 7. Empty & loading
 - Zero-bets team (t-02/t-03 exercise this live): ghost S-mark watermark 5% + "No bets yet. Someone has to make the first bad decision." + Create Bet CTA (`cut-sm` legitimate here).

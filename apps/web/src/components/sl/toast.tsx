@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "cn";
+import type { ActiveToast, ToastKind } from "@/lib/toast-context";
 
 /**
- * The app's first toast (Extra Phase 1, UX-019 plan tasks 4 + 8) — design
- * spec is design-visual-identity.md §5.9 (verbatim below) plus the generic
- * motion table in §6:
+ * One toast card — **presentation only** (Extra Phase 4, task 4). State, the
+ * stack and the dismiss timers all live in `lib/toast-context.tsx`; this file
+ * renders what it is handed and reports hover/focus back up.
+ *
+ * Design spec is `design-visual-identity.md` §5.9, verbatim:
  *
  *   "bg-surface-2 border-border, left rail 2px by type: jade (success) / N4
  *   (info/neutral) / ember (destructive-confirmation only) — never
@@ -15,190 +17,164 @@ import { cn } from "cn";
  *   desktop / bottom-center mobile. Motion: slide+fade, 3.5s auto-dismiss,
  *   transform+opacity only, no blur."
  *
- * **Deliberately not a system.** Grep found zero matches for "toast" in this
- * codebase before this file — every error surface up to Extra Phase 1 was
- * inline `text-negative`/ember copy next to the control that failed. Chat is
- * the first flow that needs a fire-and-forget message that outlives the
- * control that caused it (task 8: the optimistic row is already gone by the
- * time the failure needs reporting), so this is the first toast, not a
- * toast *system*. The two chat surfaces (rail, modal) are the only planned
- * consumers, each already owns its own render tree, and each will call
- * `useToast()` and render its own `<Toast />` independently — no shared
- * queue, no portal, no global store. That is a scope decision, not an
- * oversight: a provider/registry earns its cost the second surface needs
- * toasts to survive *its own* unmount (e.g. a toast that must outlive the
- * modal that spawned it), and nothing in this phase does. Add one then, with
- * a real second consumer in hand — not speculatively here.
+ * Three departures from that paragraph, all deliberate and all recorded back
+ * into §5.9 by this phase's task 13:
  *
- * **ARC-014 boundary.** `role="status"` + `aria-live="polite"` below make a
- * screen reader announce the text — that is an in-app accessibility
- * affordance, the same category as the chat unread badge, and it is the
- * *only* thing this component does when the tab is unfocused: no push, no
- * email, no service worker, no `document.title` counter, no sound, no
- * `Notification` API. A toast that fires while the tab is in the background
- * is simply never seen, same as any other DOM update — that is the accepted
- * shape, not a gap to close later.
+ * **1. The neutral rail is `--border-strong`, not N4 (D8).** N4 is `--input`
+ * (#3B403D, 1.87:1) — one of the *surface*-elevation steps §2.1 explicitly
+ * says not to read as a graded boundary. (§2.1's N4 row does carry the stale
+ * role string "Border strong / input outline", which is very likely how §5.9
+ * came to say N4 — but `--border-strong` is a separate token declared at N5's
+ * value, #656A67, glossed "edges that must read as a boundary (≥3:1)".)
+ * Extra Phase 1 shipped `--border-strong` and was right to; the doc moves to
+ * the code.
  *
- * **Only two kinds exist because only two are real.** §5.9 names three rail
- * colors, but ember is scoped to *destructive-confirmation* (the "type
- * TEAM_NAME to confirm" flows in the delete/leave modals) — a family of
- * dialogs, not a toast, and nothing routes a destructive-confirmation
- * outcome through this component. So `ToastMessage["kind"]` is exactly
- * `"success" | "failure"`, not the three-way rail taxonomy: adding an unused
- * `"destructive"` variant here would be dead code pretending to be a
- * feature. "Failure" takes the middle, neutral rail (§5.9's "N4/info", read
- * as this codebase's `border-strong` token — the one other edge in this
- * system already reserved for "must read as a boundary", see globals.css)
- * rather than ember, because a failed send is routine and recoverable, not
- * a destructive act — and because §5.9 says "never red/green" in the same
- * breath it defines the rail, so an error toast still isn't a red toast.
+ * **2. The destructive rail is `ember-border` and its glyph is `/` in
+ * `ember-icon` (D9).** §5.9 names three rails in one sentence and glyphs for
+ * only two in the next — a gap in the doc, not a rule to guess at. The app's
+ * glyph vocabulary is exactly two marks (`/` and `\`, §2.3/§5.5) and a
+ * destructive action that *succeeded* is a completion, so it takes the
+ * completion mark; the ember **rail** is what says the completion was
+ * destructive. §2.3 sanctions exactly this — ember "only fills icons, thin
+ * borders, and the one final confirm-button background" — and a 2px rail is a
+ * thin border while a glyph is an icon. No `lucide-react` import, per §5.9.
+ * The step choice (dim `--ember-border` rail + bright `--ember-icon` glyph) is
+ * not invented here: it is `auth-page.tsx`'s shipped pairing for its error
+ * rail, and it keeps the three rails at comparable weight instead of letting
+ * the destructive one shout with `--destructive`, which §2.3 rations to the
+ * one final confirm button.
  *
- * **Entrance only, no exit transition.** §6's Toast row reads as "how it
- * arrives and how long it stays", not a symmetric enter/exit pair, and nothing
- * in the frozen signature below gives `Toast` anywhere to hold a "still
- * playing its exit" state: it is `(toast) => JSX | null`, driven entirely by
- * the caller's `toast` value. Doing a real exit fade would mean `Toast`
- * keeping its own last-seen copy and unmount timer independent of the prop —
- * exactly the kind of internal machinery the smallest-honest-thing brief for
- * this file rules out. So dismissal, timed or manual, is an immediate
- * unmount. `motion-safe:` still guards the one animation that exists (the
- * slide+fade entrance) per §6's reduced-motion rule: under
- * `prefers-reduced-motion: reduce` the toast simply appears, no transform,
- * which already *is* that rule's "instant opacity/state swap" for a toast
- * (there is no separate reduced-motion opacity fade to write — the element
- * has no transition property at all outside `motion-safe:`).
+ * **3. Body copy stays N7 on all three rails.** §2.3's hard rule — ember
+ * "never colors a state *word*" — and §2.3b's ban on rust for "any *action*".
+ * The rail and the glyph carry the colour; the sentence never does. Same shape
+ * as `auth-page.tsx`'s `Message`, which is the only other place in the app
+ * that implements this grammar in full.
  *
- * **Click-anywhere-to-dismiss, not a close icon.** §5.9's anatomy is rail +
- * icon slot + text + position + motion — it does not name a close control,
- * and inventing one would mean either a third glyph the glyph system doesn't
- * define or a `lucide-react` `X` import, which this file is explicitly told
- * not to reach for. The whole card is instead the dismiss control (a real
- * `<button>`, so it is keyboard-reachable and gets the standard
- * `hover:bg-surface-3` affordance already used for every other clickable row
- * in this app), which is what `onDismiss` in the frozen signature is for —
- * `useToast`'s own timer is what the *auto*-dismiss runs on.
+ * **No shadow, no glow.** §4.2 and §6 each reserve the single soft `box-shadow`
+ * for the modal overlay, and the Jade Glow Ration's one wired anchor is
+ * bet-detail's hero countdown. A toast's elevation comes from `bg-surface-2`
+ * plus a border, per §2.1's "elevation reads via brightness, never shadow
+ * weight".
+ *
+ * **Timing, and which WCAG rule is which** — record both, because the wrong
+ * one is easy to "fix":
+ *  - **SC 2.2.1 Timing Adjustable applies.** A 3.5s auto-dismiss is a time
+ *    limit set by the content and matches none of 2.2.1's three exceptions
+ *    (real-time / essential / 20-hour). There is no minimum duration below
+ *    which it stops applying. Pausing on hover *and* on focus is the standard
+ *    mitigation and is what the handlers below do; D7 (a toast is the sole
+ *    channel only for an idempotent action whose control is still on screen)
+ *    covers the residual "the message is gone forever" risk.
+ *  - **SC 2.2.2's moving/blinking bullet does not apply** — its trigger is
+ *    content lasting *more than five seconds*, and 3.5s is under that floor.
+ *    Do **not** raise the duration to 5s+ "for 2.2.2": that newly engages the
+ *    very bullet it would be trying to satisfy. (2.2.2's *auto-updating*
+ *    bullet has no five-second floor and arguably does reach a self-reflowing
+ *    stack — the same hover/focus pause plus the dismiss control answers it,
+ *    which is why one mechanism covers both.)
+ *  - **SC 4.1.3 Status Messages** is what the persistent live region in
+ *    `toast-layer.tsx` satisfies — see that file.
+ *
+ * **The card is the dismiss control**, as it was in Extra Phase 1: §5.9's
+ * anatomy is rail + icon slot + text + position + motion and names no close
+ * affordance, and inventing one would mean a third glyph the system doesn't
+ * define or the `lucide-react` import §5.9 forbids. One `<button>` carrying
+ * the whole chrome also keeps this out of the nested-interactive-content trap
+ * (a focusable card wrapping a focusable close button) and gives task 11's
+ * §5.8 focus ring exactly one element to land on. Per D6 there is no *action*
+ * affordance and never will be: recovery belongs back at the control that
+ * failed.
  */
 
-/** One toast's content. No id: `useToast` holds at most one at a time. */
-export interface ToastMessage {
-  kind: "success" | "failure";
-  text: string;
-}
+/** Rail + glyph per kind. The only place the three-way taxonomy is spelled out. */
+const KIND_CHROME: Record<
+  ToastKind,
+  { rail: string; glyph: string; glyphTone: string }
+> = {
+  // §5.9: jade rail, `/` glyph. Same dim ramp step the shipped card used.
+  success: {
+    rail: "border-l-jade-border",
+    glyph: "/",
+    glyphTone: "text-jade",
+  },
+  // D8: `--border-strong`, not N4. `\` in N6 (`--muted-foreground`) per §5.9 —
+  // note N6 is *not* rust: §2.1 aliases `--negative` to N6 while §2.3b
+  // re-points it at rust-base, so `text-negative` here would silently ship a
+  // rust failure glyph and break §2.3b's ban on rust for any action.
+  failure: {
+    rail: "border-l-border-strong",
+    glyph: "\\",
+    glyphTone: "text-muted-foreground",
+  },
+  // D9: ember rail, completion glyph, ember icon tone.
+  destructive: {
+    rail: "border-l-ember-border",
+    glyph: "/",
+    glyphTone: "text-ember",
+  },
+};
 
-/** §5.9/§6: "3.5s auto-dismiss" is the one duration this component owns. */
-const TOAST_DURATION_MS = 3500;
-
-/**
- * Owns the single auto-dismiss timer for one toast slot. A component calls
- * `show` to (re)start the clock and `dismiss` to end it early; both are
- * stable across renders so effects that depend on them don't re-fire.
- *
- * Replacing an unread toast restarts the full 3.5s rather than letting the
- * new text inherit however much time was left on the old one — the clock is
- * "since this text appeared," never "since the first toast of a burst
- * appeared," or a fast second error could flash for a few hundred ms.
- */
-export function useToast(): {
-  toast: ToastMessage | null;
-  show: (toast: ToastMessage) => void;
-  dismiss: () => void;
-} {
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearPendingTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  const dismiss = useCallback(() => {
-    clearPendingTimer();
-    setToast(null);
-  }, [clearPendingTimer]);
-
-  const show = useCallback(
-    (next: ToastMessage) => {
-      clearPendingTimer();
-      setToast(next);
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null;
-        setToast(null);
-      }, TOAST_DURATION_MS);
-    },
-    [clearPendingTimer],
-  );
-
-  // Unmounting mid-timer (surface closed, e.g. the chat modal, before the
-  // 3.5s elapsed) must not fire a state update on a gone component.
-  useEffect(() => clearPendingTimer, [clearPendingTimer]);
-
-  return { toast, show, dismiss };
-}
-
-/**
- * Renders nothing while there is no toast — callers mount this
- * unconditionally next to their surface rather than gating it themselves.
- *
- * Fixed position, bottom-right desktop / bottom-center mobile per §5.9. The
- * outer strip spans the relevant edge with no transform of its own so the
- * card's `transform` stays free for the enter animation alone — composing a
- * static centering `translate-x` with the animation's own translateY is what
- * produces the diagonal-drift glitch this two-layer structure avoids. The
- * strip is `pointer-events-none` and only the card opts back in, so an empty
- * toast-shaped strip never steals a click or a scroll from whatever sits
- * behind it (the chat composer, most likely).
- */
 export function Toast({
   toast,
   onDismiss,
+  onPause,
+  onResume,
 }: {
-  toast: ToastMessage | null;
+  toast: ActiveToast;
   onDismiss: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }) {
-  if (!toast) return null;
-
-  const isFailure = toast.kind === "failure";
+  const chrome = KIND_CHROME[toast.kind];
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4 sm:inset-x-auto sm:right-4 sm:justify-end sm:px-0">
-      <div
-        role="status"
-        aria-live="polite"
+    <button
+      type="button"
+      onClick={onDismiss}
+      // Hover *and* focus, because a keyboard user never triggers the first:
+      // they Tab onto the card, and a toast that vanished under their hand
+      // mid-Tab is the exact 2.2.1 failure this pair exists to prevent.
+      onMouseEnter={onPause}
+      onMouseLeave={onResume}
+      onFocus={onPause}
+      onBlur={onResume}
+      className={cn(
+        "pointer-events-auto flex w-full max-w-sm items-start gap-2.5 border border-border border-l-2 bg-surface-2 py-3 pl-3 pr-4 text-left",
+        chrome.rail,
+        "transition-colors hover:bg-surface-3",
+        // §5.8: "jade, 1–2px, on every interactive element". The shipped card
+        // had none. `ring-1`/`jade/40` is the app's own idiom for a
+        // hand-written control (profile-menu.tsx, bet-row.tsx,
+        // team-settings-modal.tsx) and sits inside §5.8's stated 1–2px, which
+        // `ui/button.tsx`'s `ring-3` does not.
+        "outline-none focus-visible:ring-1 focus-visible:ring-jade/40",
+        // §6: transform + opacity only, no blur, `motion-safe:`-gated so
+        // reduced-motion gets the instant state swap §6 asks for rather than a
+        // separate reduced-motion animation. Duration/curve are §6's Row/modal
+        // enter treatment; §6's Toast row names the lifespan and the
+        // properties, not a bespoke easing.
+        "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2",
+        "motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
+      )}
+    >
+      {/* Glyph system, not an icon library — §5.9 forbids a check/x import. */}
+      <span
+        aria-hidden
         className={cn(
-          "pointer-events-auto w-full max-w-sm border border-border bg-surface-2",
-          "border-l-2",
-          isFailure ? "border-l-border-strong" : "border-l-jade-border",
-          // Entrance only (see header comment) — transform + opacity, no
-          // blur, wrapped in motion-safe so reduced-motion gets an instant
-          // appearance instead. Duration/curve reused from §6's Row/modal
-          // enter treatment; the Toast row in that table names the lifespan
-          // (3.5s) and the properties (transform+opacity), not a bespoke
-          // easing of its own.
-          "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2",
-          "motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "mt-0.5 font-mono text-sm leading-none",
+          chrome.glyphTone,
         )}
       >
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="flex w-full items-start gap-2.5 py-3 pl-3 pr-4 text-left transition-colors hover:bg-surface-3"
-        >
-          {/* Glyph system, not an icon library: `/` jade for success, `\`
-              N6/muted for failure — §5.9 forbids a check/x import here. */}
-          <span
-            aria-hidden
-            className={cn(
-              "mt-0.5 font-mono text-sm leading-none",
-              isFailure ? "text-muted-foreground" : "text-jade",
-            )}
-          >
-            {isFailure ? "\\" : "/"}
-          </span>
-          <span className="flex-1 text-sm text-foreground">{toast.text}</span>
-        </button>
-      </div>
-    </div>
+        {chrome.glyph}
+      </span>
+      <span className="flex-1 text-sm text-foreground">{toast.text}</span>
+      {/*
+        The message itself is announced by the live region in
+        `toast-layer.tsx`; this only tells a keyboard user what activating the
+        card does, since §5.9 gives it no visible close affordance to infer it
+        from.
+      */}
+      <span className="sr-only"> (press to dismiss)</span>
+    </button>
   );
 }

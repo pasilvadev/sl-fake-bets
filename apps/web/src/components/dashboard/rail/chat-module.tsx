@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
-import { Toast, useToast } from "@/components/sl/toast";
+import { useToast } from "@/lib/toast-context";
 import {
   ChatComposer,
   ChatEmpty,
@@ -74,7 +74,7 @@ export function ChatModule({
   const { chat, loadChat, loadEarlierChat, sendChatMessage, markChatSeen } =
     useTeam();
   const { open } = useModal();
-  const { toast, show, dismiss } = useToast();
+  const { show } = useToast();
 
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -167,8 +167,12 @@ export function ChatModule({
     const result = await sendChatMessage(body);
     setSendPending(false);
     // The store has already removed the optimistic row on failure (task 8) —
-    // this toast is the ONLY trace of the failed send left on screen.
-    if (!result.ok) show({ kind: "failure", text: result.error });
+    // this toast is the ONLY trace of that vanished row (the composer keeps
+    // the text itself, D6). The key is the literal `"chat-send"` and NOT a
+    // per-file one: at >=lg the rail and `chat-modal.tsx` are mounted at the
+    // same time, so a per-surface key would let one rejection stack two cards
+    // in the shared layer. One card per burst, whichever surface sent (D6).
+    if (!result.ok) show({ kind: "failure", text: result.error, key: "chat-send" });
     return result;
   }
 
@@ -255,10 +259,6 @@ export function ChatModule({
         disabled={composerDisabled}
         placeholder={composerDisabled ? "Loading chat…" : "Say something"}
       />
-
-      {/* Owns its own toast independently (toast.tsx's header comment) —
-          no shared queue with `chat-modal.tsx`. */}
-      <Toast toast={toast} onDismiss={dismiss} />
     </section>
   );
 }

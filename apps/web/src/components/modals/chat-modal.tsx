@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
-import { Toast, useToast } from "@/components/sl/toast";
+import { useToast } from "@/lib/toast-context";
 import {
   ChatComposer,
   ChatEmpty,
@@ -67,7 +67,7 @@ export function ChatModal() {
   const { close } = useModal();
   const { team, chat, loadChat, loadEarlierChat, sendChatMessage, markChatSeen } =
     useTeam();
-  const { toast, show, dismiss } = useToast();
+  const { show } = useToast();
 
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -123,7 +123,10 @@ export function ChatModal() {
     setSendPending(true);
     const result = await sendChatMessage(body);
     setSendPending(false);
-    if (!result.ok) show({ kind: "failure", text: result.error });
+    // Same literal `"chat-send"` key the rail uses — at >=lg both surfaces
+    // are mounted at once and share one toast layer, so a per-file key would
+    // let a single rejected burst stack two cards (D6).
+    if (!result.ok) show({ kind: "failure", text: result.error, key: "chat-send" });
     return result;
   }
 
@@ -183,10 +186,6 @@ export function ChatModal() {
           placeholder={composerDisabled ? "Loading chat…" : "Say something"}
         />
       </div>
-
-      {/* Owns its own toast independently (toast.tsx's header comment) —
-          no shared queue with `chat-module.tsx`. */}
-      <Toast toast={toast} onDismiss={dismiss} />
     </ModalShell>
   );
 }

@@ -30,9 +30,10 @@ import { formatRelativePast } from "@/lib/format";
  *
  * Design refs, all binding: design-visual-identity.md §5.7 (chat row
  * anatomy), §5.8 (forms, for the composer's field chrome), §5.9 (n/a here —
- * the toast itself is rendered by the two surfaces, not this file, per its
- * own header comment), §5.10 (empty + skeleton), §6 (motion, every animation
- * below `motion-safe:`-guarded).
+ * the two surfaces raise the failure sentence through `lib/toast-context.tsx`
+ * and the app's single portalled `ToastRoot` paints it; no file in this
+ * feature renders a toast), §5.10 (empty + skeleton), §6 (motion, every
+ * animation below `motion-safe:`-guarded).
  *
  * **ARC-014 boundary.** Nothing in this file produces a push, an email, a
  * `document.title` count, a sound, or a call into the `Notification` API.

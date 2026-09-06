@@ -186,7 +186,37 @@
 
   /* ---- border weight variant ---- */
   --border-strong: oklch(0.520 0.008 158); /* #656A67 — edges that must read as a boundary (≥3:1) */
+
+  /* ---- mobile FAB tier — how much bottom space the fixed FAB stack claims ----
+     The SINGLE declaration of that number (design-dashboard.md §6). Read it as
+     "space claimed", inset included: one 56px FAB (`size-14`) sitting on a
+     16px inset (`bottom-4`) ⇒ 72px, so its top edge is 72px off the viewport
+     bottom. `sl/toast-layer.tsx` offsets the mobile toast strip by this plus a
+     gap, and is the only consumer.
+     Deliberately NOT in `@theme inline`: that block inlines a value at each use
+     site instead of emitting a live custom property, which would defeat the
+     whole point of one number in one place. Non-color `:root` constants have
+     precedent above (--brand-slash-angle, --radius).
+     Extra Phase 3 will add a second, stacked FAB and must bump this here — and
+     nowhere else. That phase was still unshipped when this one landed, so this
+     phase introduced the token, per its own task 3 escape hatch. */
+  --fab-stack-height: 4.5rem;              /* 72px = 16px inset + 56px button */
 }
+
+/* ---- fixed-position stacking tiers (documentation, not a scale) ----
+   There is no z-index token in this system and no plan to add one; these are
+   the literal Tailwind classes actually in use, written down once so the next
+   fixed surface does not pick a number by guessing.
+     z-40  shell chrome — shell/top-bar.tsx (sticky), shell/create-bet-fab.tsx
+     z-50  overlays — sl/modal-shell.tsx backdrop, ui/tooltip.tsx,
+           shell/profile-menu.tsx dropdown, shell/team-switcher.tsx popover
+     z-60  toasts — sl/toast-layer.tsx, the only thing that may sit above an
+           open modal. Written `z-[60]` there because that is the tier this was
+           specified as; Tailwind v4 also accepts a bare `z-<number>`, so
+           `z-60` would compile too — v4 dropped v3's fixed 0/10/…/50 scale.
+   ui/avatar.tsx's z-10 is not a tier: it is `absolute` inside an avatar's own
+   stacking context. Do not renumber the existing tiers — this block records
+   them, it does not propose a refactor. */
 
 /* corner-cut utilities, ratio tuned to ~68° (v ≈ 2.48h) — §4.3 */
 @utility cut-sm     { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%); }

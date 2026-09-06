@@ -22,6 +22,7 @@ import { TeamGate } from "@/components/team-gate";
 import { TopBar } from "@/components/shell/top-bar";
 import { useLiveBetThread, useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
+import { useToast } from "@/lib/toast-context";
 import { useNow } from "@/lib/use-now";
 import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
 import { UserAvatar } from "@/components/sl/user-avatar";
@@ -397,6 +398,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
  */
 function DeleteBetPanel({ bet }: { bet: Bet }) {
   const { deleteBet } = useTeam();
+  const { show } = useToast();
   const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -409,8 +411,23 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
   async function submit() {
     setError(null);
     setPending(true);
+    // Captured before the await: succeeding tears this panel down. The bet
+    // leaves the team store before `deleteBet` resolves, so BetDetail's
+    // `if (!bet)` branch takes over on the very next render.
+    const title = bet.title;
     const result = await deleteBet(bet.id);
     if (result.ok) {
+      // D1: the toast has to come from the provider above this page, never from
+      // this panel — the panel and the whole route are gone a tick later, and a
+      // component-local timer would die before it could paint. D4's caller
+      // override exists for exactly this sentence: a bet title can be long, so
+      // it gets 5s instead of §5.9's 3.5s default. D3: a completed delete is
+      // destructive (ember rail), not a jade success.
+      show({
+        kind: "destructive",
+        text: `Bet "${title}" deleted.`,
+        durationMs: 5000,
+      });
       // The bet is gone — this page has nothing left to render.
       router.push("/");
       return;
@@ -458,6 +475,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
 /** DOM-011: two-step inline confirm — closing early is not undoable. */
 function CloseEarlyControl({ betId }: { betId: string }) {
   const { closeBetEarly } = useTeam();
+  const { show } = useToast();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -469,7 +487,16 @@ function CloseEarlyControl({ betId }: { betId: string }) {
     setPending(true);
     const result = await closeBetEarly(betId);
     setPending(false);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    // D3, the other way round: closing early is DOM-011 lifecycle, not
+    // destruction, so this is the jade rail and not the ember one. Until now
+    // this control simply vanished when `bet.state` flipped, which confirmed
+    // nothing — the toast is the only acknowledgement the action gets, and it
+    // outlives the control that fired it (D1).
+    show({ kind: "success", text: "Betting closed. No more wagers." });
   }
 
   return (
