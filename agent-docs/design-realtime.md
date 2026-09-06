@@ -82,6 +82,15 @@ Client-side, a subscription is one idle WebSocket per tab. A poll is a timer tha
 re-parses and re-maps ~1 MB of JSON through `team-data.ts` whether or not
 anything moved — which is also a UX cost, not just a bill.
 
+**Owner decision D3 (Extra Phase 1, 2026-09-06) reaffirms this pick rather than
+revisiting it.** Team chat's transport stays Postgres Changes, the mechanism
+this section already argues for — it is one more binding on the existing
+per-team channel (§5 rule 1), not a reason to open a second one. Broadcast
+(`design-scale-and-free-tier.md` §4.3) remains the documented, unbuilt escape
+hatch: chat does not trigger it at this app's volume, and running a second
+realtime mechanism alongside Postgres Changes for one feature is a maintenance
+cost ARC-003 ranks above whatever throughput it would buy.
+
 ## 4. Three setup facts Phase 8 must not discover late
 
 1. **Nothing is in the publication.** `supabase/config.toml` enables the Realtime
@@ -106,15 +115,21 @@ anything moved — which is also a UX cost, not just a bill.
    §2 shows why: signal-only Realtime costs more than the polling it replaced.
    A full reload stays legal as a recovery path — on resubscribe after a dropped
    connection, or on a payload the client cannot reconcile — not as the design.
-3. **Subscribe to `bets`, `wagers` and `comments`. Do not subscribe to
-   `team_members` or `transactions`.** One `resolve_bet` updates ~30 balance rows
-   at once: 30 changes × 15 subscribers = **450 messages from a single
-   resolution**, more than a normal day of everything else. Balances propagate by
-   deriving them from the bet's resolution event, or by one scoped refetch
-   triggered by it. This is also where the double-apply race recorded in Phase 7's
-   notes actually bites — `resolve_bet` and `delete_bet` already return their
-   deltas and the acting client already dispatches them, so replaying
+3. **Subscribe to `bets`, `wagers`, `comments` and `chat_messages`. Do not
+   subscribe to `team_members` or `transactions`.** One `resolve_bet` updates
+   ~30 balance rows at once: 30 changes × 15 subscribers = **450 messages from a
+   single resolution**, more than a normal day of everything else. Balances
+   propagate by deriving them from the bet's resolution event, or by one scoped
+   refetch triggered by it. This is also where the double-apply race recorded in
+   Phase 7's notes actually bites — `resolve_bet` and `delete_bet` already return
+   their deltas and the acting client already dispatches them, so replaying
    `team_members` UPDATEs would apply the same move twice.
+   **`chat_messages` (Extra Phase 1, UX-019) binds INSERT only — never
+   DELETE.** `app.prune_chat_messages()` enforces the 30-day retention window
+   (D1) with a bulk daily delete, and a DELETE binding on this table would
+   broadcast that prune to every subscriber as a burst of dead ids the client
+   has no use for: the same waste rule 2 already forbids for a whole-world
+   reload, here scoped to one table's one event type instead.
 4. **`transactions` is a growth vector independent of Phase 8.** It is loaded in
    full on every cold start and grows without bound, and it is only needed by the
    ledger view. Not Phase 8's job to fix; Phase 8 must not make it worse by
@@ -130,3 +145,12 @@ Broadcast, or toward paying:
 - A feature that writes many rows per user action at high frequency (live
   per-second odds, presence-heavy chat), which changes the shape of §3's maths
   rather than just its magnitude.
+
+**Team chat (Extra Phase 1, UX-019) does not trip that last bullet.** "Presence-
+heavy chat" names a specific shape — per-second presence pings, typing
+indicators, a write on every keystroke — and the shipped feature has none of
+it: one row per sent message, one INSERT binding added to the existing channel
+(§5 rule 3), no presence, no typing state. Worth a sentence precisely because a
+future reader will hit the word "chat" in this codebase and wonder whether this
+document was invalidated by it; it wasn't. Revisit this document if chat itself
+later grows presence or per-second writes, not because chat exists.

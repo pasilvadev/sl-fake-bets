@@ -43,16 +43,41 @@ export interface FeatureFlag {
  */
 export type KnownFeatureFlag =
   | "coin-donation"       // DOM-023 [post-mvp]
-  | "global-team-chat"    // UX-019  [future]
+  // UX-019, Extra Phase 1. No longer [future]: this now gates a shipped
+  // feature — the real team chat module — and doubles as its kill switch.
+  // Flipped `true` by that phase's migration; flipping it back off in Studio
+  // hides the module at both breakpoints on next load, which is exactly what
+  // ARC-016 promises and Extra Phase 1's exit criteria verifies.
+  | "global-team-chat"
   | "crowd-resolution"    // DOM-020 [future]
   | "platform-icon-set"   // DOM-010 [future]
   | "locale-pt-br"        // UX-027  [future]
-  // The one flag with a live reader (roadmap Phase 9, task 2 — seeded by
-  // 20260905200000_share_previews.sql, default ON). Every other key above gates
-  // a feature that does not exist yet, so none of them can demonstrate that
-  // toggling a row in Studio actually changes the app — and building one to
-  // demonstrate it is precisely the scope creep Phase 9 is guarded against.
-  // This gates something already built: the "SOON" teaser modules.
+  // Two flags above have live readers as of Extra Phase 1, and this comment
+  // used to claim there was only one — read on for why both halves of that
+  // old claim are now false.
+  //
+  // `global-team-chat` (above) is the first: it gates the real chat module,
+  // not a stub. That module replaced `chat-stub-module.tsx`, which is what
+  // this flag used to gate before Extra Phase 1, and which `coming-soon-teasers`
+  // (below) ALSO used to gate — the stub carried both flags at once, `SOON`
+  // painted by one and its very existence gated by the other.
+  //
+  // Deleting the stub without re-pointing `coming-soon-teasers` would have
+  // silently ended ARC-016's live-toggle proof (roadmap Phase 9, task 2 —
+  // seeded by 20260905200000_share_previews.sql, default ON): the flag would
+  // still exist and still read `true`, but nothing on screen would move when
+  // it changed, and that regression fails silent — no error, no test red,
+  // just a guarantee nobody is demonstrating any more. Two ways to avoid that
+  // were on the table and both were rejected: deleting the flag ends the
+  // proof outright rather than preserving it, and leaving it wired to the
+  // now-deleted chat stub is a lie on screen — a toggle with no listener.
+  //
+  // So `coming-soon-teasers` is RE-POINTED this phase, from the deleted chat
+  // stub to the Wallet module's disabled "Donate coins" button (DOM-023's
+  // future-stub, still excluded as a feature — see Extra Phase 1's own
+  // exclusion list). That button now paints its "SOON" affordance off this
+  // flag, so ARC-016's toggle proof keeps a live, visible subject instead of
+  // quietly losing one.
   | "coming-soon-teasers";
 
 /**

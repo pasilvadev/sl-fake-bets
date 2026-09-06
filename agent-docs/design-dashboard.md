@@ -44,7 +44,7 @@ The dashboard's **one** diagonal cut = the single soonest-closing OPEN row (icon
 1. **Wallet** — big mono balance numeral (N8) + coin glyph; "Daily login: +5 today ✓" line (auto-grant); "Your P/L" slash-glyph line (DOM-026); "View transaction history" → modal (DOM-025 dense rows: date · description · delta · balance-after); disabled **Donate Coins** button, tooltip "Coming soon" (DOM-023 future-stub; the long-term home is also a per-name user popover — post-MVP).
 2. **Standings** — segmented tab **Richest** (default, DOM-027) / **Poorest** (DOM-028): same compact row shape (rank digit mono, avatar, name in own name-color + inline parallelogram rank badge DOM-029, amount right mono). Top 5 + "View full leaderboard" → modal. Poorest carries dry copy (rank-1 tagline "House's favorite donor"; all-zero P/L → "Everyone's still solvent. Suspicious.").
 3. **Team** — "n / 30 members", avatar cluster (max 6 + `+N`), Invite button (redundant entry, expected here), **Manage Team** (leader/mod → Team Settings modal: access-mode toggle DOM-002, roster with kick/ban DOM-031 ember ordinary-destructive, leader-only per-row Inject Coins DOM-024, danger zone type-to-confirm delete DOM-033/034) / **View Team** (member, read-only variant).
-4. **Team Chat (future-stub, UX-019)** — `TEAM CHAT` eyebrow + neutral `SOON` tag; 1–2 greyed real-anatomy chat rows (§5.7); disabled input with `/` send glyph drawn. Distinct from per-bet chat (UX-018, bet-detail only).
+4. **Team Chat (UX-019, Extra Phase 1)** — `TEAM CHAT` eyebrow + unread-count badge, header **expand** control. In-place scrollback over the most recent ~30 messages (§5.7 anatomy: dense rows, no bubbles, 24px avatar, name-color `UserName` + inline rank badge, mono trailing timestamp); working composer pinned to the panel bottom, the `/` send glyph live (jade on hover, §5.7). A "See earlier messages" control sits above the oldest loaded row — it and the header expand control both open the same full-scrollback chat modal (owner decision D4, Extra Phase 1): rail and modal read one store slice, never two independent copies of the same messages. Distinct from per-bet chat (UX-018, bet-detail only).
 
 ## 5. Grafts adopted from losing proposals
 - Richest/Poorest as one tabbed module (retention proposal).
@@ -56,12 +56,13 @@ The dashboard's **one** diagonal cut = the single soonest-closing OPEN row (icon
 
 ## 6. Responsive tiers (one structural swap only)
 - **≥1280px** full grid. **1024–1279px** rail 320px.
-- **768–1023px** rail column removed → **module chip strip** (~56px, horizontal scroll) under the ticker: Wallet / Standings / Team / Chat(SOON) chips, each opening its module as a bottom sheet (mirrored `cut-md`, §5.4). Feed full width.
+- **768–1023px** rail column removed → **module chip strip** (~56px, horizontal scroll) under the ticker: Wallet / Standings / Team / Chat chips, each opening its module as a bottom sheet (mirrored `cut-md`, §5.4). Feed full width. Below `lg`, that sheet **is** the whole chat experience (Extra Phase 1): "See earlier messages" pages further history in place inside the sheet, rather than stacking the full-scrollback modal on top of a sheet that already holds the same surface.
 - **<768px** top bar keeps S-mark + switcher + balance + avatar (Invite & bell move into avatar sheet); **Create Bet becomes a 56px circular jade FAB** bottom-right (circle sanctioned via §4.1 icon-button exception; it also frees the one-cut budget for the closing-soon row). Bet rows use §5.1 stacked mobile layout (~96px). Modals = bottom sheets.
 
 ## 7. Empty & loading
 - Zero-bets team (t-02/t-03 exercise this live): ghost S-mark watermark 5% + "No bets yet. Someone has to make the first bad decision." + Create Bet CTA (`cut-sm` legitimate here).
 - Zero transactions: "No transactions yet."; all-zero P/L: solvent line (§4.2 copy).
+- Zero-message chat (Extra Phase 1): the same shared ghost pattern (`design-visual-identity.md` §5.10), not a bespoke chat treatment — S-mark watermark + one dry line, no CTA (there is nothing to click, only something to type).
 - Skeletons: row-shaped, opacity-breathe 0.4↔0.6, no shimmer.
 
 ## 8. Phase-1 implementation map (`apps/web/src`)

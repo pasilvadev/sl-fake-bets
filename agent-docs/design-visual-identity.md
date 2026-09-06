@@ -552,6 +552,9 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 - No hover cards, no message-bubble background. Whitespace (`py-1.5`) carries separation; hairline every few messages at most.
 - Input: fixed to panel bottom, `bg-surface-1 border-t`, plain `rounded-none` field. Send affordance is the **diagonal slash itself** as icon — a single `/` glyph styled as a send arrow, jade on hover — doubling as brand mark and function.
 - Realtime arrival: lightweight insertion animation only (§6), never a layout-shifting entrance.
+- **Unread divider (Extra Phase 1, D2):** a 1px hairline across the row gutter + small uppercase `NEW` label, N6 — no red, no count badge on the line itself. The count lives on the header/chip, not here (§5.2's no-colored-chip rule extends to this label).
+- **Catch-up pill:** a member reading scrollback who isn't already at the bottom gets a small `N new ↓` pill (jade text on `surface-2`) instead of being auto-scrolled out from under their read position; clicking it scrolls to bottom and dismisses it. Never yank scroll position without one.
+- **End-of-history marker:** a centered hairline + one dry line naming the 30-day cutoff, replacing the loading row once keyset paging has nothing further to return.
 
 ### 5.8 Forms & inputs (general)
 
@@ -571,6 +574,8 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 ### 5.9 Toasts
 
 `bg-surface-2 border-border`, left rail 2px by type: jade (success) / N4 (info/neutral) / ember (destructive-confirmation only) — never red/green. Icon slot reuses the glyph system: `/` jade for success, `\` N6 for failure — no check/x icon-library glyphs. Position bottom-right desktop / bottom-center mobile. Motion: slide+fade, 3.5s auto-dismiss, transform+opacity only, no blur.
+
+First shipped use: Extra Phase 1's chat send-failure toast (`\` glyph — flood/duplicate rejection, a failed send). It stays in-app UI feedback only — client-rendered, gone on reload, no persistence, no OS-level surface — and must stay that way. This is not, and must never become, a notification: ARC-014 bans push/email/sound/badge outright, and a toast is the line it must not cross.
 
 ### 5.10 Empty & loading states
 

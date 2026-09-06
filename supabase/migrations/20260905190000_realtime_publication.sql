@@ -6,12 +6,38 @@
 -- this migration, they were not: subscriptions connected, reported SUBSCRIBED,
 -- and never fired. This is the whole server side of Phase 8.
 --
--- WHAT IS IN, AND WHY ONLY THESE THREE
+-- WHAT IS IN, AND WHY ONLY THESE FOUR
 --
---   bets, wagers, comments — the three tables whose changes another member is
---   entitled to see the instant they happen (ARC-005 / UX-013 / UX-018): a new
---   bet in the feed, a pool multiplier moving under someone else's wager, a
---   new comment in a thread.
+--   bets, wagers, comments, chat_messages — the four tables whose changes
+--   another member is entitled to see the instant they happen (ARC-005 /
+--   UX-013 / UX-018 / UX-019): a new bet in the feed, a pool multiplier
+--   moving under someone else's wager, a new comment in a thread, a new
+--   message in the team's chat channel. `chat_messages` joined this list in
+--   Extra Phase 1 (20260906120000_team_chat.sql): a team channel is exactly
+--   the kind of team-wide, always-mounted surface this publication exists
+--   for, and it reuses the SAME per-team channel `subscribeTeamChannel`
+--   already opens — no new subscription, one more binding on the one this
+--   file already justifies.
+--
+--   On the client, `chat_messages` binds INSERT only — the same restraint
+--   `subscribeTeamChannel` already applies to `wagers`, and for a sharper
+--   reason in chat's case: the daily `app.prune_chat_messages()` job (task 5a)
+--   is a DELETE storm by design, capable of removing weeks of rows in one
+--   statement, and every one of those rows is still IN this publication (a
+--   published table replicates every DML unless told otherwise). Binding only
+--   the INSERT event on the channel is what stops that burst from ever
+--   reaching a subscriber — nobody is watching a 31-day-old message disappear
+--   in real time, so there is no "ignore dead ids" rule to write for chat the
+--   way there is for `bets` DELETE below; there is simply no DELETE event
+--   delivered to bind a rule to. Egress for a burst nobody would use is
+--   exactly the cost `design-scale-and-free-tier.md` §2.2/§4.1 name as the
+--   ceiling to watch, and this is how chat avoids paying it.
+--
+--   `chat_messages` itself is added to the publication by a DIFFERENT do-block
+--   than the one below — see "WHY THIS FILE, NOT A SECOND MIGRATION" further
+--   down for exactly where and why. It is described here, in this file's own
+--   "what is in" inventory, because that inventory is about what the
+--   publication CONTAINS, not about which migration's DDL put it there.
 --
 -- WHAT IS DELIBERATELY OUT (agent-docs/design-realtime.md §5 rule 3)
 --
@@ -46,6 +72,35 @@
 --   client-side rule that contains it is "ignore any id you do not already
 --   hold" (lib/data/realtime.ts). Do not add a table here whose bare primary
 --   key would itself be sensitive.
+--
+-- WHY THIS FILE, NOT A SECOND MIGRATION — true for `bets`/`wagers`/`comments`,
+-- FALSE for `chat_messages`, and that split is the point of this paragraph.
+-- This whole stack is local-only so far (hosted anything, ARC-012, is the one
+-- `[mvp]` item the README lists as still not built) — there is no
+-- already-deployed history anywhere that this migration's past runs are
+-- locked against, only `supabase db reset` replaying every migration in order
+-- against a brand-new database each time. Editing this file in place would
+-- therefore be the right move for any table that already exists BEFORE this
+-- migration runs, exactly the case for the original three.
+--
+-- `chat_messages` is not that case, and adding it to the loop below the way
+-- the other three are listed was tried and is WRONG, on purpose left
+-- unrepeated here as a warning to the next agent tempted to "just add the
+-- name to the array" the way task 6 of Extra Phase 1 reads literally.
+-- Migrations apply in filename order, and this file is timestamped
+-- `20260905190000` — hours BEFORE `20260906120000_team_chat.sql`, the
+-- migration whose `create table public.chat_messages` brings the relation
+-- into existence in the first place. `alter publication ... add table` is
+-- not a forward declaration; Postgres resolves the identifier immediately
+-- and raises `relation "chat_messages" does not exist` the moment this
+-- do-block would try it, failing `supabase db reset` at THIS migration, two
+-- files before the one that was supposed to be the problem. So the actual
+-- `alter publication supabase_realtime add table public.chat_messages`
+-- statement lives in `20260906120000_team_chat.sql` itself, in its own
+-- idempotent do-block right beside the table it publishes, where the
+-- ordering is no longer a hazard — see that file's own comment for the
+-- statement. The `not exists` guard below still covers only the three
+-- tables that were genuinely safe to fold into one in-place edit.
 -- =============================================================================
 
 do $$

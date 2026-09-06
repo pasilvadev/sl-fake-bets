@@ -64,7 +64,8 @@ per-row overhead, five teams at this rate write on the order of **tens of MB per
 year**. 500 MB is not the binding constraint, and it will not become one by
 accident.
 
-Two tables grow without a ceiling and deserve naming:
+Two tables grow without a ceiling and deserve naming, and a third joins them
+with an important difference:
 
 - **`transactions`** (DOM-025) is append-only by design — `revoke update, delete`
   is in the RLS migration — and gains a row per grant, daily reward and leader
@@ -75,6 +76,23 @@ Two tables grow without a ceiling and deserve naming:
   nothing at all afterwards — the funnel is instrumented, the app is not. It is
   the one append-heavy table by design and still the smallest growth vector
   here.
+- **`chat_messages`** (Extra Phase 1, UX-019) writes with no natural ceiling
+  either — a chatty 30-member team can send messages for as long as the team
+  exists — but it is the **first of the three bounded at birth rather than
+  left named-and-unfixed**. D1's 30-day hard retention window is enforced
+  twice on purpose: `app.prune_chat_messages()` deletes anything older on a
+  daily `pg_cron` schedule, and every read (`chat_page`) carries the same
+  30-day window predicate regardless of whether the prune has run — the same
+  belt-and-suspenders instinct RLS applies to access, here applied to disk.
+  Rough arithmetic at this section's own scenario — call chat as busy as
+  `comments` (§2's ~200/day for a 30-member team), each row three uuids plus a
+  short body and a timestamp, generously ~150 bytes: steady state is
+  ~200 × 30 ≈ 6,000 resident rows, under 1 MB, and that number does not move
+  whether the app runs for one month or five years. Contrast that with
+  `transactions` just above, which this same section names as a growth vector
+  with no retention plan of its own — §4.1 fixes its *egress* cost, not its
+  row count. Chat could have taken the identical named-and-unfixed shape; D1
+  is the decision that it didn't.
 
 ### 2.2 Egress (5 GB/mo) — the tightest ceiling, and the one to design against
 
@@ -95,6 +113,16 @@ start, and only the transactions modal reads it. Phase 8 recorded this
 explicitly as out of its scope and left it untouched. It is the first thing to
 fix if egress ever becomes real, and the fix is small — page the ledger, or load
 it when the modal opens (§4.1).
+
+**Chat is the first feature that applied this rule before shipping, not after
+the fact.** `loadTeamData` still issues exactly nine queries — Extra Phase 1
+(UX-019) does not add a tenth. `chat_messages` loads lazily, the moment its
+surface (rail or modal) first mounts, through its own paged RPC (`chat_page`,
+§2.1) rather than through `team-data.ts`. The paragraph above names the fix for
+`transactions`'s cold-start weakness after that weakness already existed; chat
+is the same rule applied prospectively — §4.1's ceiling-to-watch reached this
+table before any session had the chance to bolt a tenth query onto
+`loadTeamData` by default.
 
 ### 2.3 Storage (1 GB) — a bound already enforced in the schema
 
@@ -175,6 +203,11 @@ run.
 **Why first:** it is the only item here that costs nothing, changes no vendor and
 no schema, and it attacks the ceiling that arrives soonest. Everything below is a
 worse trade until this is done.
+**Precedent:** the rule already has one. `chat_messages` (Extra Phase 1,
+UX-019) is the first table written after this document named the cold-start
+payload as the ceiling to watch, and it stayed out of `loadTeamData` from the
+start (§2.2) — proof this is a rule a session can follow prospectively, not
+only a fix applied after egress became a real bill.
 
 ### 4.2 Supabase Pro — $25/mo
 

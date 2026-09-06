@@ -25,6 +25,24 @@ export const CONFIG = Object.freeze({
     { label: "24 hours", minutes: 60 * 24, isDefault: true },
     { label: "7 days", minutes: 60 * 24 * 7, isDefault: false },
   ] as readonly BetDurationPreset[],
+  /**
+   * Team chat message length cap (UX-019, Extra Phase 1). Has a SQL twin —
+   * the `body` CHECK in `20260906120000_team_chat.sql` — that must move with
+   * it: this is the value `validateChatMessage` enforces client-side, the
+   * migration enforces it again at the row, and the two must never drift.
+   */
+  CHAT_MESSAGE_MAX_CHARS: 500,
+  /**
+   * Team chat retention window in days (UX-019, D1, Extra Phase 1).
+   * HARD WARNING: this is NOT the authoritative interval. The one authority
+   * is `app.chat_retention_interval()` in `20260906120000_team_chat.sql` —
+   * every prune and every read-path window predicate calls that function,
+   * never this constant. This number exists ONLY to drive user-facing copy
+   * ("messages older than 30 days are cleared"). Change one and you must
+   * change the other in the same commit, or the copy will lie about what
+   * the database actually enforces.
+   */
+  CHAT_RETENTION_DAYS: 30,
 });
 
 /** Suggested default per-user max wager = onboarding grant (DOM-017). */

@@ -18,7 +18,8 @@ export type ModalId =
   | "profile"
   | "team-settings"
   | "create-team"
-  | "leave-team";
+  | "leave-team"
+  | "chat";
 
 export interface ModalState {
   active: { id: ModalId; payload?: unknown } | null;

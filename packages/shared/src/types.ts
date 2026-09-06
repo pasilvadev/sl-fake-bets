@@ -108,6 +108,25 @@ export interface Comment {
 }
 
 /**
+ * Team-wide chat (UX-019, Extra Phase 1). Easy to mistake for `Comment` above
+ * because the shapes rhyme, but the scope is the whole point: chat is
+ * TEAM-scoped and lives on the dashboard (one channel per team, always
+ * mounted), while comments are BET-scoped and live on the bet page (one
+ * thread per bet). `teamId` here is a direct column, not reached through a
+ * bet the way a comment reaches its team — every chat read is "this team,
+ * this window, this page", and routing that through a bet join would put a
+ * join on every scroll. Neither surface replaces the other, and they share
+ * no table: this type has no `betId`, and `Comment` above gets no `teamId`.
+ */
+export interface ChatMessage {
+  id: string;
+  teamId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+}
+
+/**
  * Coin-ledger entry (DOM-025): grants, leader injections, future donations.
  * Deliberately NOT per-wager (DOM-026) — wager outcomes only aggregate into
  * TeamMember.profitLoss.

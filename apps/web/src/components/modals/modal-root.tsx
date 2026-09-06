@@ -11,6 +11,7 @@ import { ProfileModal } from "./profile-modal";
 import { TeamSettingsModal } from "./team-settings-modal";
 import { CreateTeamModal } from "./create-team-modal";
 import { LeaveTeamModal } from "./leave-team-modal";
+import { ChatModal } from "./chat-modal";
 
 /**
  * Single modal mount point — reads the active modal id and renders it.
@@ -47,6 +48,8 @@ export function ModalRoot() {
       return <CreateTeamModal />;
     case "leave-team":
       return <LeaveTeamModal />;
+    case "chat":
+      return <ChatModal />;
     default:
       return null;
   }

@@ -1,4 +1,4 @@
-import { NAME_COLORS } from "./config";
+import { CONFIG, NAME_COLORS } from "./config";
 import type { BetState, Team, TeamAccessMode } from "./types";
 
 /**
@@ -23,7 +23,9 @@ export interface ValidationIssue {
     | "avatar-required"
     | "comment-empty"
     | "invite-code-required"
-    | "inject-amount-invalid";
+    | "inject-amount-invalid"
+    | "chat-empty"
+    | "chat-too-long";
   message: string;
 }
 
@@ -211,6 +213,35 @@ export function validateCommentBody(body: string): ValidationIssue[] {
   return body.trim().length === 0
     ? [{ code: "comment-empty", message: "Write something first." }]
     : [];
+}
+
+/**
+ * UX-019 + DOM-030: team chat is `validateCommentBody`'s twin plus a length
+ * cap. Free-form with no moderation, so the only two checks that exist are
+ * "something was typed" and "it fits" — there is no profanity filter, no link
+ * check, nothing that inspects *what* was said, because DOM-030 rules that
+ * out categorically, not just for this surface. The length cap has a SQL
+ * twin: the `body` CHECK in `20260906120000_team_chat.sql` enforces the same
+ * `CONFIG.CHAT_MESSAGE_MAX_CHARS` bound at the row, per the invariants
+ * migration's own rationale — a rule that lives only here stops being an
+ * invariant the moment a write arrives from Studio or PostgREST.
+ */
+export function validateChatMessage(body: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const trimmed = body.trim();
+
+  if (trimmed.length === 0) {
+    issues.push({ code: "chat-empty", message: "Write something first." });
+    return issues;
+  }
+  if (trimmed.length > CONFIG.CHAT_MESSAGE_MAX_CHARS) {
+    issues.push({
+      code: "chat-too-long",
+      message: `Keep it under ${CONFIG.CHAT_MESSAGE_MAX_CHARS} characters.`,
+    });
+  }
+
+  return issues;
 }
 
 /** DOM-024: an injection is a credit — a positive whole amount, never a debit. */

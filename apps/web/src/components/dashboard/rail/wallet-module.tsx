@@ -6,11 +6,24 @@ import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { useFeatureFlag } from "@/lib/feature-flags";
 
 /**
  * Pulse Rail module 1/4 (design-dashboard.md §4.1): big balance numeral,
  * daily auto-grant readout (DOM-022), P/L line (DOM-026), transaction
  * history link, and a disabled Donate stub (DOM-023, future-stub).
+ *
+ * **The Donate stub is `coming-soon-teasers`'s live subject (roadmap §8 Extra
+ * Phase 1, task 13/D-decision, `packages/shared/src/infra.ts`'s
+ * `KnownFeatureFlag` comment has the full history).** That flag used to gate
+ * `chat-stub-module.tsx`'s very existence; Extra Phase 1 deleted the stub and
+ * re-pointed the flag here rather than deleting it, because deleting it would
+ * have silently ended Phase 9's ARC-016 live-toggle proof (a flag that still
+ * reads `true` but has no listener is a regression with no error and no red
+ * test). So this button, not the chat module, is now the on-screen effect of
+ * flipping `coming-soon-teasers` in Studio — it disappears with the flag
+ * rather than merely losing its `disabled` state, which keeps the toggle's
+ * effect visible rather than cosmetic.
  */
 /**
  * DOM-022 / decision §4.3: the reward is scoped to the UTC calendar day,
@@ -26,6 +39,7 @@ export function WalletModule() {
   const { balance, member, currentUser, transactions } = useTeam();
   const { open } = useModal();
   const now = useNow();
+  const showDonateTeaser = useFeatureFlag("coming-soon-teasers");
 
   // The claim happens on team load (team-context), so by the time this renders
   // the row is normally already there; `now == null` is just the pre-hydration
@@ -83,15 +97,17 @@ export function WalletModule() {
         View transaction history
       </button>
 
-      <div className="mt-3" title="Coming soon">
-        <button
-          type="button"
-          disabled
-          className="h-8 w-full rounded-sm border border-border bg-transparent px-3 text-xs text-foreground opacity-40 pointer-events-none"
-        >
-          Donate coins
-        </button>
-      </div>
+      {showDonateTeaser && (
+        <div className="mt-3" title="Coming soon">
+          <button
+            type="button"
+            disabled
+            className="h-8 w-full rounded-sm border border-border bg-transparent px-3 text-xs text-foreground opacity-40 pointer-events-none"
+          >
+            Donate coins
+          </button>
+        </div>
+      )}
     </section>
   );
 }
