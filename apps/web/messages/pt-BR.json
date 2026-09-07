@@ -83,8 +83,8 @@
     "title-required": "Dê um título à aposta."
   },
   "metadata": {
-    "titleDefault": "{siteName} — apostas de mentira com os amigos",
-    "description": "{siteName} é um app privado e gratuito de apostas com moedas de mentira, feito para um grupo de amigos. Crie um time, aposte em qualquer coisa e feche no pari-mutuel — nunca com dinheiro de verdade.",
+    "titleDefault": "{siteName}",
+    "description": "{siteName} é um app privado e gratuito de apostas com moedas de mentira. Crie um time, aposte em qualquer coisa e feche no pari-mutuel — nunca com dinheiro de verdade.",
     "tagline": "Faça apostas idiotas sobre coisas idiotas",
     "joinTitle": "Entrar no {team}",
     "joinDescription": "O {team} aposta moedas de mentira no {siteName} — {members, plural, one {# membro} other {# membros}}, {openBets, plural, one {# aposta aberta} other {# apostas abertas}}. Nunca com dinheiro de verdade.",
@@ -120,7 +120,7 @@
     "editProfile": "Editar perfil",
     "teamSettings": "Configurações do time",
     "teamInfo": "Sobre o time",
-    "inviteFriends": "Convidar amigos",
+    "inviteFriends": "Convidar jogadores",
     "leaveTeam": "Sair do time",
     "signOut": "Sair da conta"
   },
@@ -294,7 +294,7 @@
     "optionPlaceholder": "Opção {index}"
   },
   "inviteModal": {
-    "eyebrow": "CONVIDAR AMIGOS",
+    "eyebrow": "CONVIDAR JOGADORES",
     "join": "Entre no {team} no SL",
     "stats": "{members} membros · {openBets} apostas abertas",
     "linkLabel": "Link de convite",
@@ -571,12 +571,12 @@
     "notNow": "Agora não"
   },
   "authPage": {
-    "heroLead": "Apostas de mentira pra um grupo de amigos. Crie um time, aposte em qualquer coisa e deixe o pote decidir quanto paga.",
-    "heroPoint1": "Times privados e gratuitos — convite por link, sem app store.",
-    "heroPoint2": "Odds pari-mutuel que mudam conforme seus amigos apostam.",
+    "heroLead": "Apostas de mentira. Crie um time, aposte em qualquer coisa e deixe o pote decidir quanto paga.",
+    "heroPoint1": "Times privados e gratuitos, convite por link.",
+    "heroPoint2": "Odds automáticas baseadas nas apostas.",
     "heroPoint3": "Nunca envolve dinheiro de verdade.",
     "signInTitle": "Entrar no {siteName}",
-    "signInLead": "Aposte moedas de mentira com seus amigos em qualquer coisa.",
+    "signInLead": "Aposte moedas de mentira em qualquer coisa.",
     "google": "Continuar com o Google",
     "redirecting": "Redirecionando…",
     "or": "ou",
