@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { Ban, UserX } from "lucide-react";
+import { useLocale } from "next-intl";
 import type { TeamAccessMode, TeamMember } from "@repo/shared";
 import type { MutationResult } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
@@ -80,6 +81,7 @@ function MemberRow({ member }: { member: TeamMember }) {
   const { team, canManage, canInject, userById, kickMember, banMember, injectCoins } =
     useTeam();
   const { show } = useToast();
+  const locale = useLocale();
   const [action, setAction] = useState<RowAction | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +183,7 @@ function MemberRow({ member }: { member: TeamMember }) {
               // call sites — "1 coins added" would be the one ungrammatical
               // sentence in the set (§7: a plain statement, and plain means
               // correct English).
-              `${formatCoins(coins)} coin${coins === 1 ? "" : "s"} added to ${user.displayName}.`,
+              `${formatCoins(locale, coins)} coin${coins === 1 ? "" : "s"} added to ${user.displayName}.`,
             );
           }}
           className="mt-2 flex items-center gap-2 pl-10"

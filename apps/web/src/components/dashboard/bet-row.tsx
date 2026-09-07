@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
+import { useLocale } from "next-intl";
 import {
   canAcceptDuel,
   canResolveDuel,
@@ -254,6 +255,8 @@ function StateLabel({
   closingSoon: boolean;
   duelView: DuelView | null;
 }) {
+  const locale = useLocale();
+
   let text: string | null = null;
   let className = "text-muted-foreground";
 
@@ -263,14 +266,14 @@ function StateLabel({
   } else if (duelView?.readsAsVoid && bet.state !== "resolved") {
     // The lazily-expired case: nothing has persisted a resolution yet, so
     // `bet.resolution` is still absent and only the clock knows.
-    text = formatVoidLabel("expired");
+    text = formatVoidLabel(locale, "expired");
   } else if (bet.state === "open" && closingSoon) {
     text = "CLOSING SOON";
     className = "text-jade/80";
   } else if (bet.state === "closed") {
     text = "AWAITING RESULT";
   } else if (bet.state === "resolved" && bet.resolution?.kind === "void") {
-    text = formatVoidLabel(bet.resolution.reason);
+    text = formatVoidLabel(locale, bet.resolution.reason);
   }
 
   if (!text) return null;
@@ -443,6 +446,7 @@ export function BetRow({
   const { open } = useModal();
   const { show } = useToast();
   const now = useNow();
+  const locale = useLocale();
 
   // Same origin idiom as invite-modal.tsx. The difference worth knowing: that
   // modal only ever renders after a click, so its guard is there for the type;
@@ -508,7 +512,7 @@ export function BetRow({
   const distinctWagerUserIds = Array.from(new Set(betWagers.map((w) => w.userId)));
 
   const { label: countdownLabel, msLeft } =
-    bet.state === "open" && now != null ? formatTimeLeft(bet.closesAt, now) : { label: "—", msLeft: null as number | null };
+    bet.state === "open" && now != null ? formatTimeLeft(locale, bet.closesAt, now) : { label: "—", msLeft: null as number | null };
   const closingSoon =
     bet.state === "open" &&
     Boolean(soonest) &&
@@ -694,13 +698,13 @@ export function BetRow({
           )}
           {bet.state === "open" &&
             (duelView?.readsAsVoid
-              ? formatShortDate(bet.closesAt)
+              ? formatShortDate(locale, bet.closesAt)
               : now == null
                 ? "—"
                 : countdownLabel)}
           {bet.state === "closed" &&
-            (now == null ? "—" : `closed ${formatRelativePast(bet.closesAt, now)}`)}
-          {bet.state === "resolved" && formatShortDate(bet.closesAt)}
+            (now == null ? "—" : `closed ${formatRelativePast(locale, bet.closesAt, now)}`)}
+          {bet.state === "resolved" && formatShortDate(locale, bet.closesAt)}
         </div>
       </div>
 

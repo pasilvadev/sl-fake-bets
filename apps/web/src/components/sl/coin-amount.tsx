@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "cn";
+import { useLocale } from "next-intl";
 import { formatCoins } from "@/lib/format";
 
 /** Mini S-mark glyph, ~0.75em, currentColor — the coin glyph (§5.5). */
@@ -22,6 +23,11 @@ export function CoinAmount({
   amount: number;
   className?: string;
 }) {
+  // Read here rather than threaded down from every caller: this is a leaf, it
+  // is the single most-rendered numeral in the app, and the grouping separator
+  // is the only thing about it that varies (D7).
+  const locale = useLocale();
+
   return (
     <span
       className={cn(
@@ -30,7 +36,7 @@ export function CoinAmount({
       )}
     >
       <CoinGlyph />
-      {formatCoins(amount)}
+      {formatCoins(locale, amount)}
     </span>
   );
 }
@@ -48,6 +54,10 @@ export function CoinDelta({
   amount: number;
   className?: string;
 }) {
+  // Above the zero branch: hooks are unconditional, and the ±0 case is the
+  // one that returns early.
+  const locale = useLocale();
+
   if (amount === 0) {
     return (
       <span className={cn("font-mono tabular-nums text-muted-foreground", className)}>
@@ -59,14 +69,14 @@ export function CoinDelta({
   if (amount > 0) {
     return (
       <span className={cn("font-mono tabular-nums text-jade", className)}>
-        {`/ +${formatCoins(amount)}`}
+        {`/ +${formatCoins(locale, amount)}`}
       </span>
     );
   }
 
   return (
     <span className={cn("font-mono tabular-nums text-negative", className)}>
-      {`\\ −${formatCoins(Math.abs(amount))}`}
+      {`\\ −${formatCoins(locale, Math.abs(amount))}`}
     </span>
   );
 }

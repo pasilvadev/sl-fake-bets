@@ -2908,13 +2908,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     // so this fallback only guards the frame between a fresh signup and the
     // load that follows it.
     const currentUser: User =
-      userById(currentUserId) ??
-      ({
+      userById(currentUserId) ?? {
         id: currentUserId,
         displayName: "?",
         nameColor: "#909592",
         avatar: "",
-      } as User);
+        // "Never chose" — Accept-Language keeps deciding (UX-027, D3), which
+        // is the right answer for an identity we do not have a row for yet.
+        locale: null,
+      };
 
     const member = team.members.find((m) => m.userId === currentUser.id) ?? null;
     const isLeader = team.leaderId === currentUser.id;

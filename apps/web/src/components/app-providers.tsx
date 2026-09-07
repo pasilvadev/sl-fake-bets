@@ -1,6 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import type { Locale } from "@/i18n/config";
+import type { Messages } from "@/i18n/messages";
 import { AuthProvider } from "@/lib/auth-context";
 import { FeatureFlagProvider } from "@/lib/feature-flags";
 import type { FlagMap } from "@/lib/data/feature-flags";
@@ -32,31 +35,49 @@ import { ToastRoot } from "@/components/sl/toast-layer";
  * Those two are the only props that cross the server/client boundary here, and
  * both are per-request values a client render must not go fetch for itself.
  *
- * FeatureFlagProvider is outermost: a flag may gate anything, including a
- * provider's own children, and it depends on nothing.
+ * NextIntlClientProvider is outermost, ABOVE FeatureFlagProvider (UX-027,
+ * plan-i18n-ptbr.md Phase 1, task 6). A provider below it may render copy — a
+ * flag-gated empty state already does — and a translation hook must never be
+ * the thing that is not ready yet. FeatureFlagProvider keeps its own
+ * "outermost" reasoning for everything under it: a flag may gate anything,
+ * including a provider's own children, and it depends on nothing.
+ *
+ * `locale` and `messages` cross the server/client boundary as props, exactly
+ * like `initialUser` and `flags` — all four are per-request values a client
+ * render must not go fetch for itself. Only the ACTIVE locale's catalog is
+ * serialized (~4 KB gzipped at this size, ~10 KB by the end of Phase 3);
+ * pre-emptively narrowing it per route with next-intl's `pick()` is not
+ * warranted below ~800 keys and would cost the owner the single-file editing
+ * surface §4 promises.
  */
 export function AppProviders({
   initialUser,
   flags,
+  locale,
+  messages,
   children,
 }: {
   initialUser: SessionUser | null;
   flags: FlagMap;
+  locale: Locale;
+  messages: Messages;
   children: ReactNode;
 }) {
   return (
-    <FeatureFlagProvider flags={flags}>
-      <AuthProvider initialUser={initialUser}>
-        <ToastProvider>
-          <TeamProvider>
-            <ModalProvider>
-              {children}
-              <ModalRoot />
-            </ModalProvider>
-          </TeamProvider>
-          <ToastRoot />
-        </ToastProvider>
-      </AuthProvider>
-    </FeatureFlagProvider>
+    <NextIntlClientProvider locale={locale} messages={messages}>
+      <FeatureFlagProvider flags={flags}>
+        <AuthProvider initialUser={initialUser}>
+          <ToastProvider>
+            <TeamProvider>
+              <ModalProvider>
+                {children}
+                <ModalRoot />
+              </ModalProvider>
+            </TeamProvider>
+            <ToastRoot />
+          </ToastProvider>
+        </AuthProvider>
+      </FeatureFlagProvider>
+    </NextIntlClientProvider>
   );
 }

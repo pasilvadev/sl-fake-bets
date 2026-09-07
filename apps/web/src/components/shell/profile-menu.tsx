@@ -2,12 +2,14 @@
 
 import { LogOut } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
+import { useTranslations } from "next-intl";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useAuth } from "@/lib/auth-context";
+import { LocaleSubmenu } from "./locale-switcher";
 
 const itemClass =
   "flex h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-surface-3";
@@ -15,12 +17,18 @@ const itemClass =
 /**
  * Profile dropdown (design-dashboard.md §1.1): avatar trigger, current-user
  * header, then Edit profile / Team settings-or-info / (mobile) Invite /
- * Leave team / Language stub / Sign out.
+ * Leave team / Language / Sign out.
+ *
+ * The Language row stopped being a stub in i18n Phase 1 (UX-027, D12): it is
+ * now a submenu with one radio item per locale, and it disappears entirely
+ * rather than greying out when `locale-pt-br` is off. Its position in the
+ * order is unchanged.
  */
 export function ProfileMenu() {
   const { currentUser, balance, canManage, canInvite } = useTeam();
   const { open } = useModal();
   const { signOut } = useAuth();
+  const t = useTranslations("profileMenu");
 
   return (
     <DropdownMenu.Root>
@@ -50,11 +58,11 @@ export function ProfileMenu() {
           </div>
 
           <DropdownMenu.Item className={itemClass} onSelect={() => open("profile")}>
-            Edit profile
+            {t("editProfile")}
           </DropdownMenu.Item>
 
           <DropdownMenu.Item className={itemClass} onSelect={() => open("team-settings")}>
-            {canManage ? "Team settings" : "Team info"}
+            {canManage ? t("teamSettings") : t("teamInfo")}
           </DropdownMenu.Item>
 
           {canInvite && (
@@ -62,7 +70,7 @@ export function ProfileMenu() {
               className={`${itemClass} md:hidden`}
               onSelect={() => open("invite")}
             >
-              Invite friends
+              {t("inviteFriends")}
             </DropdownMenu.Item>
           )}
 
@@ -74,15 +82,10 @@ export function ProfileMenu() {
             className="flex h-8 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-ember-wash"
           >
             <LogOut className="size-3.5 text-ember" />
-            Leave team
+            {t("leaveTeam")}
           </DropdownMenu.Item>
 
-          <DropdownMenu.Item
-            disabled
-            className="flex h-8 items-center rounded-sm px-2 text-sm text-muted-foreground opacity-40 outline-none"
-          >
-            Language: English
-          </DropdownMenu.Item>
+          <LocaleSubmenu triggerClassName={itemClass} />
 
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
 
@@ -92,7 +95,7 @@ export function ProfileMenu() {
             // Radix's onSelect wants a void handler.
             onSelect={() => void signOut()}
           >
-            Sign out
+            {t("signOut")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

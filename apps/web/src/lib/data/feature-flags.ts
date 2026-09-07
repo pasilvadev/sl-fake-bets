@@ -1,5 +1,7 @@
+import { cache } from "react";
 import type { KnownFeatureFlag } from "@repo/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Feature flags, read at load (ARC-016 — roadmap Phase 9, task 2).
@@ -65,3 +67,24 @@ export async function loadFeatureFlags(
     ]),
   ) as FlagMap;
 }
+
+/**
+ * The same read, deduped for the lifetime of one request
+ * (plan-i18n-ptbr.md §5 Phase 1, task 3).
+ *
+ * Localization is the reason this exists. `i18n/request.ts` has to know
+ * whether `locale-pt-br` is on **before** the layout runs — the locale is
+ * chosen while next-intl builds the request config, which is upstream of any
+ * component — and D13 makes that flag the kill switch for the whole feature.
+ * React's `cache()` makes the second caller free: whichever of the two asks
+ * first pays for the SELECT, the other gets the same promise.
+ *
+ * This is the one place a flag read is allowed to precede the layout's. Every
+ * other consumer reads the frozen `FlagMap` handed down through
+ * `FeatureFlagProvider`, and must keep doing so — a component reaching for
+ * this helper would be re-introducing the mid-tree flag read
+ * `lib/feature-flags.tsx` exists to prevent.
+ */
+export const loadRequestFeatureFlags = cache(async (): Promise<FlagMap> => {
+  return loadFeatureFlags(await createClient());
+});

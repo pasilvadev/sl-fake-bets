@@ -1,0 +1,55 @@
+{
+  "common": {
+    "language": "Language"
+  },
+  "metadata": {
+    "titleDefault": "{siteName} — fake-coin bets with your friends",
+    "description": "{siteName} is a private, free, fake-coin betting app for a group of friends. Create a team, post a bet on anything, and settle it pari-mutuel — no real money, ever.",
+    "tagline": "Make stupid fake bets on stupid things"
+  },
+  "topBar": {
+    "invite": "Invite",
+    "startDuel": "Start 1v1",
+    "createBet": "Create bet",
+    "createBetDenied": "Only the leader or moderators can create bets",
+    "notificationsSoon": "Notifications — coming soon"
+  },
+  "ticker": {
+    "open": "Open",
+    "closingSoonest": "Closing soonest",
+    "pool": "Pool (open)",
+    "rank": "Your rank",
+    "rankValue": "#{rank} richest",
+    "team": "Team"
+  },
+  "profileMenu": {
+    "editProfile": "Edit profile",
+    "teamSettings": "Team settings",
+    "teamInfo": "Team info",
+    "inviteFriends": "Invite friends",
+    "leaveTeam": "Leave team",
+    "signOut": "Sign out"
+  },
+  "emptyState": {
+    "noBets": "No bets yet. Someone has to make the first bad decision.",
+    "noBetsCta": "Create Bet"
+  },
+  "state": {
+    "void": {
+      "expired": "VOID · NOT ACCEPTED IN TIME",
+      "declined": "VOID · DECLINED",
+      "insufficientFunds": "VOID · COULDN'T COVER IT",
+      "participantLeft": "VOID · PLAYER LEFT",
+      "refunded": "VOID · REFUNDED"
+    }
+  },
+  "format": {
+    "closed": "closed",
+    "justNow": "just now",
+    "ago": "{value} ago",
+    "day": "d",
+    "hour": "h",
+    "minute": "m",
+    "second": "s"
+  }
+}

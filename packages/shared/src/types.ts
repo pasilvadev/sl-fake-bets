@@ -83,6 +83,20 @@ export type BetResolution =
   // and no payout path may branch on it — see BetVoidReason above.
   | { kind: "void"; reason?: BetVoidReason };
 
+/**
+ * The UI languages a profile may store (UX-027, plan-i18n-ptbr.md D4).
+ *
+ * Here rather than in `apps/web/src/i18n/config.ts` because it describes a
+ * COLUMN — `users.locale`, added by `20260907120000_user_locale.sql`, whose
+ * CHECK constraint pins the same two values — and `types.ts` is where this
+ * project keeps the shapes Postgres hands back. Everything else about
+ * localization (the runtime list, the labels, the cookie, the negotiation)
+ * stays in the web app, which is the only thing that renders.
+ *
+ * `en` first: it is the source locale, the key authority and the fallback.
+ */
+export type Locale = "en" | "pt-BR";
+
 export interface User {
   id: string;
   /** Twitch-style customization (UX-022), all pre-filled with defaults (UX-002). */
@@ -95,6 +109,15 @@ export interface User {
    * picture URL (the Phase 4 signup default).
    */
   avatar: string;
+  /**
+   * Chosen UI language, or `null` for "never chose" (UX-027, D3).
+   *
+   * `null` is load-bearing rather than a missing value: it is what lets
+   * `Accept-Language` keep deciding for someone who has not expressed a
+   * preference. Only `currentUser`'s is ever read — see
+   * `components/shell/locale-sync.tsx` for the one thing that does with it.
+   */
+  locale: Locale | null;
 }
 
 export interface TeamMember {

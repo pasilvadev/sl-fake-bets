@@ -10,6 +10,7 @@ import {
 } from "react";
 import { ArrowDown } from "lucide-react";
 import { cn } from "cn";
+import { useLocale } from "next-intl";
 import { CONFIG, validateChatMessage, type ChatMessage, type User } from "@repo/shared";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -181,6 +182,8 @@ function ChatRow({
   user: User | undefined;
   now: number | null;
 }) {
+  const locale = useLocale();
+
   // Same defensive shape as every other identity-cluster row in this app
   // (e.g. `StandingRow`): a `userId` this device's roster snapshot can't
   // resolve renders nothing rather than a broken half-row. DOM-030 note: this
@@ -203,7 +206,7 @@ function ChatRow({
         {message.body}
       </span>
       <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-        {now == null ? "—" : formatRelativePast(message.createdAt, now)}
+        {now == null ? "—" : formatRelativePast(locale, message.createdAt, now)}
       </span>
     </div>
   );

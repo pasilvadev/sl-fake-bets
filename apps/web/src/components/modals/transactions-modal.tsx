@@ -1,16 +1,18 @@
 "use client";
 
+import { useLocale } from "next-intl";
 import { type Team, type TeamMember } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { CoinDelta } from "@/components/sl/coin-amount";
-import { formatShortDate } from "@/lib/format";
+import { formatCoins, formatShortDate } from "@/lib/format";
 
 /** DOM-025/026: dense transaction history + per-team lifetime P/L breakdown. */
 export function TransactionsModal() {
   const { close } = useModal();
   const { currentUser, transactions, teams } = useTeam();
+  const locale = useLocale();
 
   const myTransactions = transactions
     .filter((t) => t.userId === currentUser.id)
@@ -56,14 +58,14 @@ export function TransactionsModal() {
               className="flex items-center gap-3 border-b border-border py-2.5"
             >
               <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground">
-                {formatShortDate(tx.createdAt)}
+                {formatShortDate(locale, tx.createdAt)}
               </span>
               <span className="flex-1 truncate text-sm text-foreground">
                 {tx.description}
               </span>
               <CoinDelta amount={tx.amount} className="text-sm" />
               <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                {tx.balanceAfter.toLocaleString("en-US")}
+                {formatCoins(locale, tx.balanceAfter)}
               </span>
             </li>
           ))}

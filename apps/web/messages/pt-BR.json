@@ -1,0 +1,55 @@
+{
+  "common": {
+    "language": "Idioma"
+  },
+  "metadata": {
+    "titleDefault": "{siteName} — apostas de mentira com os amigos",
+    "description": "{siteName} é um app privado e gratuito de apostas com moedas de mentira, feito para um grupo de amigos. Crie um time, aposte em qualquer coisa e feche no pari-mutuel — nunca com dinheiro de verdade.",
+    "tagline": "Faça apostas idiotas sobre coisas idiotas"
+  },
+  "topBar": {
+    "invite": "Convidar",
+    "startDuel": "Iniciar 1v1",
+    "createBet": "Criar aposta",
+    "createBetDenied": "Só o líder ou os moderadores podem criar apostas",
+    "notificationsSoon": "Notificações — em breve"
+  },
+  "ticker": {
+    "open": "Abertas",
+    "closingSoonest": "Fecha em",
+    "pool": "Em jogo",
+    "rank": "Sua posição",
+    "rankValue": "#{rank} em moedas",
+    "team": "Time"
+  },
+  "profileMenu": {
+    "editProfile": "Editar perfil",
+    "teamSettings": "Configurações do time",
+    "teamInfo": "Sobre o time",
+    "inviteFriends": "Convidar amigos",
+    "leaveTeam": "Sair do time",
+    "signOut": "Sair da conta"
+  },
+  "emptyState": {
+    "noBets": "Nenhuma aposta ainda. Alguém tem que tomar a primeira decisão ruim.",
+    "noBetsCta": "Criar aposta"
+  },
+  "state": {
+    "void": {
+      "expired": "ANULADA · NÃO ACEITA A TEMPO",
+      "declined": "ANULADA · RECUSADA",
+      "insufficientFunds": "ANULADA · SEM SALDO",
+      "participantLeft": "ANULADA · SAIU DO TIME",
+      "refunded": "ANULADA · REEMBOLSADA"
+    }
+  },
+  "format": {
+    "closed": "fechada",
+    "justNow": "agora",
+    "ago": "há {value}",
+    "day": "d",
+    "hour": "h",
+    "minute": "m",
+    "second": "s"
+  }
+}

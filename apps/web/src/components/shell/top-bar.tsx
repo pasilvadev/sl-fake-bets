@@ -2,12 +2,14 @@
 
 import { Bell } from "lucide-react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import { canStartDuel } from "@repo/shared";
 import { SMark } from "@/components/sl/s-mark";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useFeatureFlag } from "@/lib/feature-flags";
+import { LocaleSync } from "./locale-sync";
 import { ProfileMenu } from "./profile-menu";
 import { TeamSwitcher } from "./team-switcher";
 
@@ -15,10 +17,15 @@ import { TeamSwitcher } from "./team-switcher";
  * Top bar (design-dashboard.md §1.1): 56px sticky shell band. Left = S-mark +
  * team switcher; right = balance pill, Invite, Start 1v1, Create Bet,
  * notifications (future-stub), profile menu — fixed order.
+ *
+ * It also mounts `LocaleSync` (UX-027, D3), which renders nothing: this is the
+ * one component present on every signed-in screen that is already inside
+ * TeamProvider, and `currentUser.locale` is what it reconciles against.
  */
 export function TopBar() {
   const { team, currentUser, balance, canCreateBet, canInvite } = useTeam();
   const { open } = useModal();
+  const t = useTranslations("topBar");
   // D9: plain membership, NOT `canCreateBet` and never `team.accessMode`. In a
   // restricted team an ordinary member sees Start 1v1 while Create Bet is
   // dimmed away from them — the asymmetry is the ruling, not a bug: the access
@@ -29,6 +36,8 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface-1 px-4">
+      <LocaleSync />
+
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <SMark className="size-5 shrink-0 text-foreground" />
         <TeamSwitcher />
@@ -53,7 +62,7 @@ export function TopBar() {
             onClick={() => open("invite")}
             className="hidden h-8 items-center rounded-sm border border-border bg-transparent px-3 text-sm text-foreground transition-colors hover:border-jade/50 hover:text-jade md:inline-flex"
           >
-            Invite
+            {t("invite")}
           </button>
         )}
 
@@ -70,7 +79,7 @@ export function TopBar() {
             onClick={() => open("start-duel")}
             className="hidden h-8 items-center rounded-sm border border-border bg-transparent px-3 text-sm text-foreground transition-colors hover:border-jade/50 hover:text-jade sm:inline-flex"
           >
-            Start 1v1
+            {t("startDuel")}
           </button>
         )}
 
@@ -80,18 +89,18 @@ export function TopBar() {
         <button
           type="button"
           disabled={!canCreateBet}
-          title={!canCreateBet ? "Only the leader or moderators can create bets" : undefined}
+          title={!canCreateBet ? t("createBetDenied") : undefined}
           onClick={() => open("create-bet")}
           className={cn(
             "hidden h-8 items-center rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 sm:inline-flex",
             !canCreateBet && "pointer-events-none opacity-40",
           )}
         >
-          Create bet
+          {t("createBet")}
         </button>
 
         {/* Permanent notifications slot, future-stub (ARC-014/015). */}
-        <div title="Notifications — coming soon">
+        <div title={t("notificationsSoon")}>
           <button
             type="button"
             tabIndex={-1}

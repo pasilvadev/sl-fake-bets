@@ -51,7 +51,13 @@ export type KnownFeatureFlag =
   | "global-team-chat"
   | "crowd-resolution"    // DOM-020 [future]
   | "platform-icon-set"   // DOM-010 [future]
-  | "locale-pt-br"        // UX-027  [future]
+  // UX-027. Like `global-team-chat` above, this one has stopped being
+  // [future]: it now gates a SHIPPED feature — pt-BR itself — and is that
+  // feature's kill switch (plan-i18n-ptbr.md D13). Off means `pt-BR` is not in
+  // the negotiable set, the switcher does not render, and the app is the
+  // English-only one UX-026 shipped. Nothing is stranded by flipping it back:
+  // unlike `duel-bets`, no money moves through this flag.
+  | "locale-pt-br"
   // `global-team-chat` above and `coming-soon-teasers` below both have live
   // `useFeatureFlag` calls today (pulse-rail.tsx + module-chip-strip.tsx, and
   // wallet-module.tsx respectively), and `duel-bets` at the end of this union

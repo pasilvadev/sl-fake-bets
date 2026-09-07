@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "cn";
+import { useLocale } from "next-intl";
 import {
   canAcceptDuel,
   canDeclineDuel,
@@ -45,6 +46,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
     useTeam();
   const { show } = useToast();
   const now = useNow();
+  const locale = useLocale();
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, setPending] = useState<"accept" | "decline" | null>(null);
@@ -202,7 +204,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
           <p className="text-xs text-muted-foreground">
             Accept by{" "}
             <span className="font-mono tabular-nums">
-              {now == null ? "—" : formatTimeLeft(bet.closesAt, now).label}
+              {now == null ? "—" : formatTimeLeft(locale, bet.closesAt, now).label}
             </span>{" "}
             or it voids itself and the stake goes back.
           </p>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "cn";
+import { useLocale } from "next-intl";
 import {
   canAcceptDuel,
   canCloseBetEarly,
@@ -23,6 +24,7 @@ import {
   type BetState,
   type Duel,
   type DuelPhase,
+  type Locale,
 } from "@repo/shared";
 import { AuthGated } from "@/components/app-gate";
 import { TeamGate } from "@/components/team-gate";
@@ -114,18 +116,19 @@ function BetDetail({ betId }: { betId: string }) {
 }
 
 function stateLabel(
+  locale: Locale,
   effectiveState: BetState,
   bet: Bet,
   duelPhase: DuelPhase | null,
 ): string {
   // D8 half (a) again: a lapsed, unswept challenge is void on every read, and
   // the header must say so before anything has persisted it.
-  if (duelPhase === "expired") return formatVoidLabel("expired");
+  if (duelPhase === "expired") return formatVoidLabel(locale, "expired");
   if (duelPhase === "pending") return "AWAITING ANSWER";
   if (effectiveState === "open") return "OPEN";
   if (effectiveState === "closed") return "AWAITING RESULT";
   return bet.resolution?.kind === "void"
-    ? formatVoidLabel(bet.resolution.reason)
+    ? formatVoidLabel(locale, bet.resolution.reason)
     : "RESOLVED";
 }
 
@@ -133,6 +136,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
   const { wagers, team, currentUser, userById, duelFor } = useTeam();
   const { open } = useModal();
   const now = useNow();
+  const locale = useLocale();
 
   // `isDuel` is what the bet IS (a `not null` column that always arrives);
   // `duel` is whether this client also holds the side row, which can lag by a
@@ -221,7 +225,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                 </>
               )}
             </span>
-            <span>· created {formatShortDate(bet.createdAt)}</span>
+            <span>· created {formatShortDate(locale, bet.createdAt)}</span>
             <span
               className={cn(
                 "text-[11px] font-semibold uppercase tracking-wider",
@@ -230,7 +234,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                   : "text-muted-foreground",
               )}
             >
-              {stateLabel(effectiveState, bet, duelPhase)}
+              {stateLabel(locale, effectiveState, bet, duelPhase)}
             </span>
           </div>
         </div>
@@ -277,8 +281,8 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                 {effectiveState === "open"
                   ? now == null
                     ? "—"
-                    : formatTimeLeft(bet.closesAt, now).label
-                  : formatShortDate(bet.closesAt)}
+                    : formatTimeLeft(locale, bet.closesAt, now).label
+                  : formatShortDate(locale, bet.closesAt)}
               </p>
             </div>
             <div>
@@ -387,7 +391,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                   </span>
                   <CoinAmount amount={wager.amount} className="text-sm" />
                   <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                    {now == null ? "—" : formatRelativePast(wager.placedAt, now)}
+                    {now == null ? "—" : formatRelativePast(locale, wager.placedAt, now)}
                   </span>
                 </li>
               );
@@ -436,6 +440,7 @@ function DuelPanel({
   const { team, userById } = useTeam();
   const { open } = useModal();
   const now = useNow();
+  const locale = useLocale();
 
   const mediator = duel.mediatorId == null ? undefined : userById(duel.mediatorId);
   // D7's stranding guarantee, and the reason `userById` alone is not enough to
@@ -492,8 +497,8 @@ function DuelPanel({
             {phase === "pending"
               ? now == null
                 ? "—"
-                : formatTimeLeft(bet.closesAt, now).label
-              : formatShortDate(duel.acceptedAt ?? bet.createdAt)}
+                : formatTimeLeft(locale, bet.closesAt, now).label
+              : formatShortDate(locale, duel.acceptedAt ?? bet.createdAt)}
           </p>
         </div>
         <div>
@@ -555,6 +560,7 @@ function DuelPanel({
 function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }) {
   const { comments, userById, addComment } = useTeam();
   const now = useNow();
+  const locale = useLocale();
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -601,7 +607,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
                   {comment.body}
                 </span>
                 <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                  {now == null ? "—" : formatRelativePast(comment.createdAt, now)}
+                  {now == null ? "—" : formatRelativePast(locale, comment.createdAt, now)}
                 </span>
               </div>
             );

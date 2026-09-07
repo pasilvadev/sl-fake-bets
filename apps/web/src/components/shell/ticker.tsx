@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "cn";
+import { useLocale, useTranslations } from "next-intl";
 import { CONFIG, type Bet } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
@@ -45,10 +46,24 @@ function Chip({
 /**
  * Stat ticker (design-dashboard.md §1.2): 40px pure-readout strip, mono
  * tabular-nums chips split by hairlines. No click targets.
+ *
+ * Translated in i18n Phase 1 rather than with the rest of the dashboard, on
+ * purpose (plan-i18n-ptbr.md Phase 1 task 13, risk 2): this is the tightest
+ * layout in the app — five uppercase labels and their values in a 40px strip
+ * that must not wrap at 375px — so it is where pt-BR's 15–25% text expansion
+ * should be discovered on day one, not on the last file of Phase 3. The labels
+ * that survived that at 375px are short by design: `Fecha em` for "Closing
+ * soonest", `Em jogo` for "Pool (open)". Compressing the COPY is the sanctioned
+ * fix (§5); shrinking §3's type scale is not.
+ *
+ * The `—` placeholders stay literals: an em dash is a glyph, not a sentence,
+ * and it reads the same in both languages.
  */
 export function Ticker() {
   const { bets, wagers, team, richest, currentUser, rankBadgeFor } = useTeam();
   const now = useNow();
+  const t = useTranslations("ticker");
+  const locale = useLocale();
 
   const openBets = bets.filter((b) => b.state === "open");
   const soonest = soonestOpenBet(openBets);
@@ -63,30 +78,30 @@ export function Ticker() {
 
   return (
     <div className="flex h-10 shrink-0 items-stretch overflow-x-auto whitespace-nowrap border-b border-border bg-background [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <Chip label="Open" first>
+      <Chip label={t("open")} first>
         {openBets.length}
       </Chip>
 
       {soonest && (
-        <Chip label="Closing soonest" valueClassName="text-jade">
-          {now === null ? "—" : formatTimeLeft(soonest.closesAt, now).label}
+        <Chip label={t("closingSoonest")} valueClassName="text-jade">
+          {now === null ? "—" : formatTimeLeft(locale, soonest.closesAt, now).label}
         </Chip>
       )}
 
-      <Chip label="Pool (open)">{formatCoins(openPool)}</Chip>
+      <Chip label={t("pool")}>{formatCoins(locale, openPool)}</Chip>
 
       {/* Bottom-five standing reads in rust — same signal the inline rank
           badge carries, so the ticker doesn't quietly flatter a loser. */}
       <Chip
-        label="Your rank"
+        label={t("rank")}
         valueClassName={
           rankBadgeFor(currentUser.id) === "bottom5" ? "text-rust" : undefined
         }
       >
-        {rank === null ? "—" : `#${rank} richest`}
+        {rank === null ? "—" : t("rankValue", { rank })}
       </Chip>
 
-      <Chip label="Team">
+      <Chip label={t("team")}>
         {team.members.length}/{CONFIG.TEAM_TARGET_SIZE}
       </Chip>
     </div>

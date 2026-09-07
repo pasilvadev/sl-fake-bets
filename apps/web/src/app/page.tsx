@@ -17,7 +17,12 @@ export const metadata: Metadata = {
   title: {
     absolute: "SL — fake-coin bets with your friends",
   },
-  alternates: { canonical: "/" },
+  // No `alternates` here on purpose (UX-027, i18n Phase 1). Next replaces the
+  // whole `alternates` object rather than merging into it, so re-stating the
+  // canonical URL the root layout already sets to the same value would silently
+  // drop the layout's `languages` map with it — and this is the one page whose
+  // hreflang pair actually matters, since it is the only genuinely public,
+  // crawled surface (UX-017).
 };
 
 /**

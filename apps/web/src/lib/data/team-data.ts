@@ -5,6 +5,7 @@ import type {
   BetVoidReason,
   Comment,
   Duel,
+  Locale,
   Team,
   TeamAccessMode,
   TeamMember,
@@ -105,6 +106,8 @@ interface UserRow {
   display_name: string;
   name_color: string;
   avatar: string;
+  // UX-027. NULL = never chose; Accept-Language keeps deciding (D3).
+  locale: Locale | null;
   // Phase 7.5. Readable for teammates too (users_select_self_or_teammate is
   // row-wide), which is harmless — only the current user's pair is ever read.
   onboarded_at: string | null;
@@ -239,6 +242,7 @@ function toUser(row: UserRow): User {
     displayName: row.display_name,
     nameColor: row.name_color,
     avatar: row.avatar,
+    locale: row.locale,
   };
 }
 
@@ -484,7 +488,12 @@ export async function loadTeamData(
     await Promise.all([
       supabase
         .from("users")
-        .select("id, display_name, name_color, avatar, onboarded_at, profile_prefill"),
+        // `locale` is UX-027's whole server-side cost: one more column on a
+        // SELECT that was already happening, zero extra queries. D3 explains
+        // why the root layout does NOT read it instead.
+        .select(
+          "id, display_name, name_color, avatar, locale, onboarded_at, profile_prefill",
+        ),
       supabase.from("teams").select("id, name, leader_id, access_mode, created_at"),
       supabase
         .from("team_members")

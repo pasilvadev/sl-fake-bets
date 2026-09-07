@@ -19,6 +19,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 | `design-visual-identity.md` | Visual identity system: dark-only black/white/jade tokens (oklch), typography, slash motif, component specs, banned-cliché list. Supersedes original UX-020 wording (see its §0.1) |
 | `design-dashboard.md` | Dashboard information architecture: shell (top bar + ticker + Pulse Rail), bet feed, future-feature placeholder inventory, scarcity ruling for co-occurring cut-* motifs, responsive tiers, Phase-1 component map |
 | `plan-mvp-roadmap.md` | Path-to-MVP roadmap: 9 one-session phases from mock-only prototype to the full [mvp] set on a 100%-local Supabase backend (all complete); its §8 continues with owner-ordered extra phases beyond that checkpoint — team chat, 1v1 duels (`DUEL-*`, §4.4), toasts. Hosted backend out of scope |
+| `plan-i18n-ptbr.md` | pt-BR localization plan (UX-027): next-intl without locale routing, cookie+account locale resolution, the single-file message-catalog editing surface the owner asked for, the `MutationResult`-carries-a-code refactor localization forces, and three build phases plus an explicit deferred set. English stays the source locale and fallback (UX-026) |
 
 ## 2. Product summary
 

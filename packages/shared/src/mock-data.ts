@@ -13,8 +13,16 @@
 import { CONFIG, DEFAULT_MAX_WAGER } from "./config";
 import type { Bet, Comment, Duel, Team, Transaction, User, Wager } from "./types";
 
-// nameColor values = the 10 curated name colors (design-visual-identity.md §2.4).
-export const mockUsers: User[] = [
+/**
+ * nameColor values = the 10 curated name colors (design-visual-identity.md §2.4).
+ *
+ * `locale` is appended rather than typed on each row: every mock user is
+ * deliberately "never chose" (UX-027, D3), so ten identical `locale: null`
+ * entries would be ten columns of noise in a table that reads as a table.
+ * A fixture user who HAD chosen would be making a claim about behaviour this
+ * fixture does not exercise.
+ */
+const MOCK_USER_ROWS = [
   { id: "u-01", displayName: "Rafa", nameColor: "#2C9297", avatar: "icon-dice" },
   { id: "u-02", displayName: "Duds", nameColor: "#2C91AA", avatar: "icon-crown" },
   { id: "u-03", displayName: "Pri", nameColor: "#2B8DBF", avatar: "icon-ghost" },
@@ -26,6 +34,11 @@ export const mockUsers: User[] = [
   { id: "u-09", displayName: "Pinto", nameColor: "#EC35B3", avatar: "icon-fish" },
   { id: "u-10", displayName: "Xis", nameColor: "#F33483", avatar: "icon-target" },
 ];
+
+export const mockUsers: User[] = MOCK_USER_ROWS.map((row) => ({
+  ...row,
+  locale: null,
+}));
 
 /**
  * t-01 member numbers are DERIVED, not hand-typed (settlement regression in

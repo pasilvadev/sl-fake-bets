@@ -2,4 +2,11 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  # Both arrive with next-intl (UX-027) and both are only reached by its
+  # message EXTRACTOR, which this project does not use — the catalogs in
+  # apps/web/messages are authored by hand (plan-i18n-ptbr.md §4). Their
+  # postinstall scripts compile native bindings that prebuilt platform packages
+  # already provide, so skipping them costs nothing here.
+  '@parcel/watcher': false
+  '@swc/core': false
   unrs-resolver: true

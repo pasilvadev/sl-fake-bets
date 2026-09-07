@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import {
   canAcceptDuel,
   canResolveDuel,
@@ -35,6 +36,10 @@ interface Group {
 export function BetFeed() {
   const { bets, team, currentUser, canCreateBet, duelFor } = useTeam();
   const { open } = useModal();
+  // The ghost-pattern copy lives under `emptyState` rather than `betFeed`
+  // (D5's namespace-is-the-filename rule, with the one documented exception in
+  // messages/README.md): §5.10's five dry lines read better edited together.
+  const tEmpty = useTranslations("emptyState");
   const duelsEnabled = useFeatureFlag("duel-bets");
   const now = useNow();
   const [filter, setFilter] = useState<Filter>("All");
@@ -194,8 +199,8 @@ export function BetFeed() {
 
       {!hasBets ? (
         <EmptyState
-          line="No bets yet. Someone has to make the first bad decision."
-          ctaLabel={canCreateBet ? "Create Bet" : undefined}
+          line={tEmpty("noBets")}
+          ctaLabel={canCreateBet ? tEmpty("noBetsCta") : undefined}
           onCta={canCreateBet ? () => open("create-bet") : undefined}
         />
       ) : (

@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
 import { createClient } from "@/lib/supabase/client";
+import { LocaleTextSwitcher } from "@/components/shell/locale-switcher";
 import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
 import { useOnboardingStep } from "@/components/onboarding/steps";
 
@@ -188,7 +189,7 @@ export function AuthPage() {
         style={{ transform: "rotate(calc(90deg - var(--brand-slash-angle)))" }}
       />
 
-      <div className="flex flex-1 items-center justify-center p-8 lg:p-12">
+      <div className="flex flex-1 flex-col items-center justify-center p-8 lg:p-12">
         <div className="w-full max-w-sm">
           {step === "landing" ? (
             <LandingStep
@@ -218,6 +219,12 @@ export function AuthPage() {
             />
           )}
         </div>
+
+        {/* The signed-out half of D12. A visitor here has no profile menu, so
+            without this a Brazilian on an English-configured browser cannot
+            switch language before signing in — the moment they most want to.
+            Absent entirely when `locale-pt-br` is off (D13). */}
+        <LocaleTextSwitcher className="mt-8 w-full max-w-sm justify-end" />
       </div>
     </main>
   );

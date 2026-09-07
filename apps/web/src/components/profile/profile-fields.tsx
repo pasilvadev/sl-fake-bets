@@ -174,6 +174,9 @@ export function ProfileFields({
               displayName: draft.displayName,
               nameColor: draft.nameColor,
               avatar: draft.avatar,
+              // Preview object — UserAvatar reads none of it, and a draft
+              // profile has no language of its own.
+              locale: null,
             }}
             size={28}
             ring={ringPreview}
