@@ -614,7 +614,7 @@ export function BetRow({
             {bet.title}
           </Link>
           <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-            <span>by</span>
+            <span>{t("by")}</span>
             {creator && (
               <>
                 <UserAvatar user={creator} size={16} />

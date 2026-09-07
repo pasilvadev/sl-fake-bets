@@ -290,7 +290,7 @@ function DeleteTeamPanel() {
   return (
     <div className="space-y-2 rounded-sm border border-ember-border p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Danger zone
+        {t("dangerZone")}
       </p>
       <p className="text-sm text-foreground">{t("deleteTeam")}</p>
       <p

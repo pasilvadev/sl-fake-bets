@@ -683,6 +683,39 @@ Dry, deadpan, irreverent — never corporate, never hype-startup. Copy does sema
 
 Rule: humor replaces color as the "this is the losing board" signal (§5.6) — never let copy go flat/corporate on the one surface (poor podium) that most needs personality to avoid feeling punitive.
 
+### 7.1 Writing the Portuguese (UX-027)
+
+pt-BR shipped in `apps/web/messages/pt-BR.json` (plan-i18n-ptbr.md D10). Everything above applies to it unchanged — the voice is the product's, not English's — plus four rulings that make it tractable. **Read this section before writing a Portuguese sentence.**
+
+**The nouns are fixed, once.** `bet` = **aposta** (feminine), `duel` = **duelo** (masculine), `team` = **time** (masculine), `coin` = **moeda** (feminine), `wager` = **aposta** / the verb **apostar**. Fixing the two head nouns fixes every adjective downstream, which is what makes §5.2's state vocabulary fall out in one piece:
+
+| en | pt-BR | Note |
+|---|---|---|
+| `OPEN` | `ABERTA` | agrees with *aposta* |
+| `CLOSED` | `FECHADA` | |
+| `VOID` | `ANULADA` | |
+| `RESOLVED` | `RESOLVIDA` | |
+| `CLOSING SOON` | `FECHANDO` | 8 characters against 12 — §5's compression rule working in our favour |
+| `AWAITING RESULT` | `AGUARDANDO` | likewise: 10 against 15 |
+| `VOID · COULDN'T COVER IT` | `ANULADA · SEM SALDO` | |
+
+A **plural** heading is not the same word as a singular label: the bet feed's group heading reads `ABERTAS` where a row's state label reads `ABERTA`. English hides that; Portuguese does not, and they are separate keys because of it.
+
+**Never inflect for the player's gender.** The app has no gender field and must not acquire one. Prefer verb phrases and non-inflecting nouns over agent nouns — §7's *"House's favorite donor"* is **"Quem mais financia a casa"**, not *"Doador oficial da casa"*. Where ICU `select` is genuinely needed it is for the *bet kind*, never for the person.
+
+**Register: Brazilian informal `você`.** Never `tu`, never `vós`, never the corporate-formal imperative.
+
+**Accents survive uppercase.** `ANULADA · NÃO ACEITA A TEMPO`, `SUA POSIÇÃO`, `É COM VOCÊ`. Standard pt-BR keeps diacritics in caps, and `tracking-wider` at 11px renders them fine. §3's uppercase discipline is otherwise unchanged: still only short status labels and eyebrows.
+
+**Portuguese runs 15–25% longer than English.** When a translation breaks a tight layout the fix is to compress the COPY first, layout second, and §3's type scale never. Calibration lines, for matching register:
+
+| en | pt-BR |
+|---|---|
+| No bets yet. Someone has to make the first bad decision. | Nenhuma aposta ainda. Alguém tem que tomar a primeira decisão ruim. |
+| Everyone's still solvent. Suspicious. | Todo mundo ainda tá no azul. Suspeito. |
+| Not enough coins. | Saldo insuficiente. |
+| That didn't go through. Try again. | Não rolou. Tente de novo. |
+
 ---
 
 ## 8. Banned list (cliché → replacement)
@@ -703,6 +736,8 @@ Rule: humor replaces color as the "this is the losing board" signal (§5.6) — 
 | 12 | Generic shimmer-sweep skeletons | Row-shaped skeletons with a slow opacity breathe, no moving gradient (§5.10) |
 | 13 | Dropdown-for-everything (status filter, sort, team switch all as `<Select>`) | Segmented tab controls with a slash-notch active tick for short/frequent choices; dropdowns reserved for genuinely long/rare lists (§5.8) |
 | 14 | Uppercase-everything crypto-bro treatment | Uppercase confined to short status labels/eyebrows only (§3) |
+| 15 | **"Ops!"** (pt-BR) | Banned exactly as "Oops!" is (§7's error-toast row) — a plain statement of what failed |
+| 16 | **Exclamation marks in pt-BR error copy** | Same rule as the English: no exclamation points anywhere an error is reported. Portuguese error copy is where the temptation is strongest, so it gets its own row |
 
 ---
 

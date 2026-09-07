@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useTeamSession } from "@/lib/team-context";
 import { useAuth } from "@/lib/auth-context";
@@ -45,6 +46,7 @@ function JoinFlow({
   const { user } = useAuth();
 
   const { errorText } = useErrorText();
+  const t = useTranslations("joinPage");
   const [preview, setPreview] = useState<TeamPreview | null>(initialPreview);
   const [loading, setLoading] = useState(initialPreview === null);
   const [joining, setJoining] = useState(false);
@@ -104,32 +106,32 @@ function JoinFlow({
           <SMark className="size-8 text-jade" />
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Invite
+              {t("eyebrow")}
             </p>
             <h1 className="truncate text-lg font-semibold text-foreground">
-              {loading
-                ? "Checking the code…"
-                : (preview?.teamName ?? "Invite not found")}
+              {loading ? t("checking") : (preview?.teamName ?? t("notFound"))}
             </h1>
           </div>
         </div>
 
         {!loading && !preview && (
           <p className="text-sm text-muted-foreground">
-            No team matches this invite code. Ask whoever sent it for a fresh
-            link — codes don&apos;t expire, but they can be revoked.
+            {t("noTeam")}
           </p>
         )}
 
         {preview && (
           <>
             <p className="text-xs text-muted-foreground">
-              {preview.memberCount} members · {preview.openBetCount} open bets
+              {t("stats", {
+                members: preview.memberCount,
+                openBets: preview.openBetCount,
+              })}
             </p>
 
             {preview.isBanned ? (
               <p className="text-sm text-negative">
-                You can&apos;t rejoin {preview.teamName}.
+                {t("banned", { team: preview.teamName })}
               </p>
             ) : preview.isMember ? (
               <button
@@ -137,7 +139,7 @@ function JoinFlow({
                 onClick={() => openTeam(preview.teamId)}
                 className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110"
               >
-                You&apos;re already in — open {preview.teamName}
+                {t("alreadyIn", { team: preview.teamName })}
               </button>
             ) : (
               <button
@@ -146,7 +148,7 @@ function JoinFlow({
                 onClick={() => void join()}
                 className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
               >
-                {joining ? "Joining…" : `Join ${preview.teamName}`}
+                {joining ? t("joining") : t("join", { team: preview.teamName })}
               </button>
             )}
           </>
@@ -159,7 +161,7 @@ function JoinFlow({
           onClick={() => router.replace("/")}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          Not now
+          {t("notNow")}
         </button>
       </div>
     </main>

@@ -5,9 +5,11 @@ import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
+import { SITE_NAME } from "@/lib/site";
 import type { MutationErrorCode } from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 import { LocaleTextSwitcher } from "@/components/shell/locale-switcher";
 import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
 import { useOnboardingStep } from "@/components/onboarding/steps";
@@ -47,6 +49,7 @@ export function AuthPage() {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const { codeText } = useErrorText();
+  const t = useTranslations("authPage");
 
   const destination = useMemo(() => {
     const explicit = searchParams.get("next");
@@ -81,7 +84,7 @@ export function AuthPage() {
     async (kind: "request" | "resend") => {
       const address = email.trim();
       if (!EMAIL_SHAPE.test(address)) {
-        setError("Enter a valid email address.");
+        setError(t("invalidEmail"));
         return;
       }
 
@@ -102,15 +105,15 @@ export function AuthPage() {
       }
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setStep("otp");
-      if (kind === "resend") setNotice("New code sent.");
+      if (kind === "resend") setNotice(t("codeSent"));
     },
-    [email, supabase],
+    [email, supabase, t],
   );
 
   const verifyCode = useCallback(async () => {
     const token = code.trim();
     if (token.length === 0) {
-      setError("Enter the code from your email.");
+      setError(t("codeMissing"));
       return;
     }
 
@@ -134,7 +137,7 @@ export function AuthPage() {
     // be pressed twice during the navigation.
     router.replace(destination);
     router.refresh();
-  }, [code, email, supabase, router, destination]);
+  }, [code, email, supabase, router, destination, t]);
 
   const signInWithGoogle = useCallback(async () => {
     setError(null);
@@ -180,13 +183,12 @@ export function AuthPage() {
               "no real money"). Kept to muted body copy so the hero stays the
               wordmark-over-black lockup design-visual-identity.md §9 specifies. */}
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-            Fake-coin betting for a group of friends. Start a team, post a bet
-            on anything at all, and let the pool decide what it pays.
+            {t("heroLead")}
           </p>
           <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
-            <li>Free, private teams — invite by link, no app store.</li>
-            <li>Pari-mutuel odds that move as your friends stake.</li>
-            <li>No real money is involved, ever.</li>
+            <li>{t("heroPoint1")}</li>
+            <li>{t("heroPoint2")}</li>
+            <li>{t("heroPoint3")}</li>
           </ul>
         </div>
       </div>
@@ -285,6 +287,7 @@ function LandingStep({
   onGoogle: () => void;
   onContinue: () => void;
 }) {
+  const t = useTranslations("authPage");
   const busy = pending !== "none";
 
   return (
@@ -296,10 +299,10 @@ function LandingStep({
       }}
     >
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-strong">Sign in to SL</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Bet fake coins with your friends on anything.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-text-strong">
+          {t("signInTitle", { siteName: SITE_NAME })}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("signInLead")}</p>
       </div>
 
       <Button
@@ -309,12 +312,12 @@ function LandingStep({
         onClick={onGoogle}
         className="h-10 w-full justify-center rounded-sm"
       >
-        {pending === "google" ? "Redirecting…" : "Continue with Google"}
+        {pending === "google" ? t("redirecting") : t("google")}
       </Button>
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <div className="h-px flex-1 bg-border" />
-        or
+        {t("or")}
         <div className="h-px flex-1 bg-border" />
       </div>
 
@@ -324,7 +327,7 @@ function LandingStep({
             htmlFor="email"
             className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
           >
-            Email
+            {t("emailLabel")}
           </label>
           <input
             id="email"
@@ -333,7 +336,7 @@ function LandingStep({
             autoComplete="email"
             value={email}
             onChange={(e) => onEmailChange(e.target.value)}
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             className="h-10 rounded-sm border border-border bg-surface-1 px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-jade focus:ring-1 focus:ring-jade/40"
           />
         </div>
@@ -345,7 +348,7 @@ function LandingStep({
           disabled={busy}
           className="h-10 w-full cut-sm justify-center rounded-none font-semibold uppercase hover:bg-primary hover:brightness-110 active:brightness-95"
         >
-          {pending === "request" ? "Sending code…" : "Continue with email"}
+          {pending === "request" ? t("sendingCode") : t("continueEmail")}
         </Button>
       </div>
     </form>
@@ -375,6 +378,7 @@ function OtpStep({
   onVerify: () => void;
   onResend: () => void;
 }) {
+  const t = useTranslations("authPage");
   const busy = pending !== "none";
 
   return (
@@ -386,9 +390,11 @@ function OtpStep({
       }}
     >
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-strong">Enter your code</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-text-strong">
+          {t("otpTitle")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          We sent a code to {email || "your email"}.
+          {t("otpLead", { email: email || t("otpLeadFallback") })}
         </p>
         {/*
           Dev only, and it earns its place: a 100% local stack (vision Phase 2)
@@ -399,7 +405,7 @@ function OtpStep({
         */}
         {process.env.NODE_ENV === "development" && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Local stack — no mail leaves this machine. Read the code in{" "}
+            {t("devMailpit")}{" "}
             <a
               href="http://127.0.0.1:54324"
               target="_blank"
@@ -418,7 +424,7 @@ function OtpStep({
           htmlFor="otp"
           className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
         >
-          Verification code
+          {t("codeLabel")}
         </label>
         <input
           id="otp"
@@ -442,7 +448,7 @@ function OtpStep({
         disabled={busy}
         className="h-10 w-full cut-sm justify-center rounded-none font-semibold uppercase hover:bg-primary hover:brightness-110 active:brightness-95"
       >
-        {pending === "verify" ? "Verifying…" : "Verify"}
+        {pending === "verify" ? t("verifying") : t("verify")}
       </Button>
 
       <div className="flex items-center justify-between">
@@ -453,7 +459,7 @@ function OtpStep({
           onClick={onBack}
           className="h-8 px-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground"
         >
-          Back
+          {t("back")}
         </Button>
         <Button
           type="button"
@@ -462,7 +468,7 @@ function OtpStep({
           onClick={onResend}
           className="h-8 px-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground"
         >
-          {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+          {cooldown > 0 ? t("resendIn", { seconds: cooldown }) : t("resend")}
         </Button>
       </div>
     </form>

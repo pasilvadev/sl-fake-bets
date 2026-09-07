@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "cn";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   canAcceptDuel,
   canCloseBetEarly,
@@ -67,6 +67,8 @@ const DUEL_GLYPH = "⚔️";
  * — that is the owner's "everyone can chat about it", and it needed no code.
  */
 export function BetDetailPage({ betId }: { betId: string }) {
+  const t = useTranslations("betDetail");
+
   return (
     <AuthGated>
       <TeamGate>
@@ -76,7 +78,7 @@ export function BetDetailPage({ betId }: { betId: string }) {
             href="/"
             className="font-mono text-xs text-muted-foreground transition-colors hover:text-jade"
           >
-            / back to bets
+            {t("backToBets")}
           </Link>
           <BetDetail betId={betId} />
         </main>
@@ -88,6 +90,7 @@ export function BetDetailPage({ betId }: { betId: string }) {
 function BetDetail({ betId }: { betId: string }) {
   const { bets, team } = useTeam();
   const duelsEnabled = useFeatureFlag("duel-bets");
+  const t = useTranslations("betDetail");
   // Roadmap Phase 8: this page's own channel — the comment thread (UX-018).
   // The bet itself, its wagers and its pool arrive on the team channel the
   // provider already holds. Subscribed before the not-found branch below on
@@ -105,10 +108,10 @@ function BetDetail({ betId }: { betId: string }) {
   if (!bet) {
     return (
       <div className="mt-4 rounded-sm border border-border bg-surface-1 p-6 text-center">
-        <p className="text-sm text-foreground">Bet not found in {team.name}.</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          It may belong to another team or no longer exist.
+        <p className="text-sm text-foreground">
+          {t("notFound", { team: team.name })}
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("notFoundHint")}</p>
       </div>
     );
   }
@@ -118,6 +121,7 @@ function BetDetail({ betId }: { betId: string }) {
 
 function stateLabel(
   locale: Locale,
+  tState: ReturnType<typeof useTranslations<"state">>,
   effectiveState: BetState,
   bet: Bet,
   duelPhase: DuelPhase | null,
@@ -125,12 +129,12 @@ function stateLabel(
   // D8 half (a) again: a lapsed, unswept challenge is void on every read, and
   // the header must say so before anything has persisted it.
   if (duelPhase === "expired") return formatVoidLabel(locale, "expired");
-  if (duelPhase === "pending") return "AWAITING ANSWER";
-  if (effectiveState === "open") return "OPEN";
-  if (effectiveState === "closed") return "AWAITING RESULT";
+  if (duelPhase === "pending") return tState("awaitingAnswer");
+  if (effectiveState === "open") return tState("open");
+  if (effectiveState === "closed") return tState("awaitingResult");
   return bet.resolution?.kind === "void"
     ? formatVoidLabel(locale, bet.resolution.reason)
-    : "RESOLVED";
+    : tState("resolved");
 }
 
 function BetDetailContent({ bet }: { bet: Bet }) {
@@ -138,6 +142,8 @@ function BetDetailContent({ bet }: { bet: Bet }) {
   const { open } = useModal();
   const now = useNow();
   const locale = useLocale();
+  const t = useTranslations("betDetail");
+  const tState = useTranslations("state");
 
   // `isDuel` is what the bet IS (a `not null` column that always arrives);
   // `duel` is whether this client also holds the side row, which can lag by a
@@ -218,7 +224,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              by
+              {t("by")}
               {creator && (
                 <>
                   <UserAvatar user={creator} size={16} />
@@ -226,7 +232,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                 </>
               )}
             </span>
-            <span>· created {formatShortDate(locale, bet.createdAt)}</span>
+            <span>{t("created", { date: formatShortDate(locale, bet.createdAt) })}</span>
             <span
               className={cn(
                 "text-[11px] font-semibold uppercase tracking-wider",
@@ -235,7 +241,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                   : "text-muted-foreground",
               )}
             >
-              {stateLabel(locale, effectiveState, bet, duelPhase)}
+              {stateLabel(locale, tState, effectiveState, bet, duelPhase)}
             </span>
           </div>
         </div>
@@ -247,7 +253,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
             onClick={() => open("wager", bet.id)}
             className="cut-sm h-9 shrink-0 bg-jade px-4 text-xs font-semibold uppercase tracking-wide text-black transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95"
           >
-            Wager
+            {t("wager")}
           </button>
         )}
       </header>
@@ -267,16 +273,16 @@ function BetDetailContent({ bet }: { bet: Bet }) {
           {/* stats strip */}
           <div className="mt-5 grid grid-cols-2 gap-3 border-y border-border py-3 sm:grid-cols-4">
             <div>
-              <p className={eyebrowClass}>Pool</p>
+              <p className={eyebrowClass}>{t("pool")}</p>
               <CoinAmount amount={poolTotal} className="text-sm text-foreground" />
             </div>
             <div>
-              <p className={eyebrowClass}>Max / user</p>
+              <p className={eyebrowClass}>{t("maxPerUser")}</p>
               <CoinAmount amount={bet.maxWagerPerUser} className="text-sm text-foreground" />
             </div>
             <div>
               <p className={eyebrowClass}>
-                {effectiveState === "open" ? "Closes in" : "Closed"}
+                {effectiveState === "open" ? t("closesIn") : t("closed")}
               </p>
               <p className="font-mono text-sm tabular-nums text-foreground">
                 {effectiveState === "open"
@@ -287,14 +293,14 @@ function BetDetailContent({ bet }: { bet: Bet }) {
               </p>
             </div>
             <div>
-              <p className={eyebrowClass}>Players</p>
+              <p className={eyebrowClass}>{t("players")}</p>
               <p className="font-mono text-sm tabular-nums text-foreground">{playerCount}</p>
             </div>
           </div>
 
           {/* options */}
           <section className="mt-6">
-            <p className={eyebrowClass}>Options</p>
+            <p className={eyebrowClass}>{t("options")}</p>
             <ul className="mt-2 space-y-2">
               {poolStats.map((opt) => {
                 const isWinner = opt.optionId === winningOptionId;
@@ -374,9 +380,9 @@ function BetDetailContent({ bet }: { bet: Bet }) {
 
       {/* wagers */}
       <section className="mt-6">
-        <p className={eyebrowClass}>Wagers ({betWagers.length})</p>
+        <p className={eyebrowClass}>{t("wagers", { count: betWagers.length })}</p>
         {betWagers.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No wagers yet.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t("noWagers")}</p>
         ) : (
           <ul className="mt-2 divide-y divide-border border-y border-border">
             {betWagers.map((wager) => {
@@ -388,7 +394,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
                   {user && <UserAvatar user={user} size={20} />}
                   {user && <UserName user={user} badge className="text-sm" />}
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    on {optionLabel}
+                    {t("onOption", { option: optionLabel })}
                   </span>
                   <CoinAmount amount={wager.amount} className="text-sm" />
                   <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
@@ -442,6 +448,7 @@ function DuelPanel({
   const { open } = useModal();
   const now = useNow();
   const locale = useLocale();
+  const t = useTranslations("betDetail");
 
   const mediator = duel.mediatorId == null ? undefined : userById(duel.mediatorId);
   // D7's stranding guarantee, and the reason `userById` alone is not enough to
@@ -466,11 +473,11 @@ function DuelPanel({
 
       <div className="mt-5 grid grid-cols-2 gap-3 border-b border-border pb-3 sm:grid-cols-4">
         <div>
-          <p className={eyebrowClass}>Stake each</p>
+          <p className={eyebrowClass}>{t("stakeEach")}</p>
           <CoinAmount amount={duel.stake} className="text-sm text-foreground" />
         </div>
         <div>
-          <p className={eyebrowClass}>Winner takes</p>
+          <p className={eyebrowClass}>{t("winnerTakes")}</p>
           <CoinAmount amount={duel.stake * 2} className="text-sm text-foreground" />
         </div>
         {/* One cell, three readings, and NONE of them is `duel.expiresAt`.
@@ -489,10 +496,10 @@ function DuelPanel({
         <div>
           <p className={eyebrowClass}>
             {phase === "pending"
-              ? "Accept by"
+              ? t("acceptBy")
               : duel.acceptedAt != null
-                ? "Accepted"
-                : "Challenged"}
+                ? t("accepted")
+                : t("challenged")}
           </p>
           <p className="font-mono text-sm tabular-nums text-foreground">
             {phase === "pending"
@@ -503,7 +510,7 @@ function DuelPanel({
           </p>
         </div>
         <div>
-          <p className={eyebrowClass}>Resolved by</p>
+          <p className={eyebrowClass}>{t("resolvedBy")}</p>
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-foreground">
             {mediatorOnRoster && mediator && (
               <UserName user={mediator} className="text-sm" />
@@ -514,12 +521,14 @@ function DuelPanel({
                 the pool can act, or it names the one person who now cannot. */}
             {duel.mediatorId != null && !mediatorOnRoster && (
               <span className="text-sm text-muted-foreground">
-                {mediator ? `${mediator.displayName} (left)` : "Mediator left"}
+                {mediator
+                  ? t("mediatorLeftNamed", { name: mediator.displayName })
+                  : t("mediatorLeft")}
               </span>
             )}
             {(duel.anyModerator || (duel.mediatorId != null && !mediatorOnRoster)) && (
               <span className="text-xs text-muted-foreground">
-                {duel.mediatorId != null ? "· any moderator" : "Any moderator"}
+                {duel.mediatorId != null ? t("anyModeratorAlso") : t("anyModerator")}
               </span>
             )}
           </div>
@@ -529,15 +538,14 @@ function DuelPanel({
       {(mayAccept || mayDecline) && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface-1 p-3">
           <span className="flex-1 text-xs text-muted-foreground">
-            You&apos;ve been challenged. Your stake leaves your balance the
-            moment you accept.
+            {t("challengedYou")}
           </span>
           <button
             type="button"
             onClick={() => open("duel-accept", bet.id)}
             className="h-8 rounded-sm border border-border px-3 text-xs font-semibold uppercase text-foreground transition-colors hover:border-jade/50 hover:text-jade"
           >
-            Decline
+            {t("decline")}
           </button>
           <button
             type="button"
@@ -545,7 +553,7 @@ function DuelPanel({
             onClick={() => open("duel-accept", bet.id)}
             className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            Accept
+            {t("accept")}
           </button>
         </div>
       )}
@@ -563,6 +571,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
   const now = useNow();
   const { errorText } = useErrorText();
   const locale = useLocale();
+  const t = useTranslations("betDetail");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -591,11 +600,11 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
 
   return (
     <section className="mt-6">
-      <p className={eyebrowClass}>Comments ({thread.length})</p>
+      <p className={eyebrowClass}>{t("comments", { count: thread.length })}</p>
 
       {thread.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          Nothing said yet. Someone start something.
+          {t("noComments")}
         </p>
       ) : (
         <div className="mt-2">
@@ -628,14 +637,14 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
             setError(null);
           }}
           disabled={!canPost}
-          placeholder={canPost ? "Say something" : "Only team members can comment"}
+          placeholder={canPost ? t("commentPlaceholder") : t("commentDisabled")}
           className="h-8 min-w-0 flex-1 rounded-none border border-border bg-surface-2 px-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40 disabled:opacity-40"
         />
         {/* Send affordance is the brand slash itself (§5.7), not an icon glyph. */}
         <button
           type="submit"
           disabled={!canSubmit}
-          aria-label="Post comment"
+          aria-label={t("postComment")}
           className="flex size-8 items-center justify-center font-mono text-muted-foreground transition-colors hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
         >
           /
@@ -656,6 +665,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
   const { show } = useToast();
   const { errorText } = useErrorText();
   const router = useRouter();
+  const t = useTranslations("betDetail");
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -681,7 +691,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
       // destructive (ember rail), not a jade success.
       show({
         kind: "destructive",
-        text: `Bet "${title}" deleted.`,
+        text: t("deleted", { title }),
         durationMs: 5000,
       });
       // The bet is gone — this page has nothing left to render.
@@ -694,22 +704,21 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
 
   return (
     <section className="mt-6 space-y-2 rounded-sm border border-ember-border p-3">
-      <p className={eyebrowClass}>Danger zone</p>
-      <p className="text-sm text-foreground">Delete bet</p>
+      <p className={eyebrowClass}>{t("dangerZone")}</p>
+      <p className="text-sm text-foreground">{t("deleteBet")}</p>
       <p
         className={cn(
           "text-xs text-muted-foreground transition-opacity",
           matches && "opacity-0",
         )}
       >
-        Permanent. Wagers are returned to their owners and this bet stops
-        counting toward anyone&apos;s P/L.
+        {t("deleteWarning")}
       </p>
       <input
         type="text"
         value={confirmText}
         onChange={(e) => setConfirmText(e.target.value)}
-        placeholder={`Type "${bet.title}" to confirm`}
+        placeholder={t("deleteConfirmPlaceholder", { title: bet.title })}
         className={cn(
           "w-full border bg-surface-1 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none",
           matches ? "border-jade" : "border-border",
@@ -721,7 +730,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
         onClick={() => void submit()}
         className="cut-danger h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-destructive opacity-40 pointer-events-none transition-opacity enabled:opacity-100 enabled:pointer-events-auto"
       >
-        {pending ? "Deleting…" : "Delete bet"}
+        {pending ? t("deleting") : t("deleteBet")}
       </button>
       {error && <p className="text-xs text-negative">{error}</p>}
     </section>
@@ -733,6 +742,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
   const { closeBetEarly } = useTeam();
   const { errorText } = useErrorText();
   const { show } = useToast();
+  const t = useTranslations("betDetail");
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -753,7 +763,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
     // this control simply vanished when `bet.state` flipped, which confirmed
     // nothing — the toast is the only acknowledgement the action gets, and it
     // outlives the control that fired it (D1).
-    show({ kind: "success", text: "Betting closed. No more wagers." });
+    show({ kind: "success", text: t("bettingClosed") });
   }
 
   return (
@@ -761,7 +771,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
       {confirming ? (
         <>
           <span className="text-xs text-muted-foreground">
-            Close betting now? No more wagers after this.
+            {t("closeEarlyConfirm")}
           </span>
           <button
             type="button"
@@ -769,27 +779,27 @@ function CloseEarlyControl({ betId }: { betId: string }) {
             onClick={() => void confirm()}
             className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {pending ? "Closing…" : "Confirm close"}
+            {pending ? t("closing") : t("confirmClose")}
           </button>
           <button
             type="button"
             onClick={() => setConfirming(false)}
             className="h-8 rounded-sm border border-border px-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            Cancel
+            {t("cancel")}
           </button>
         </>
       ) : (
         <>
           <span className="flex-1 text-xs text-muted-foreground">
-            You can close betting early (creator/moderator).
+            {t("closeEarlyOffer")}
           </span>
           <button
             type="button"
             onClick={() => setConfirming(true)}
             className="h-8 rounded-sm border border-border px-3 text-xs font-semibold uppercase text-foreground transition-colors hover:border-jade/50 hover:text-jade"
           >
-            Close betting early
+            {t("closeEarly")}
           </button>
         </>
       )}
@@ -802,6 +812,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
 function ResolvePanel({ bet }: { bet: Bet }) {
   const { errorText } = useErrorText();
   const { resolveBet } = useTeam();
+  const t = useTranslations("betDetail");
   const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -827,7 +838,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
 
   return (
     <section className="mt-4 rounded-sm border border-border bg-surface-1 p-4">
-      <p className={eyebrowClass}>Resolve bet</p>
+      <p className={eyebrowClass}>{t("resolveBet")}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {bet.options.map((option) => (
           <button
@@ -854,7 +865,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
               : "border-border text-muted-foreground hover:border-border-strong",
           )}
         >
-          Void — refund everyone
+          {t("voidRefundEveryone")}
         </button>
       </div>
       <button
@@ -864,10 +875,10 @@ function ResolvePanel({ bet }: { bet: Bet }) {
         className="cut-sm mt-3 h-9 px-4 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
       >
         {pending
-          ? "Paying out…"
+          ? t("payingOut")
           : choice === "void"
-            ? "Confirm void"
-            : "Confirm result"}
+            ? t("confirmVoid")
+            : t("confirmResult")}
       </button>
       {error && <p className="mt-2 text-xs text-negative">{error}</p>}
     </section>
@@ -900,6 +911,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
 function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
   const { errorText } = useErrorText();
   const { resolveBet, userById } = useTeam();
+  const t = useTranslations("betDetail");
   const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -927,10 +939,11 @@ function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
 
   return (
     <section className="mt-4 rounded-sm border border-border bg-surface-1 p-4">
-      <p className={eyebrowClass}>Call it</p>
+      <p className={eyebrowClass}>{t("callIt")}</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Winner takes <CoinAmount amount={duel.stake * 2} />. A void hands both
-        stakes back and nobody&apos;s P/L moves.
+        {t.rich("callItNote", {
+          payout: () => <CoinAmount amount={duel.stake * 2} />,
+        })}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {sides.map(({ option, userId }) => {
@@ -967,7 +980,7 @@ function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
               : "border-border text-muted-foreground hover:border-border-strong",
           )}
         >
-          Void — refund both
+          {t("voidRefundBoth")}
         </button>
       </div>
       <button
@@ -977,10 +990,10 @@ function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
         className="cut-sm mt-3 h-9 px-4 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
       >
         {pending
-          ? "Paying out…"
+          ? t("payingOut")
           : choice === "void"
-            ? "Confirm void"
-            : "Confirm winner"}
+            ? t("confirmVoid")
+            : t("confirmWinner")}
       </button>
       {error && <p className="mt-2 text-xs text-negative">{error}</p>}
     </section>
@@ -990,6 +1003,7 @@ function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
 /** Post-resolution receipt straight from settlement.ts — same math as balances. */
 function SettlementBlock({ bet, resolution }: { bet: Bet; resolution: BetResolution }) {
   const { wagers, userById } = useTeam();
+  const t = useTranslations("betDetail");
   const deltas = settleBet(bet, wagers, resolution).sort(
     (a, b) => b.profitLossDelta - a.profitLossDelta,
   );
@@ -998,7 +1012,7 @@ function SettlementBlock({ bet, resolution }: { bet: Bet; resolution: BetResolut
 
   return (
     <section className="mt-4 rounded-sm border border-border bg-surface-1 p-4">
-      <p className={eyebrowClass}>Settlement</p>
+      <p className={eyebrowClass}>{t("settlement")}</p>
       <ul className="mt-2 space-y-1.5">
         {deltas.map((delta) => {
           const user = userById(delta.userId);
@@ -1013,7 +1027,7 @@ function SettlementBlock({ bet, resolution }: { bet: Bet; resolution: BetResolut
               <span className="ml-auto">
                 {resolution.kind === "void" ? (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <CoinAmount amount={delta.balanceDelta} /> refunded
+                    <CoinAmount amount={delta.balanceDelta} /> {t("refunded")}
                   </span>
                 ) : (
                   <CoinDelta amount={delta.profitLossDelta} className="text-sm" />

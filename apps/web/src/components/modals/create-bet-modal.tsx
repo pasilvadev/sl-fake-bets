@@ -36,16 +36,26 @@ const inputClass =
  * owner retunes `minutes` and the chip follows, where a hand-typed label
  * would have quietly disagreed with the number it named.
  *
- * Anything under a day reads in hours; a day or more reads in days. Both are
- * ICU `plural` blocks, so "1 hour" and "24 horas" both come out right.
+ * DAYS only for a whole number of days GREATER THAN ONE; everything else reads
+ * in hours. That rule is not arbitrary — it is what reproduces the three
+ * shipped labels exactly ("1 hour", "24 hours", "7 days"), and Phase 3's exit
+ * criterion is that extraction leaves the English unchanged in meaning. "1 day"
+ * for the 24-hour preset would be the same duration and different words, which
+ * is an editing pass wearing an extraction's clothes.
+ *
+ * Both arms are ICU `plural` blocks, so "1 hour" and "24 horas" both come out
+ * right without the caller knowing anything about either language.
  */
 function durationLabel(
   t: ReturnType<typeof useTranslations<"createBetModal">>,
   minutes: number,
 ): string {
-  return minutes < 60 * 24
-    ? t("durationHours", { count: Math.round(minutes / 60) })
-    : t("durationDays", { count: Math.round(minutes / (60 * 24)) });
+  const MINUTES_PER_DAY = 60 * 24;
+  const wholeDays = minutes / MINUTES_PER_DAY;
+
+  return Number.isInteger(wholeDays) && wholeDays > 1
+    ? t("durationDays", { count: wholeDays })
+    : t("durationHours", { count: Math.round(minutes / 60) });
 }
 
 export function CreateBetModal() {
@@ -260,7 +270,7 @@ export function CreateBetModal() {
 
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Max wager per user
+            {t("maxWagerLabel")}
           </label>
           <input
             type="number"
@@ -270,7 +280,7 @@ export function CreateBetModal() {
             className={cn(inputClass, "font-mono tabular-nums")}
           />
           <p className="text-xs text-muted-foreground">
-            Default = onboarding grant.
+            {t("maxWagerHint")}
           </p>
         </div>
       </div>

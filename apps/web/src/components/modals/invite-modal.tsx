@@ -50,7 +50,7 @@ export function InviteModal() {
       onClose={close}
       footer={
         <p className="text-[11px] text-muted-foreground">
-          Revoke/regenerate — future.
+          {t("revokeFuture")}
         </p>
       }
     >

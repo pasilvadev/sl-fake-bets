@@ -73,8 +73,8 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 - **UX-021 [mvp]** Brand is "SL", never spelled out as "Soulless" anywhere in the product, no explanation given. `old-soulless-bg.jpeg` (project root) is the design ancestor: never use the file directly in-app; generate new icons inspired by it; the stylized "S" glyph may be reused 1:1.
 - **UX-022 [mvp]** Twitch-style profile customization: display name, name color (applied everywhere the name renders — chats and bets), platform icon set for avatar, plus custom image upload. All with defaults per UX-002.
 - **UX-025 [mvp]** Fully responsive web app; good mobile-browser experience. Native mobile is far-future (empty `mobile/` folder only).
-- **UX-026 [mvp]** All UI text in English at launch.
-- **UX-027 [future]** pt-BR localization.
+- **UX-026 [mvp]** All UI text in English at launch. *(Appended 2026-09-07, UX-027 shipping: English is now the SOURCE locale, the key authority and the fallback rather than the only locale — a visitor whose browser does not ask for Portuguese, and every visitor at all while `locale-pt-br` is off, gets exactly the app this requirement describes. The requirement text above is the owner's and is unchanged.)*
+- **UX-027 [post-mvp]** pt-BR localization. **Shipped** — `next-intl` without locale routing, one message catalog per locale in `apps/web/messages/`, the locale negotiated from a cookie then `Accept-Language` and persisted per account in `users.locale`, behind the seeded `locale-pt-br` flag. See `plan-i18n-ptbr.md` for the decisions and `apps/web/messages/README.md` for how to change a sentence.
 
 ### 4.2 Domain model & mechanics (DOM-*)
 

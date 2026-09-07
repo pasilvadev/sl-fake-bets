@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/sl/user-avatar";
 import { ProfileFields } from "@/components/profile/profile-fields";
 import { useOnboardingStep } from "@/components/onboarding/steps";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 
 /**
  * The first-run profile step (roadmap Phase 7.5, decision §4.7) — the third of
@@ -54,6 +55,7 @@ export function ProfileStep() {
   // straight into the fields, because that is the case where the pre-filled
   // value is a placeholder rather than an answer.
   const { errorText, codeText } = useErrorText();
+  const t = useTranslations("profileStep");
   const [editing, setEditing] = useState(!isProvider);
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: currentUser.displayName,
@@ -88,10 +90,10 @@ export function ProfileStep() {
           <SMark className="size-8 text-jade" />
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Last step
+              {t("eyebrow")}
             </p>
             <h1 className="text-lg font-semibold text-foreground">
-              {isProvider ? "This is how your team sees you" : "Pick how your team sees you"}
+              {isProvider ? t("titleProvider") : t("titlePick")}
             </h1>
           </div>
         </div>
@@ -121,7 +123,7 @@ export function ProfileStep() {
                   {draft.displayName}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Your name, color and avatar on every bet, comment and board.
+                  {t("previewNote")}
                 </p>
               </div>
             </div>
@@ -142,7 +144,7 @@ export function ProfileStep() {
                 onClick={() => void finish(draft)}
                 className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
               >
-                {pending === "save" ? "Saving…" : "Save and continue"}
+                {pending === "save" ? t("saving") : t("save")}
               </button>
             ) : (
               <button
@@ -151,7 +153,7 @@ export function ProfileStep() {
                 onClick={() => void finish(null)}
                 className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
               >
-                {pending === "skip" ? "One moment…" : "Looks good — continue"}
+                {pending === "skip" ? t("oneMoment") : t("looksGood")}
               </button>
             )}
 
@@ -162,7 +164,9 @@ export function ProfileStep() {
                 onClick={() => void finish(null)}
                 className="h-9 w-full border border-border px-5 text-xs font-medium text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               >
-                {pending === "skip" ? "One moment…" : `Keep “${keptName}” for now`}
+                {pending === "skip"
+                  ? t("oneMoment")
+                  : t("keepName", { name: keptName })}
               </button>
             ) : (
               <button
@@ -171,14 +175,14 @@ export function ProfileStep() {
                 onClick={() => setEditing(true)}
                 className="h-9 w-full border border-border px-5 text-xs font-medium text-foreground transition-colors hover:border-jade/50 hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
               >
-                Edit profile
+                {t("editProfile")}
               </button>
             )}
           </div>
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          You can change any of this later from the profile menu.
+          {t("changeLater")}
         </p>
       </div>
     </div>

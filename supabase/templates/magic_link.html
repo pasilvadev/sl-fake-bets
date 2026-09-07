@@ -13,8 +13,36 @@
   what happens when someone requests the link on a laptop and taps it in their
   phone's mail app. A code is retyped wherever the user already is.
 
-  Copy stays English-only (UX-026) and says "SL", never spelled out (UX-021).
+  BILINGUAL since UX-027 (plan-i18n-ptbr.md Phase 3, task 8) — and this
+  paragraph replaces the "copy stays English-only (UX-026)" line that used to
+  sit here, because this task is what falsifies it.
+
+  Self-hosted GoTrue has exactly ONE template per email type and no per-recipient
+  locale: the send happens before anyone has a session, so there is nothing to
+  read a preference from, and `users.locale` may not even have a row yet. The
+  alternatives are a Supabase send-email auth hook plus our own sender — real
+  work, and out of this plan's scope — or four lines twice. Four lines twice
+  wins, and it degrades correctly for a reader of either language.
+
+  pt-BR first because it is the locale this phase exists for; a reader who
+  wants English finds it immediately below, and the code itself sits between
+  them where neither has to scroll past the other to reach it.
+
+  Adding a THIRD locale is where this stops being free — Phase 4, item 3 says
+  so, and names this file as the reason.
+
+  Still says "SL", never spelled out (UX-021).
 -->
+<h2>Seu código de acesso ao SL</h2>
+
+<p>Digite este código para entrar:</p>
+
+<p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">{{ .Token }}</p>
+
+<p>O código expira em uma hora. Se você não pediu, ignore este e-mail.</p>
+
+<hr style="border: none; border-top: 1px solid #ddd; margin: 24px 0;" />
+
 <h2>Your SL sign-in code</h2>
 
 <p>Enter this code to finish signing in:</p>

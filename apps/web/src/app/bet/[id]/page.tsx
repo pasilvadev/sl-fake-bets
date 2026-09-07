@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { BetDetailPage } from "@/components/bet/bet-detail-page";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
+import { OG_LOCALES } from "@/i18n/config";
 import { describeBetPreview, fetchBetPreview } from "@/lib/data/bet-preview";
 import { SITE_NAME } from "@/lib/site";
 
@@ -22,12 +24,16 @@ export async function generateMetadata({
 }: PageProps<"/bet/[id]">): Promise<Metadata> {
   const { id } = await params;
   const supabase = await createClient();
-  const preview = await fetchBetPreview(supabase, id);
+  const [preview, t, locale] = await Promise.all([
+    fetchBetPreview(supabase, id),
+    getTranslations("metadata"),
+    getLocale(),
+  ]);
 
   if (!preview) {
     return {
-      title: "Bet not found",
-      description: "This bet no longer exists, or the link is wrong.",
+      title: t("betNotFound"),
+      description: t("betNotFoundDescription"),
       robots: { index: false, follow: false },
     };
   }
@@ -35,7 +41,7 @@ export async function generateMetadata({
   const title = preview.iconEmoji
     ? `${preview.iconEmoji} ${preview.title}`
     : preview.title;
-  const description = describeBetPreview(preview);
+  const description = describeBetPreview(preview, t);
 
   return {
     title,
@@ -48,7 +54,7 @@ export async function generateMetadata({
       // the card.
       type: "article",
       siteName: SITE_NAME,
-      locale: "en_US",
+      locale: OG_LOCALES[locale],
       title: `${title} — ${SITE_NAME}`,
       description,
       url: `/bet/${preview.betId}`,

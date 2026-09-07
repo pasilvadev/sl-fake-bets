@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 import { cn } from "cn";
 import { CONFIG, type TeamAccessMode } from "@repo/shared";
 import { useTeamSession } from "@/lib/team-context";
@@ -28,11 +29,13 @@ function Splash() {
 }
 
 function LoadFailed({ error, onRetry }: { error: string; onRetry: () => void }) {
+  const t = useTranslations("teamGate");
+
   return (
     <div className="flex min-h-svh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-3 border border-border bg-surface-1 p-6">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-ember">
-          Couldn&apos;t load your teams
+          {t("loadFailedTitle")}
         </p>
         <p className="text-sm text-foreground">{error}</p>
         <button
@@ -40,7 +43,7 @@ function LoadFailed({ error, onRetry }: { error: string; onRetry: () => void }) 
           onClick={onRetry}
           className="cut-sm h-9 px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110"
         >
-          Try again
+          {t("retry")}
         </button>
       </div>
     </div>
@@ -66,6 +69,7 @@ export function NoTeamsScreen() {
   const { signOut } = useAuth();
 
   const { errorText } = useErrorText();
+  const t = useTranslations("teamGate");
   const [name, setName] = useState("");
   const [accessMode, setAccessMode] = useState<TeamAccessMode>("free-for-all");
   const [code, setCode] = useState("");
@@ -97,23 +101,23 @@ export function NoTeamsScreen() {
           <SMark className="size-8 text-jade" />
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              No teams yet
+              {t("noTeamsEyebrow")}
             </p>
             <h1 className="text-lg font-semibold text-foreground">
-              Start one, or join with a code
+              {t("noTeamsTitle")}
             </h1>
           </div>
         </div>
 
         <form onSubmit={submitCreate} className="space-y-3 border border-border p-4">
           <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Team name
+            {t("nameLabel")}
           </label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Sl Originals"
+            placeholder={t("namePlaceholder")}
             className={fieldClass}
           />
           <div className="flex gap-2">
@@ -129,7 +133,7 @@ export function NoTeamsScreen() {
                     : "border-border text-muted-foreground hover:border-border-strong",
                 )}
               >
-                {mode === "free-for-all" ? "Free-for-all" : "Restricted"}
+                {mode === "free-for-all" ? t("freeForAll") : t("restricted")}
               </button>
             ))}
           </div>
@@ -138,23 +142,23 @@ export function NoTeamsScreen() {
             disabled={name.trim().length === 0 || pending !== null}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {pending === "create" ? "Creating…" : "Create team"}
+            {pending === "create" ? t("creating") : t("createTeam")}
           </button>
           <p className="text-[11px] text-muted-foreground">
-            You lead it, and start with {CONFIG.ONBOARDING_GRANT_COINS} coins.
+            {t("leadNote", { coins: CONFIG.ONBOARDING_GRANT_COINS })}
           </p>
         </form>
 
         <form onSubmit={submitJoin} className="space-y-3 border border-border p-4">
           <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Have an invite code?
+            {t("codeLabel")}
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="xxxx-xxxx"
+              placeholder={t("codePlaceholder")}
               className={cn(fieldClass, "font-mono")}
             />
             <button
@@ -162,7 +166,7 @@ export function NoTeamsScreen() {
               disabled={code.trim().length === 0 || pending !== null}
               className="shrink-0 border border-border px-4 text-xs font-semibold uppercase tracking-wide text-foreground transition-colors hover:border-jade/50 hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
             >
-              {pending === "join" ? "Joining…" : "Join"}
+              {pending === "join" ? t("joining") : t("join")}
             </button>
           </div>
         </form>
@@ -174,7 +178,7 @@ export function NoTeamsScreen() {
           onClick={() => void signOut()}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          Sign out
+          {t("signOut")}
         </button>
       </div>
     </div>

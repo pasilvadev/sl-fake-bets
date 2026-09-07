@@ -224,6 +224,8 @@ Recorded so a future session finds a decision rather than a gap.
 2. **Stable codes for race-reachable RPC exceptions.** D9's generic fallback is correct for 120 of the 125, but a handful are genuinely reachable by two people acting at once — bet closed under you, funds spent elsewhere, duel already accepted or declined. Those deserve real sentences. Scope it from **evidence**: log the SQLSTATE + code with D9's `console.error`, wait, then promote the ones that actually appear. Do not pre-emptively code all 125.
 3. **A third locale.** Nothing in this plan is two-locale-specific except `LOCALE_LABELS` and the bilingual email. Adding `es` is a catalog file plus one entry in `LOCALES`. The email is where a third locale stops being free — that is the point at which the auth-hook sender becomes worth its cost.
 4. **`Intl.PluralRules`-aware coin phrasing beyond `plural`.** Not needed: pt-BR has the same two-form cardinal system English does, and ICU `plural` covers it. Recorded so nobody "fixes" it.
+5. **`transactions.description`, for the two kinds that embed a name.** *(Found during execution; this plan did not anticipate it.)* The ledger RPCs write that column in English, and the history modal renders it on every visit — the read-side twin of the problem D9 solved for exception text, except routine rather than race-only. Phase 3 recovers the two FIXED sentences from `kind` client-side (`daily-reward`, `onboarding-grant`), which covers the rows a normal user sees. `injection` and the unused `donation` embed a display NAME the row carries no column for, so there is nothing to rebuild them from and they fall through to the stored English. Closing that needs a `description_code` (or an actor column) on `public.transactions` plus every ledger RPC — a migration, not a copy change, which is why it is here and not in Phase 3. Scope it the same way as item 2: from evidence, once someone actually reads an injection row in Portuguese and minds.
+6. **A `timeZone` that follows the reader.** `i18n/request.ts` pins `UTC` because next-intl warns on every render without one and nothing in the app renders a wall-clock time — `lib/format.ts` does its own date math (D7) and `useFormatter` has no callers. The day a surface shows a time of day, the honest answer is the READER's zone, resolved client-side after hydration; the comment in `request.ts` says so, so that day starts from a choice rather than from a default nobody remembers making.
 
 ---
 
@@ -252,6 +254,36 @@ Recorded so a future session finds a decision rather than a gap.
 
 ---
 
-## 8. Provenance
+## 8. What shipped
+
+All three phases, 2026-09-07, on `main`. Commits: Phase 1 `ee0e463`, Phase 2 `1cecb7b`, Phase 3a/3b `d0bde5c`, Phase 3c/3d in the commit this section lands with.
+
+**Where the execution diverged from the plan, and why:**
+
+- **`negotiator` was dropped.** D3's `Accept-Language` parse was to reuse next-intl's own dependency. It ships no types at its 1.x and `@types/negotiator` still describes 0.6, so `i18n/request.ts` carries a 12-line q-value parser instead. `@formatjs/intl-localematcher` is a direct dependency and still does the matching that turns `pt`, `pt-PT` and `pt-br` into `pt-BR`.
+- **`errors` and `validation` do not overlap.** D8 says one union, one `errors.*` namespace typed `Record<MutationErrorCode, string>`. Taken literally that repeats all 22 field sentences, in two languages, and hands the owner two places to edit "Not enough coins." — against §4's whole point. So `validation` owns the field half, `errors` owns `Exclude<MutationErrorCode, ValidationCode>`, and the two asserts together are still exhaustive over the union.
+- **`ValidationIssue` kept a `values` bag.** D8 says it keeps only `{ code }`. Three of its sentences quote a number the validator already knows (`options-min`, `over-max-wager`, `chat-too-long`); making each call site re-derive `CONFIG.CHAT_MESSAGE_MAX_CHARS` — or, worse, the bet's own `maxWagerPerUser` — would put the same fact in two places. `values` is ICU arguments, never a sentence, which is the distinction the deleted `message` field failed to make. `MutationResult` carries the same bag for its two interpolating codes.
+- **Two READ paths got named codes rather than `unexpected`.** D9 is about unmapped RPC exceptions, and `firstError` (the team load) and `fetchChatPage` were rendering raw Postgres text on a whole-surface error screen. They return `team-load-failed` / `chat-load-failed`: the raw text is still logged and still never shown, and "Couldn't load your teams" tells a reader what to retry where the generic sentence does not.
+- **`BetDurationPreset.label` and `BetEmojiCategory.label` were deleted, not kept as `en` values.** Phase 3 task 4 allowed either. Keeping them would put the same sentence in two files. The duration chip is now derived from `minutes` — strictly better, because open decision #2 says the owner will retune those numbers and a hand-typed "24 hours" beside a changed `minutes` was a lie waiting to happen. `emoji-catalog.test.ts` lost one assertion and gained a pointer to where the headings live.
+- **The OAuth callback's `?auth_error=` was in scope after all.** It is not on any task list, but it was redirecting Google's own prose straight into the auth page's error slot — the last path by which text written outside `messages/*.json` reached a screen.
+
+**Two defects this pass found in code it was only supposed to move:**
+
+1. **The emoji-category exhaustiveness check was vacuous.** `BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[]` widened every `id` to `string`, so `Record<EmojiCategoryId, string>` was asserting `Record<string, string>` and passing for the wrong reason. `BetEmojiCategoryId` is a real union now.
+2. **`uploadAvatar`'s error and `profile-fields.tsx`'s `onUploadError` type-checked after being narrowed to a code** — a `(v: string | null) => void` is assignable where a `(c: Code | null) => void` is expected — so both callers would have silently rendered `avatar-too-large` at a user. Caught by reading the diff, not by the compiler.
+
+**Verified in a real browser** against the local stack, over raw CDP: the negotiation matrix (`pt`, `pt-PT`, `pt-BR`, q-values, cookie precedence, a garbage cookie); switch → cookie → account write → survives reload; new-device reconciliation landing on the account's locale after one refresh and a deliberate switch surviving two further navigations without flipping back; `locale-pt-br` off ⇒ `lang="en"` even with a `pt-BR` cookie AND a `pt-BR` `Accept-Language`, and no switcher anywhere; inline validation in both languages; `create_bet` stubbed to `raise exception … errcode XX999` producing one localized generic sentence with the raw text and SQLSTATE in `console.error` and nowhere on screen; a production build rendering real English with `NEXT_PUBLIC_I18N_DEBUG=keys` set; and the key-reveal sweep itself, in which every visible string on the dashboard, the bet page and three modals is a dotted key, and every survivor is user-generated content, a date, a numeral or a glyph.
+
+**Text expansion, measured** at 375px and 1280px in both locales: the ticker holds one row at exactly 40px, the header holds 56px, and `document.body.scrollWidth` is byte-identical between locales at 375px (the dashboard grid's own overflow there predates this work and is unchanged by it). pt-BR's ticker measures **20px narrower** than the English — §5's compression rule working in our favour, as D10 predicted. The one place pt-BR is wider is the bet row's primary CTA (`Wager` → `Apostar`, 12px), absorbed by a title cell that was already truncating in English.
+
+**Known and accepted, in one place:**
+
+- The emoji picker's ~350 `name`/`keywords` stay English (Phase 4, item 1): its CATEGORIES are Portuguese, its SEARCH is English, and a pt-BR user browses instead of typing.
+- `transactions.description` for `injection` (Phase 4, item 5).
+- The sign-in email is bilingual rather than per-recipient, because self-hosted GoTrue has one template per type and no session to read a preference from.
+
+---
+
+## 9. Provenance
 
 Written 2026-09-07 against `main` at `d756b0f`, on an audit of `apps/web/src` (90 files), `packages/shared/src` (17 files), 20 migrations and `supabase/templates/`. Requirement anchors: **UX-027** (this plan's deliverable), **UX-026** (preserved, not retired), **UX-021** (SITE_NAME), **UX-022** (`users` is where the preference lands), **UX-017/023/024** (the metadata surfaces D2 trades against), **ARC-016** (the `locale-pt-br` flag). Design anchors: `design-visual-identity.md` §3, §5.2, §5.8, §5.9, §7, §8; `design-dashboard.md` §1.1, §1.2. Library facts verified against the npm registry on 2026-09-07: `next-intl@4.14.2`, peers `next: ^12–^16`, `react: ^16.8–^19`.

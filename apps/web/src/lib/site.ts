@@ -25,4 +25,10 @@ export function siteUrl(): URL {
 /** UX-020/021: the product is "SL". Never "Soulless", anywhere a user can read. */
 export const SITE_NAME = "SL";
 
-export const SITE_TAGLINE = "Make stupid fake bets on stupid things";
+/**
+ * The tagline is a MESSAGE now, not a constant (UX-027, Phase 3 task 7):
+ * `metadata.tagline` in `apps/web/messages/*.json`. `SITE_NAME` stays here
+ * because UX-021 makes it untranslatable — the product is "SL" in every
+ * language, never expanded — and that is exactly the difference between the
+ * two.
+ */

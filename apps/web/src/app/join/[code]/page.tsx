@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { JoinPage } from "@/components/join/join-page";
+import { getLocale, getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
+import { OG_LOCALES } from "@/i18n/config";
 import { previewTeamByCode } from "@/lib/data/team-mutations";
 import { SITE_NAME } from "@/lib/site";
 
@@ -24,22 +26,30 @@ export async function generateMetadata({
 }: PageProps<"/join/[code]">): Promise<Metadata> {
   const { code } = await params;
   const supabase = await createClient();
-  const { preview } = await previewTeamByCode(supabase, decodeURIComponent(code));
+  const [{ preview }, t, locale] = await Promise.all([
+    previewTeamByCode(supabase, decodeURIComponent(code)),
+    getTranslations("metadata"),
+    getLocale(),
+  ]);
 
   if (!preview) {
     return {
-      title: "Invite not found",
-      description: "This invite code doesn't match any team.",
+      title: t("inviteNotFound"),
+      description: t("inviteNotFoundDescription"),
       robots: { index: false, follow: false },
     };
   }
 
-  const title = `Join ${preview.teamName}`;
-  const description =
-    `${preview.teamName} is betting fake coins on ${SITE_NAME} — ` +
-    `${preview.memberCount} member${preview.memberCount === 1 ? "" : "s"}, ` +
-    `${preview.openBetCount} open bet${preview.openBetCount === 1 ? "" : "s"}. ` +
-    "No real money, ever.";
+  const title = t("joinTitle", { team: preview.teamName });
+  // Both counts are ICU `plural` blocks now — this was two hand-rolled
+  // `"s"`-suffix ternaries, and it is also the SEO surface (UX-023), so
+  // "1 members" reaching a link unwrapper was the visible kind of wrong.
+  const description = t("joinDescription", {
+    team: preview.teamName,
+    siteName: SITE_NAME,
+    members: preview.memberCount,
+    openBets: preview.openBetCount,
+  });
 
   return {
     title,
@@ -52,7 +62,7 @@ export async function generateMetadata({
       // the card.
       type: "website",
       siteName: SITE_NAME,
-      locale: "en_US",
+      locale: OG_LOCALES[locale],
       title: `${title} — ${SITE_NAME}`,
       description,
       url: `/join/${code}`,

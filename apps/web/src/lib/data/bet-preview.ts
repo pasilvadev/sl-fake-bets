@@ -97,13 +97,36 @@ export async function fetchBetPreview(
 }
 
 /**
+ * Just enough of next-intl's `Translator` for the six keys below.
+ *
+ * Structural rather than the real type on purpose: importing `getTranslations`
+ * here would make this module server-only in a way its header does not promise,
+ * and the per-key argument typing that the real `Translator` carries cannot
+ * survive being passed around as a value anyway.
+ */
+type BetPreviewTranslator = (
+  key: "betStatusVoided" | "betStatusResolved" | "betStatusClosed" | "betStatusOpen"
+    | "betPoolEmpty" | "betPool" | "betDescription",
+  values?: Record<string, string | number>,
+) => string;
+
+/**
  * The card's descriptive text (UX-024 asks for title, current odds AND
  * descriptive text). Odds read as payout multipliers — `2.4×` is what one coin
  * on that option returns right now — because that is the number the wager modal
  * and the bet page already show, and a share card that reinvents the notation
  * teaches the reader the wrong unit.
+ *
+ * The translator arrives as a parameter (UX-027, Phase 3 task 7) for the same
+ * reason `lib/format.ts` takes a `locale`: this module is server-only and
+ * hook-free, and `generateMetadata` — its one caller — already has to `await
+ * getTranslations()` for the title beside it. The option LABELS inside `odds`
+ * are user-generated and stay exactly as typed (§7).
  */
-export function describeBetPreview(preview: BetPreview): string {
+export function describeBetPreview(
+  preview: BetPreview,
+  t: BetPreviewTranslator,
+): string {
   const odds = preview.options
     .map((o) => `${o.label} ${o.multiplier === null ? "—" : `${o.multiplier.toFixed(2)}×`}`)
     .join(" · ");
@@ -111,16 +134,16 @@ export function describeBetPreview(preview: BetPreview): string {
   const status =
     preview.state === "resolved"
       ? preview.resolutionKind === "void"
-        ? "Voided"
-        : "Resolved"
+        ? t("betStatusVoided")
+        : t("betStatusResolved")
       : preview.state === "closed"
-        ? "Closed — awaiting the result"
-        : "Open for wagers";
+        ? t("betStatusClosed")
+        : t("betStatusOpen");
 
   const pool =
     preview.poolTotal === 0
-      ? "No coins in the pool yet"
-      : `${preview.poolTotal} coins in the pool`;
+      ? t("betPoolEmpty")
+      : t("betPool", { coins: preview.poolTotal });
 
-  return `${status} in ${preview.teamName}. ${pool}. ${odds}`;
+  return t("betDescription", { status, team: preview.teamName, pool, odds });
 }

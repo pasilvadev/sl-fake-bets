@@ -835,7 +835,7 @@ Every fix was re-driven in the browser (12 assertions, 0 failures) alongside a p
 
 Four departures from the plan as written, each forced by the code:
 
-1. **The chat dedupe key is a literal, not a failure code.** Task 10 says chat's toast is "keyed on the failure code", but `asChatFailure` returns only a sentence — `CHAT_FLOOD_RATE_SQLSTATE`/`CHAT_FLOOD_DUPLICATE_SQLSTATE` never escape that function, and widening `MutationResult` to carry a code is an out-of-scope refactor. Both surfaces key on the literal `"chat-send"`, which produces exactly the intended one-card-per-burst.
+1. **The chat dedupe key is a literal, not a failure code.** Task 10 says chat's toast is "keyed on the failure code", but `asChatFailure` returns only a sentence — `CHAT_FLOOD_RATE_SQLSTATE`/`CHAT_FLOOD_DUPLICATE_SQLSTATE` never escape that function, and widening `MutationResult` to carry a code is an out-of-scope refactor. Both surfaces key on the literal `"chat-send"`, which produces exactly the intended one-card-per-burst. **[Debt paid 2026-09-07 by i18n Phase 2 — `plan-i18n-ptbr.md` D8.** `MutationResult`'s failure arm carries a `MutationErrorCode` now, and `asChatFailure` returns `chat-rate-limited` / `chat-duplicate` / `chat-invalid` rather than a sentence. The dedupe key stays the literal `"chat-send"` on purpose: it identifies the SURFACE the burst came from, which is what one-card-per-burst needs, where the code identifies the reason and would split a mixed burst into three cards.**]
 2. **D6's "the composer repopulates the failed text" was already true and needed no code.** `chat-thread.tsx`'s `ChatComposer` only clears on success (`if (result.ok) setBody("")`), and bet-detail's comment form does the same. Nothing repopulates because nothing ever empties. What a failure removes is the optimistic chat *row*, not the draft — the plan conflates the two, and §5.7's new bullet records the accurate version.
 3. **`bet-row.tsx`'s share URL was a dead link and is now fixed.** It built `https://sl.bet/b/${id}` — a fictional host and a path this app does not serve — while the same file links to the real `/bet/[id]` route a few lines below. Task 9 authorised only fixing the empty `catch`, but a "Link copied." toast over a URL that goes nowhere is worse than the silence it replaces, so the URL now uses `window.location.origin` + the real route, per `invite-modal.tsx`'s precedent. **Flagged for the owner** as the one product-visible change beyond the brief.
 4. **`z-[60]` is the tier, not a workaround.** Tailwind v4 accepts a bare `z-<number>` as a dynamic utility (v3's fixed 0–50 scale is gone), so `z-60` compiles to the same rule — verified in the built CSS. The bracket form is kept because the plan specifies it; any comment claiming the bare form "compiles to nothing" is wrong for this Tailwind version.
@@ -857,3 +857,20 @@ Four departures from the plan as written, each forced by the code:
 3. **The FAB collision has a moving target.** Extra Phase 3 adds a second, stacked FAB, and whichever of the two phases ships second must not discover the offset by eye. That is what `--fab-stack-height` is for; if Extra Phase 3 ships first, this phase inherits its value rather than re-measuring.
 4. **Nothing here is testable in vitest.** The only test runner in this repo is vitest over `packages/shared`'s pure functions, and a toast system is timers, portals, live regions and stacking contexts — none of it pure. Verification is entirely browser-driven, over raw CDP with node's built-in `WebSocket` as Phases 8 and 9 did, and headless Chrome's default 800×600 window is below `lg`, so pass `--window-size` or the desktop-position assertions fail for the wrong reason.
 5. **§5.9 is one paragraph and this phase amends five things in it.** The temptation is to let the code drift and leave the doc alone, which is how §5.9 came to say "N4" about a token nothing uses (D8). Task 13 is not optional bookkeeping: the doc is the thing the *next* session reads.
+
+---
+
+### pt-BR localization (UX-027) ✅ COMPLETE (2026-09-07) — planned elsewhere
+
+Not an Extra Phase in this doc's series, and deliberately so: it has its own plan, `plan-i18n-ptbr.md`, because it is three phases with their own exit criteria and a decision record (D1–D13) that would swamp this file.
+
+**Lifts from §6 risk 7:** **pt-BR (UX-027)**, and only that. Every other item on that list is untouched — notifications (ARC-014), coin donation (DOM-023), crowd resolution (DOM-020), native mobile and the platform icon set (DOM-010) all stay excluded, and localization is a plausible smuggling route for none of them.
+
+What it changed that a reader of THIS doc needs to know:
+
+- `MutationResult`'s failure arm carries a **code**, not a sentence, and `ValidationIssue.message` is gone. That is the refactor Extra Phase 4's shipped-note 1 flagged and postponed; the note above now points at where it landed.
+- Every user-visible sentence lives in `apps/web/messages/{en,pt-BR}.json`. A string literal reaching the screen from a component is a bug after this, and the exhaustive `Record<MutationErrorCode, string>` in `apps/web/src/i18n/messages.ts` is what makes it checkable.
+- `lib/format.ts`'s four helpers take the active locale as a first argument. Every call site changed; none of the shapes did.
+- One nullable column (`users.locale`) and one cookie. No new query on any path.
+
+Gated on the seeded `locale-pt-br` flag, so §6 risk 7 can be re-imposed by flipping one row in Studio.

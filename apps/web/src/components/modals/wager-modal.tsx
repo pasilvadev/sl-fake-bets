@@ -39,7 +39,7 @@ export function WagerModal({ betId }: { betId: string }) {
     return (
       <ModalShell eyebrow={t("eyebrow")} title={t("notFound")} onClose={close}>
         <p className="text-sm text-muted-foreground">
-          This bet no longer exists.
+          {t("gone")}
         </p>
       </ModalShell>
     );
