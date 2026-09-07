@@ -114,9 +114,12 @@ function AnyModeratorToggle({
  * `app.duel_accept_window()`'s and a browser that could name its own deadline
  * could name one ten years out), no per-user max (it IS the stake, which is
  * what makes a third wager structurally impossible), and no icon — DOM-009
- * makes it decoration, `found-bugs.md` already records that the emoji text
- * input is the wrong control on a web app, and a duel has a glyph of its own
- * (§5.1: ⚔️ when none is set) rather than the 🎲 fallback a pool bet takes.
+ * makes it decoration, and a duel has a glyph of its own (§5.1: ⚔️ when none
+ * is set) rather than the 🎲 fallback a pool bet takes. `create_duel` still
+ * takes `p_icon_emoji` and `startDuel` still forwards it, so adding
+ * `sl/emoji-picker.tsx` to this form later is a one-line change; the reason
+ * not to is that a challenge is four decisions and a decoration would be a
+ * fifth.
  */
 export function StartDuelModal() {
   const { close } = useModal();

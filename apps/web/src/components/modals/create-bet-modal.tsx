@@ -11,6 +11,7 @@ import {
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { EmojiPicker } from "@/components/sl/emoji-picker";
 import { ModalShell } from "@/components/sl/modal-shell";
 
 /** UI cap on option slots only — the domain floor is 2 with no max (§4.5). */
@@ -141,20 +142,13 @@ export function CreateBetModal() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {/* A span, not a label: the picker is a grid of buttons with no one
+              control to point `htmlFor` at — the same reason the avatar grid in
+              `profile-fields.tsx` labels itself this way. */}
+          <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Icon
-          </label>
-          <input
-            type="text"
-            maxLength={2}
-            value={emoji}
-            onChange={(e) => setEmoji(e.target.value)}
-            placeholder="🎲"
-            className={cn(inputClass, "w-16 text-center")}
-          />
-          <p className="text-xs text-muted-foreground">
-            Emoji for now — icon set later.
-          </p>
+          </span>
+          <EmojiPicker value={emoji} onChange={setEmoji} />
         </div>
 
         <div className="space-y-1.5">
