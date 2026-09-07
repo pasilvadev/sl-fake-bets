@@ -1,0 +1,24 @@
+-- Re-revoke app.prune_chat_messages() from the Data API roles.
+--
+-- `20260906120000_team_chat.sql` created this SECURITY DEFINER function — it
+-- deletes chat across EVERY team and exists for the nightly pg_cron job, which
+-- runs as `postgres` — and revoked EXECUTE from public, anon and authenticated
+-- BY NAME (:388), because `revoke ... from public` alone leaves the named grants
+-- that this schema's ALTER DEFAULT PRIVILEGES hands out at CREATE time.
+--
+-- `20260906130100_duel_rpcs.sql` (:1761) later re-ran
+--   grant execute on all functions in schema app to authenticated, anon;
+-- to cover the helpers IT had just created. That statement sweeps every function
+-- in the schema at that moment — this one included — and that file then
+-- re-revoked only its own three duel-voiding functions. The chat pruner's
+-- hardening was silently undone, and nothing after it noticed.
+--
+-- Found by the first run of scripts/supabase-privilege-audit.sql against the
+-- hosted dev project on 2026-09-07 (plan-hosted-early-access.md Phase 2 task 4):
+-- two deviations, both this function. Reach is still nil — `app` is not in
+-- config.toml's `api.schemas`, so PostgREST cannot route to it — but the
+-- original migration's own argument stands: the severity of what the function
+-- does justifies the revoke, never the grant. Any future blanket grant in `app`
+-- must be followed by the same re-revoke for every SECURITY DEFINER function
+-- that moves or destroys data; the audit script is what catches the omission.
+revoke execute on function app.prune_chat_messages() from public, anon, authenticated;

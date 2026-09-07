@@ -1,6 +1,9 @@
 # SL Fake Bets — Hosted Early Access Plan (ARC-012, and one step past it)
 
-**Status: PLAN, written 2026-09-07, amended the same day. Not yet ordered.**
+**Status: IN EXECUTION since 2026-09-07.** Written and amended that day; the
+owner's Phase 0 A–B hand-off the same evening was the order. Phase 2's
+provisioning is done (execution record under Phase 2); Phase 1 is next; Phase 0
+part C is the owner's; Phase 2 tasks 8–10 resume after Phase 1.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
@@ -40,8 +43,10 @@ Phase 0 so agents can build the rest.
 
 The answers are also recorded as comments at the top of the owner's `.env.ops`
 (gitignored), which now exists with empty `SUPABASE_ACCESS_TOKEN=` and
-`VERCEL_TOKEN=` slots for Phase 0 part B. Part B is the owner's next step;
-Phase 1 needs nothing from Phase 0 and may run alongside it.
+`VERCEL_TOKEN=` slots for Phase 0 part B. **Part B was done the same evening**
+and the agent ran Phase 2's provisioning on it (record below Phase 2); every
+`.env.ops` slot is now filled. **Part C is the owner's next step** — its links
+are filled in with the real refs and hostname. Phase 1 is the next agent session.
 
 ---
 
@@ -178,12 +183,14 @@ and is used for passwords.
   claimed brand verification was needed to escape it; the adversarial pass
   refuted that. Brand verification (logo + name on the consent screen) is
   cosmetic and optional.
-- **Genuinely unverified, and only a live click can settle it:** whether the
-  Publish button demands a homepage and privacy-policy URL for a
-  non-sensitive-scope app, and whether Google's "Authorized domains" field
-  accepts a `*.vercel.app` hostname (vercel.app is on the public-suffix list;
-  Google's policy page recommends "your own domain" for shared-hosting cases).
-  Phase 0 step 8 is a ten-minute test with three fallbacks (D7). Independently
+- **Settled by the owner's click, 2026-09-07 (Phase 0 step 8):** the Publish
+  button **does** demand a homepage and a privacy-policy URL even for a
+  non-sensitive-scope app, and the "Authorized domains" field **accepts**
+  `sl-fake-bets.vercel.app` — `vercel.app` is on the public-suffix list, so the
+  project hostname is a "top private domain" in Google's terms — with no
+  Search Console verification requested. The app is In production. D7's
+  fallbacks were not needed; the pages themselves 404 until Phase 3 and Google
+  did not fetch them on save. Independently
   of Google, the alpha gets a privacy page anyway (D8) — it is the honest thing
   to have on a public URL that stores emails, passwords (hashed by Supabase),
   Google profile basics and avatars.
@@ -208,7 +215,7 @@ and is used for passwords.
 | Restore | Dashboard "Resume project" button, up to **1 year** after pause; data intact; a few minutes for a DB this size (community figure) | Phase 5 drills it once. |
 | Regions | São Paulo `sa-east-1` available, no plan gate | Both projects there. |
 | Compute | Nano: shared CPU, 0.5 GB RAM, 60 direct connections, 200 pooler clients | The app talks REST, not Postgres; Realtime's RLS-check pool on Nano is the one thing to observe under real use (Phase 3). |
-| API keys | New projects get **`sb_publishable_…`** / **`sb_secret_…`**, not legacy `anon`/`service_role` JWTs (since 2025-11-01); the publishable key is a drop-in for the `anon key` argument of every client-library version; `getClaims()` works on legacy and asymmetric signing keys alike | The env var keeps its name; its value changes shape. |
+| API keys | New projects get **`sb_publishable_…`** / **`sb_secret_…`** (since 2025-11-01) — *observed 2026-09-07: the legacy `anon`/`service_role` JWT pair is also issued alongside them; the app uses only the publishable key*; the publishable key is a drop-in for the `anon key` argument of every client-library version; `getClaims()` works on legacy and asymmetric signing keys alike | The env var keeps its name; its value changes shape. |
 | Data API exposure | **New projects since 2026-05-30 do not auto-expose `public` tables**; each needs explicit `GRANT`s | Already true of this schema: `20260905120400_rls_policies.sql:320-331`, `team_chat.sql:138`, `duel_schema.sql:345` grant every table by name — that migration's own comment anticipated "the project's auto-expose default" changing. Functions are granted by name too. Phase 2 runs a privilege audit on dev to prove it, and config.toml gets `auto_expose_new_tables = false` so any future local run matches the cloud. |
 | `postgres` role | not superuser; only `COPY … FROM PROGRAM` and `ALTER USER … SUPERUSER` are unavailable | `auth.users` triggers, `pg_cron`, storage policies, publication `ALTER`s and `SECURITY DEFINER` functions all run via `db push`. The pg_cron `DO` block already degrades gracefully. |
 | Branching | Pro and above | Two projects, not branches. |
@@ -309,9 +316,9 @@ Verified by reading and by running, with Docker off:
   target), both `sa-east-1`, both Nano. Vercel project `sl-fake-bets`
   (hostname reported after creation), Root Directory `apps/web`, Production
   env → prod project, Preview and Development env → dev project. Vercel
-  function region set to `gru1` (São Paulo) **if the Hobby project settings
-  offer the dropdown** — unverified for Hobby; the default `iad1` costs roughly
-  one transatlantic round trip per server render and is acceptable if not.
+  function region set to `gru1` (São Paulo) — **done 2026-09-07: Hobby accepted
+  it via `PATCH /v9/projects/{id}` `serverlessFunctionRegion`**, so the `iad1`
+  fallback was not needed.
 
 - **D3 — The CLI is linked to dev, forever. Prod is reached only through a
   guard.** `supabase link --project-ref <dev-ref>` once; every bare `db push`,
@@ -511,33 +518,64 @@ minutes it creates both Supabase projects and the Vercel project and reports
 three values back to you: the **dev project ref**, the **prod project ref**,
 and the **production hostname**. Part C needs them.
 
+> **Reported by the agent, 2026-09-07 (Phase 2 tasks 1–3, 6):**
+>
+> | Value | |
+> |---|---|
+> | dev project ref | `qkwvmdshqnkfqekilipo` (`sl-fake-bets-dev`, sa-east-1) |
+> | prod project ref | `pgupqbizlfundbvxixvs` (`sl-fake-bets`, sa-east-1) |
+> | production hostname | `sl-fake-bets.vercel.app` |
+> | Vercel scope slug (D5's `<vercel-scope>`) | `sl-3407` (team "SL", Hobby) |
+>
+> The Part C links and URIs below are filled in with these values; nothing
+> there is a placeholder any more.
+
 **C. Google Cloud console (Google Auth Platform) — three pages, pinned:**
 
 7. **Clients** — <https://console.cloud.google.com/auth/clients?project=sl-fake-bets>
    (pt-BR label: *Clientes*). Click the existing client (`898339473490-…`,
    type Web application). Under **Authorized redirect URIs** (pt-BR: *URIs de
    redirecionamento autorizados*) → **Add URI** → paste
-   `https://<dev-ref>.supabase.co/auth/v1/callback`. Leave the JavaScript
+   `https://qkwvmdshqnkfqekilipo.supabase.co/auth/v1/callback`. Leave the JavaScript
    origin (`http://localhost:3000`) as is. **Save**.
 8. **Audience** — <https://console.cloud.google.com/auth/audience?project=sl-fake-bets>
    (pt-BR label: *Público-alvo*). Confirm **User type** is **External**
-   (*Externo*). In the **Publishing status** card the one button reads
-   **Publish app** — click it and read the dialog:
-   - If it publishes with only the app name, support email and developer
-     contact filled → done. Note "Publish: no links required" for the agent.
-   - If it insists on a homepage and privacy-policy URL: come back to this step
-     after Phase 3 step 2 (the production URL exists then) and use
-     `https://<prod-host>` and `https://<prod-host>/privacy` on the **Branding**
-     page (<https://console.cloud.google.com/auth/branding?project=sl-fake-bets>).
-     If its **Authorized domains** field rejects the `vercel.app` hostname,
-     tell the agent — D7's fallbacks apply and the choice between them is
-     yours. Until then the alpha runs password-only via the `auth-google`
-     flag; nothing waits.
+   (*Externo*). **Observed 2026-09-07:** hovering **Publish app** (*Publicar
+   app*) shows that production mode requires an app name, a support email,
+   **and the homepage and privacy-policy URLs** — so §2.2's open question is
+   answered: the links are mandatory, and therefore the domain must be an
+   authorized domain. The Branding page then flags *Domínio ausente:
+   sl-fake-bets.vercel.app* — that is a prompt to add the domain, not a
+   rejection. Do, on **Branding**
+   (<https://console.cloud.google.com/auth/branding?project=sl-fake-bets>):
+   - **Authorized domains** (*Domínios autorizados*) → **Add domain** →
+     `sl-fake-bets.vercel.app` (bare hostname). Keep the `supabase.co` entry.
+     Google's rule: a "Top Private Domain" is the registrable part under a
+     public suffix; `vercel.app` is on the public-suffix list, so this
+     hostname qualifies.
+   - **Application home page** → `https://sl-fake-bets.vercel.app`;
+     **Privacy policy link** → `https://sl-fake-bets.vercel.app/privacy`; Terms
+     of Service blank; **no logo** (a logo is what forces the verification
+     review). The pages 404 until Phase 3; Google does not fetch them on save.
+   - **Save**, then **Audience → Publish app**.
+   - If adding the domain demands **Search Console verification**: tell the
+     agent. The path is a verification HTML file in `apps/web/public/`,
+     verifiable once Phase 1 is deployed (the first push to `main` goes live);
+     then publish. Step 9 does not depend on this.
+   - If Google says the hostname is **not a valid top private domain**: D7's
+     fallbacks apply — password-only alpha via `auth-google`, or a bought
+     domain; the choice is the owner's.
    - Do **not** submit for brand verification; not needed (§2.2).
+
+   **Done 2026-09-07:** the owner added `sl-fake-bets.vercel.app` as an
+   authorized domain — **accepted, no Search Console verification asked** —
+   filled the two URLs, saved, and clicked **Publish app**; the Audience page
+   now shows *Voltar para testes* ("Back to testing"), i.e. **In production**.
+   §2.2's open question and risk 3 are closed; D7's fallbacks were not needed.
 9. **Clients again** — same link as step 7 → **Create client** → Application
    type **Web application** (*Aplicativo da Web*), name `SL — production`,
-   **Authorized JavaScript origins** → `https://<prod-host>`, **Authorized
-   redirect URIs** → `https://<prod-ref>.supabase.co/auth/v1/callback` →
+   **Authorized JavaScript origins** → `https://sl-fake-bets.vercel.app`, **Authorized
+   redirect URIs** → `https://pgupqbizlfundbvxixvs.supabase.co/auth/v1/callback` →
    **Create**. Copy the client ID and the client secret from the dialog and
    paste them as `SUPABASE_AUTH_EXTERNAL_GOOGLE_PROD_CLIENT_ID=` /
    `SUPABASE_AUTH_EXTERNAL_GOOGLE_PROD_SECRET=` in `supabase/.env`. Do not
@@ -587,7 +625,10 @@ a local `next dev` — no Docker, no hosted project.
    block in place with a one-line comment: dormant until full release (§8).
    Every `env()` name is listed in a new `supabase/.env.example`. **The base
    `site_url` stays `http://localhost:3000`** — that is dev's correct value.
-2. **Feature flag migration** (D9): `2026090712xxxx_alpha_flags.sql` — flip
+2. **Feature flag migration** (D9): `20260907130000_alpha_flags.sql` (**any
+   new migration must be versioned after `20260907123000`**, the last one
+   applied to dev on 2026-09-07 — `db push` skips a local file older than the
+   remote head unless `--include-all` is passed) — flip
    `locale-pt-br` to `true` if the owner confirmed, and `insert … on conflict
    (key) do update set description` a new `auth-google` flag seeded `true`
    (the `on conflict` shape from `duel_schema.sql:390`, which deliberately does
@@ -848,6 +889,147 @@ build cycles.
 applying (fallback in task 8); the Data API grants (the audit catches a miss
 before any user does).
 
+**Execution record — Phase 2 provisioning, 2026-09-07 (one agent session, on
+the owner's Phase 0 A–B hand-off).** What actually happened, where it differed
+from the tasks above, and what is left.
+
+- *Task 1.* The Supabase signup had created **no organization** (the CLI and
+  `GET /v1/organizations` both returned an empty list), so the agent ran
+  `supabase orgs create "SL"` → org id `fanyjgwwrjohgkflcdtu` (free plan). Both
+  DB passwords and `CRON_SECRET` were generated as 32 alphanumeric characters.
+- *Task 2.* `sl-fake-bets-dev` → ref **`qkwvmdshqnkfqekilipo`**; `sl-fake-bets`
+  → ref **`pgupqbizlfundbvxixvs`**; both `sa-east-1`, Postgres 17.6,
+  `ACTIVE_HEALTHY` within a minute. Each project issues the publishable/secret
+  pair **and** the legacy `anon`/`service_role` pair (§2.3 corrected). Dev's
+  publishable key is in `apps/web/.env.local` with the dev URL; the dev secret
+  key is `SUPABASE_DEV_SECRET_KEY` in `.env.ops`; prod's secret key was never
+  revealed or written anywhere (`api-keys` without `--reveal`).
+- *Task 3.* `supabase link --project-ref <dev>` — `supabase/.temp/project-ref`
+  holds the dev ref. Done once; never again.
+- *Task 4.* All **20** migrations (the tree has 20, not 21) pushed to dev in one
+  `db push --linked`. Checks via the Management API's
+  `POST /v1/projects/{ref}/database/query` (there is no `psql` on the Mac):
+  publication = `bet_duels, bets, chat_messages, comments, wagers`; `cron.job`
+  has `prune-chat-messages` (`17 3 * * *`) — pg_cron is installed on hosted,
+  so the `DO` block took the real path; `storage.buckets` = `avatars`, public,
+  2 MiB, four image MIME types; `feature_flags` has the seven seeded rows with
+  `locale-pt-br` still `false` (Phase 1 flips it). **Privilege audit:** an
+  agent read all 20 migrations, derived the expected matrix (14 tables × 2
+  roles × 4 verbs; 61 functions in `public` + `app` × 2 roles), and wrote
+  `scripts/supabase-privilege-audit.sql` (Phase 1 task 10's script, delivered
+  early; zero rows = pass; runnable in Studio or through the query endpoint).
+  First run on dev: **two deviations, one real regression** —
+  `app.prune_chat_messages()` was executable by `anon` and `authenticated`
+  because `duel_rpcs.sql:1761`'s blanket `grant execute on all functions in
+  schema app` re-granted what `team_chat.sql:388` had revoked by name, and only
+  the duel file's own three functions were re-revoked. Unreachable over the
+  API (`app` is not an exposed schema), but the original migration's
+  defense-in-depth argument holds, so
+  `20260907123000_prune_chat_messages_revoke.sql` re-revokes it; pushed to dev
+  (**21 migrations applied now**), audit re-run → **zero deviations**. RLS is
+  on for all 14 tables and none is policy-less. Two derivation facts worth
+  keeping: on this project a fresh object gets `anon`/`authenticated` granted
+  **by name** at create time (default privileges), so `revoke … from public`
+  alone never strips access — only a role-named revoke does; and
+  `transactions` still carries an `anon` INSERT grant because that revoke named
+  only `authenticated` (harmless behind RLS, recorded so nobody "fixes" the
+  audit instead of the grant).
+- *Task 5.* `supabase db reset --linked --yes` re-applied the migrations and ran
+  `seed.sql` on hosted Postgres without error: `auth.users` = 10, all
+  `email_confirmed_at` set, 10 `email` identities, `raw_user_meta_data`
+  carries `display_name`; public counts users 10 / teams 3 / members 15 /
+  bets 8 / wagers 20 / duels 2. The password grant
+  (`/auth/v1/token?grant_type=password`, `rafa@sl.local` / `slfakebets`)
+  returns a session; as that user PostgREST reads `users`; as `anon` it reads
+  `feature_flags`, gets `[]` from `teams` (RLS, not an error) and `[]` from
+  `rpc/team_preview_by_code` with a bad code. **Signing in through the form
+  waits for Phase 1 task 5** (the current screen is the OTP one). The CLI
+  prints a Docker warning about caching a migrations catalog — harmless.
+- *Task 6.* Vercel account is a "northstar" account: the personal scope is the
+  team **`SL`, slug `sl-3407`** (Hobby, owner) — that slug is D5's
+  `<vercel-scope>`. Project **`sl-fake-bets`**, id
+  `prj_LAIr246NY4s5UCUpy7NRSyTEAMN9`, created via `POST /v11/projects` with
+  `rootDirectory: apps/web`, then patched to `nodeVersion: 22.x`,
+  `autoExposeSystemEnvs: true`, `serverlessFunctionRegion: gru1`. Env vars
+  exactly as D2: `ENABLE_EXPERIMENTAL_COREPACK=1` on all three; Production →
+  prod URL, prod publishable key, `CRON_SECRET` (sensitive),
+  `NEXT_PUBLIC_SITE_URL=https://sl-fake-bets.vercel.app`; Preview and
+  Development → dev URL and dev publishable key. `vercel link` in `apps/web`
+  (the CLI is installed in the session scratchpad because `npm i -g` lacks
+  permissions here); it appended a `VERCEL_OIDC_TOKEN` line to
+  `apps/web/.env.local`, which was removed. **`vercel git connect` failed**
+  ("Failed to parse URL git@github-pessoal:…" — the SSH alias); the REST call
+  `POST /v9/projects/{id}/link` `{type: github, repo: pasilvadev/sl-fake-bets}`
+  connected it: production branch `main`, repo id 1357275681. The GitHub App
+  was already installed on the repo (Phase 0 step 6 confirmed via
+  `/v1/integrations/search-repo`).
+- *Task 7.* The production hostname is **`sl-fake-bets.vercel.app`** (the name
+  was free). The build was tested by mistake in the strongest possible way: a
+  Git-sourced deployment created via `POST /v13/deployments` with
+  `gitSource.ref = main` is a **production** deployment on Vercel regardless of
+  `target` (and `gitSource` refuses a bare `sha`). It built and went live at
+  the production host against the empty prod project before the mistake was
+  visible. **Build facts, worth keeping:** "Detected ENABLE_EXPERIMENTAL_COREPACK=1
+  and pnpm@11.25.0", `pnpm install` in 19 s with pnpm v11.25.0, Turbo detected,
+  Next 16.3.4 compiled, seven routes as in §2.5, **Build Completed in 43 s** —
+  risk 4 (pnpm 11) is retired by the first mitigation; no `installCommand` or
+  `buildCommand` override is set. The deployment was then deleted
+  (`DELETE /v13/deployments/{id}`); the production host now answers
+  `404 DEPLOYMENT_NOT_FOUND`, which is the "nothing is public yet" state this
+  phase promises. Consequences: (a) **a preview of `main` cannot be produced
+  through Git** — previews come from other branches, or from a CLI upload; the
+  "preview of main is green" exit criterion is satisfied by that production
+  build's log; (b) **the Git integration is live: the first push to `main`
+  deploys production** at the public host, against a prod database that has
+  no schema until Phase 3 step 1 — Phase 1's env guard and `error.tsx` make
+  that a signed-out screen rather than a stack trace, and Phase 3 step 2 is
+  then a push, not a `vercel deploy`. Turbo's strict env mode warned that
+  `ENABLE_EXPERIMENTAL_COREPACK` and `CRON_SECRET` are not declared in
+  `turbo.json` — harmless (runtime/install-time vars), but **Phase 1 task 7
+  must declare `VERCEL_GIT_COMMIT_SHA` in the build task's `env` (or
+  `globalEnv`) in `turbo.json`**, or strict mode strips it and the build tag
+  renders empty on Vercel; adding the two runtime vars to `passThroughEnv`
+  silences the warning.
+- *Hosted auth defaults on dev, read via `GET /v1/projects/{ref}/config/auth`
+  before any push:* `site_url = http://localhost:3000`, `uri_allow_list` empty,
+  `mailer_autoconfirm = false` (**confirm-email is ON by default on hosted**),
+  Google disabled, `password_min_length = 6`, `rate_limit_email_sent = 2`,
+  `mailer_otp_length = 8`. So **task 8 (config push) is a prerequisite of task
+  9**: a password sign-up on dev today would try to send a confirmation email.
+  Field names for the D5 fallback: `site_url`, `uri_allow_list`,
+  `mailer_autoconfirm`, `external_google_enabled`, `external_google_client_id`,
+  `external_google_secret`, `external_google_skip_nonce_check`.
+- *Local loop.* `apps/web/.env.local` now points at dev; `next dev` with Docker
+  stopped renders the signed-out page (HTTP 200, catalog copy) against hosted
+  dev — Phase 4 task 1's first half, observed early.
+- *Exit criteria as of this record:* migrations on dev ✔ (prod dry-run waits
+  for the Phase 1 guard script); privilege audit zero deviations on dev ✔;
+  preview build green ✔ (via the deleted production build's log; a preview with
+  the build tag follows Phase 1); identical auth config on both projects —
+  **not yet** (task 8); password create-account / Google from localhost —
+  **not yet** (tasks 8–9); Realtime on hosted ✔ (over the wire); no prod secret
+  on disk ✔ (`grep sb_secret .env.ops supabase/.env` shows only the dev key).
+- *Left in Phase 2, all gated on Phase 1:* task 8 (config push to both
+  projects — after task 1 of Phase 1 rewrites `config.toml`; prod's Google
+  client after Phase 0 step 9), task 9 (the owner's first real account through
+  the new form), task 10's two-browser check. **Task 10 over the wire, done:**
+  an agent reproduced `subscribeTeamChannel`'s exact channel and bindings with
+  supabase-js as `rafa@sl.local`, then as `duds@sl.local` called the real
+  `place_wager` RPC and did the plain `chat_messages` insert the app performs;
+  both INSERTs arrived on the first client — wager in 748 ms, chat in 497 ms
+  from call start — with the channel `SUBSCRIBED` → `CLOSED` and no error. One
+  nuance for anyone scripting this again: a first run received nothing because
+  the channel joined before supabase-js had propagated the session token to the
+  Realtime socket; an explicit `realtime.setAuth(access_token)` before
+  `.channel()` fixed it. The browser client restores the session before any
+  subscription, so the app is not expected to hit this — Phase 3 step 7's
+  two-device check is where that is observed. The probe left two extra bets,
+  two wagers and two chat rows in "SL Originals" on dev (duds 110 → 90 coins).
+  The `pnpm db:*`
+  scripts and `scripts/db-push-prod.sh` are Phase 1 task 10; until they exist,
+  the only commands that touch a hosted database are `supabase db push --linked`
+  / `db reset --linked`, both of which land on dev by construction.
+
 ### Phase 3 — Go live and verify on real devices (needs Phase 0 C)
 
 **Goal:** production exists at its public URL, the owner has created the first
@@ -1030,8 +1212,8 @@ nothing paged the owner. Then this plan is complete and
 
 Run against the real hosted stack, not inferred:
 
-1. Google consent screen: Publish accepted; a non-owner Google account sees
-   no warning and no Testing refusal (Phase 3 step 6).
+1. Google consent screen: Publish accepted (**done 2026-09-07**); a non-owner
+   Google account sees no warning and no Testing refusal (Phase 3 step 6).
 2. Password create-account by a non-owner on their own phone, with a typed
    display name, no email sent (Phase 3 step 5); the same on dev from
    localhost first (Phase 2 step 9).
@@ -1065,10 +1247,11 @@ Run against the real hosted stack, not inferred:
 2. **No password reset in the alpha.** D1's answer is Google or the owner. Said
    in the owner's launch message (Phase 3 step 11) so nobody discovers it
    alone. The full release brings the reset flow with its SMTP vendor.
-3. **Google Publish requiring a domain.** Unverifiable from documentation;
-   resolved by a click in Phase 0 step 8; D7's `auth-google` flag keeps the
-   alpha independent of the answer, and with D1 a password-only alpha is a
-   complete one.
+3. **Google Publish requiring a domain.** ~~Unverifiable from documentation~~
+   **Closed 2026-09-07:** Publish requires the homepage/privacy URLs, and
+   Google accepted `sl-fake-bets.vercel.app` as the authorized domain without
+   verification (Phase 0 step 8). The `auth-google` flag stays as the ops kill
+   switch it was meant to be.
 4. **pnpm 11 on Vercel.** Outside the documented support table; loud failure;
    three mitigations in order (Phase 2 task 7). Do not downgrade the repo's
    pnpm before the first two are tried.
