@@ -189,18 +189,24 @@
 
   /* ---- mobile FAB tier — how much bottom space the fixed FAB stack claims ----
      The SINGLE declaration of that number (design-dashboard.md §6). Read it as
-     "space claimed", inset included: one 56px FAB (`size-14`) sitting on a
-     16px inset (`bottom-4`) ⇒ 72px, so its top edge is 72px off the viewport
-     bottom. `sl/toast-layer.tsx` offsets the mobile toast strip by this plus a
-     gap, and is the only consumer.
+     "space claimed", inset included. `sl/toast-layer.tsx` offsets the mobile
+     toast strip by this plus a gap, and is the only consumer.
      Deliberately NOT in `@theme inline`: that block inlines a value at each use
      site instead of emitting a live custom property, which would defeat the
      whole point of one number in one place. Non-color `:root` constants have
      precedent above (--brand-slash-angle, --radius).
-     Extra Phase 3 will add a second, stacked FAB and must bump this here — and
-     nowhere else. That phase was still unshipped when this one landed, so this
-     phase introduced the token, per its own task 3 escape hatch. */
-  --fab-stack-height: 4.5rem;              /* 72px = 16px inset + 56px button */
+     Extra Phase 4 introduced this at 4.5rem for one 56px FAB (`size-14`) on a
+     16px inset (`bottom-4`), and named Extra Phase 3 as the phase that would
+     add a second, stacked FAB and bump it here — and nowhere else. It has:
+     `shell/create-bet-fab.tsx` is now a bottom-anchored column holding the
+     44px Start-1v1 FAB (`size-11`) above the 56px Create-Bet one, `gap-3`
+     between them.
+     The value describes the stack at its TALLEST — both buttons present. The
+     two gates differ (D9: a restricted team hides Create Bet from an ordinary
+     member while Start 1v1 stays), so one-button stacks are ordinary, and on
+     those the strip simply clears more air than it needs. That is the safe
+     direction; the alternative is a toast landing on a button. */
+  --fab-stack-height: 8rem;                /* 128px = 16px inset + 56 + 12 gap + 44 */
 }
 
 /* ---- fixed-position stacking tiers (documentation, not a scale) ----

@@ -164,6 +164,28 @@ cost ARC-003 ranks above whatever throughput it would buy.
      departure cascade all *resolve* the bet and leave both rows in place, so
      they arrive as a `bets` UPDATE, which rule 2 says to apply rather than
      refetch behind.
+
+   **Extra Phase 3 (the duel surfaces) adds NO binding, and that is the entry.**
+   The set above is already complete and already correct; recording the
+   non-change is worth a paragraph because the phase's task list says to update
+   this section and the obvious way to do that is to add a line describing
+   something that does not exist. Everything the duel screens need rides the
+   bindings Extra Phase 2 registered: the challenge arriving is `bets` INSERT +
+   `bet_duels` INSERT, the acceptance is `bets` UPDATE + `bet_duels` UPDATE,
+   and every void — declined, expired, cascaded, or a mediator's — is a `bets`
+   UPDATE, because a void RESOLVES the bet rather than deleting anything.
+   Verified across three browsers before this phase shipped: a challenge
+   reaches the challengee's open dashboard and an acceptance reaches the
+   mediator's, both without a reload.
+
+   Two things the surfaces deliberately do NOT do with these events. **Nothing
+   re-sorts or re-pins from a handler** — the feed derives "awaiting you" from
+   the data it holds plus the clock on every render, so an event that changes a
+   duel changes the pin as a consequence of rule 2's apply-the-payload, not
+   through a second ordering channel. And **no toast is ever raised from one**:
+   `toast-context.tsx`'s D5 forbids `show` outside the synchronous handler of
+   an action the person took, and a duel is the most tempting thing in this
+   product to announce on arrival. The pin IS the arrival notice (ARC-014).
 4. **`transactions` is a growth vector independent of Phase 8.** It is loaded in
    full on every cold start and grows without bound, and it is only needed by the
    ledger view. Not Phase 8's job to fix; Phase 8 must not make it worse by

@@ -4,9 +4,24 @@ import { useState } from "react";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
-import { getPoolStats, settleBet, type Bet, type OptionPoolStat } from "@repo/shared";
+import {
+  canAcceptDuel,
+  canResolveDuel,
+  computeDuelPhase,
+  getPoolStats,
+  settleBet,
+  type Bet,
+  type Duel,
+  type DuelPhase,
+  type OptionPoolStat,
+} from "@repo/shared";
 import { useNow } from "@/lib/use-now";
-import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
+import {
+  formatRelativePast,
+  formatShortDate,
+  formatTimeLeft,
+  formatVoidLabel,
+} from "@/lib/format";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useToast } from "@/lib/toast-context";
@@ -14,12 +29,51 @@ import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
 import { AvatarCluster } from "@/components/sl/avatar-cluster";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
+import { Versus } from "@/components/sl/versus";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * §5.1's icon cell falls back to 🎲 for a pool bet. A duel gets its own glyph
+ * (Extra Phase 3, task 11): two people arguing about one outcome is not a dice
+ * roll, and a row that opens with the pool-bet default is one more thing
+ * telling the reader this is an ordinary bet when the next three cells are
+ * about to tell them it is not.
+ */
+const DUEL_GLYPH = "⚔️";
+
 function formatMultiplier(multiplier: number | null): string {
   return multiplier == null ? "—" : `${multiplier.toFixed(2)}x`;
+}
+
+/**
+ * Everything a row needs to know about a duel, resolved once at the top of
+ * `BetRow` and threaded down — deliberately as ONE object rather than five
+ * booleans, because the two halves it carries must never be asked separately.
+ *
+ * `phase` is the clock (`computeDuelPhase`) and knows nothing about who is
+ * looking; `mayAccept`/`mayResolve` are roster+id rules (`permissions.ts`) and
+ * never look at the clock. Every affordance below needs both, and the failure
+ * mode of checking one is an Accept button on a challenge that lapsed
+ * yesterday — the single most likely bug in this phase, per the warnings on
+ * both source functions.
+ */
+interface DuelView {
+  duel: Duel;
+  phase: DuelPhase;
+  /** The viewer owes this duel an answer or a ruling (D4). */
+  awaitingYou: boolean;
+  mayAccept: boolean;
+  mayResolve: boolean;
+  /**
+   * D8 half (a): an unaccepted duel past its deadline IS void, before anything
+   * has persisted the void. Every read treats it that way so the screen is
+   * never wrong while the opportunistic sweep has not run — which, on a
+   * deployment that pauses after 7 idle days, is the expected case rather than
+   * an outage.
+   */
+  readsAsVoid: boolean;
 }
 
 /**
@@ -33,8 +87,7 @@ function formatMultiplier(multiplier: number | null): string {
  * "2.40x". Rank dimming per §4.4 (leader N8, runner-up N7, rest N6 — N5 is
  * off-limits at text-sm, §2 contrast note). Resolved (§5.2): winner keeps the
  * jade "/" prefix + N8 600 on a jade-wash chip (§2.2 "positive chip bg");
- * losers recede chipless — rust 400, line-through odds, no prefix. Rust is the
- * "bad odds" channel here; weight and line-through still carry it on their own.
+ * losers recede chipless — rust 400, line-through odds, no prefix.
  */
 function OptionLine({
   opt,
@@ -144,18 +197,80 @@ function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[]
   );
 }
 
-/** State label per §5.2 — never a colored chip, just tracked uppercase text. */
-function StateLabel({ bet, featured, msLeft }: { bet: Bet; featured?: boolean; msLeft: number | null }) {
+/**
+ * The duel's substitute for the odds preview AND the POOL cell (task 5).
+ *
+ * Both are REPLACED, not reused, and the reason is that they would be truthful
+ * and useless at the same time: two symmetric stakes on opposite options make
+ * `getPoolStats` return a flat 2.00x/2.00x, and pari-mutuel vocabulary on a
+ * two-person bet reads as a bug rather than as information.
+ *
+ * `· WINNER TAKES n` hides below `xl`. The POOL cell it replaces was gated at
+ * `lg`, and this is one step stricter for a measured reason: a duel row also
+ * carries the versus, which needs real width to be worth anything, and at
+ * 1024–1279px the two together squeeze it to nothing. The STAKE half stays
+ * visible at every width, because a duel row whose only number vanished on a
+ * phone would be a row with no stake at all — and the payout is 2× the stake
+ * and nothing else, so the half that survives the trim is the half you cannot
+ * derive in your head.
+ */
+function DuelStake({ stake }: { stake: number }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Stake
+      </span>
+      <CoinAmount amount={stake} className="text-sm text-foreground" />
+      <span className="hidden items-center gap-1.5 xl:flex">
+        <span className="text-muted-foreground">·</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Winner takes
+        </span>
+        <CoinAmount amount={stake * 2} className="text-sm text-foreground" />
+      </span>
+    </div>
+  );
+}
+
+/**
+ * State label per §5.2 — never a colored chip, just tracked uppercase text:
+ * `text-[11px] font-semibold uppercase tracking-wider` plus one color class,
+ * N6 by default and jade/80 for the row that wants your attention.
+ *
+ * `AWAITING YOU` (Extra Phase 3, task 6) is D4's entire notification story. It
+ * outranks `AWAITING RESULT` on a duel the viewer must rule on, because §5.2
+ * gives a row one label and "there is a decision here and it is yours" is
+ * strictly more useful than restating a state the countdown cell already
+ * carries. Nobody else's row changes — the label is per-viewer, computed from
+ * `duelFor` + the shared predicates, and it is a pull: no push, no email, no
+ * bell, no tab title, not even a badge (ARC-014).
+ */
+function StateLabel({
+  bet,
+  closingSoon,
+  duelView,
+}: {
+  bet: Bet;
+  closingSoon: boolean;
+  duelView: DuelView | null;
+}) {
   let text: string | null = null;
   let className = "text-muted-foreground";
 
-  if (bet.state === "open" && featured && msLeft != null && msLeft > 0 && msLeft < ONE_HOUR_MS) {
+  if (duelView?.awaitingYou) {
+    text = "AWAITING YOU";
+    className = "text-jade/80";
+  } else if (duelView?.readsAsVoid && bet.state !== "resolved") {
+    // The lazily-expired case: nothing has persisted a resolution yet, so
+    // `bet.resolution` is still absent and only the clock knows.
+    text = formatVoidLabel("expired");
+  } else if (bet.state === "open" && closingSoon) {
     text = "CLOSING SOON";
     className = "text-jade/80";
   } else if (bet.state === "closed") {
     text = "AWAITING RESULT";
   } else if (bet.state === "resolved" && bet.resolution?.kind === "void") {
-    text = "VOID · REFUNDED";
+    text = formatVoidLabel(bet.resolution.reason);
   }
 
   if (!text) return null;
@@ -168,11 +283,19 @@ function StateLabel({ bet, featured, msLeft }: { bet: Bet; featured?: boolean; m
 }
 
 /** Rail: 3px left accent — the row's only color-coded state signal. */
-function Rail({ bet, featured, msLeft }: { bet: Bet; featured?: boolean; msLeft: number | null }) {
-  if (bet.state === "resolved") return null;
-
-  const closingSoon =
-    bet.state === "open" && featured && msLeft != null && msLeft > 0 && msLeft < ONE_HOUR_MS;
+function Rail({
+  bet,
+  closingSoon,
+  duelView,
+}: {
+  bet: Bet;
+  closingSoon: boolean;
+  duelView: DuelView | null;
+}) {
+  // §5.2: the rail is removed on both resolved outcomes. An expired duel reads
+  // as void (D8 half (a)) and must lose it too, or a lapsed challenge keeps a
+  // live jade rail until something sweeps it.
+  if (bet.state === "resolved" || duelView?.readsAsVoid) return null;
 
   return (
     <div
@@ -192,6 +315,8 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
   if (!bet.resolution) return null;
 
   // Same math the balances were settled with — settlement.ts, no re-derivation.
+  // It needs no duel branch: a duel is two symmetric wagers on opposite
+  // options, so `settleBet` already pays it (Extra Phase 2, task 6).
   const delta = settleBet(bet, wagers, bet.resolution).find(
     (d) => d.userId === currentUser.id,
   );
@@ -209,8 +334,112 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
   return <CoinDelta amount={delta.profitLossDelta} className="text-sm" />;
 }
 
-export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
-  const { wagers, userById } = useTeam();
+/**
+ * The duel's CTA cell — per viewer, and never a dead button (§5.1: on a bet
+ * the user cannot act on, this cell is replaced by the outcome glyph "not left
+ * as a dead button"). Five readings, in the order they are tested:
+ *
+ *  - settled → the outcome delta, or nothing at all for the two thirds of the
+ *    team who were not in it (§5.2's did-not-participate state: "neutral, no
+ *    glyph, no emphasis — must not read as a loss");
+ *  - expired → nothing. There is no action left and the label already says the
+ *    stake went home;
+ *  - the challengee, while it is still open → Accept and Decline, both of
+ *    which open the same modal (see `duel-accept-modal.tsx` for why both);
+ *  - an eligible resolver, once accepted → a link to the bet page, because
+ *    resolving is two participant buttons plus Void and that is a panel, not a
+ *    row control;
+ *  - anyone else → nothing.
+ *
+ * What never appears, in any state, for anyone: `Wager`. `place_wager` refuses
+ * a duel outright, so the button would be a lie even where it fits.
+ */
+function DuelCta({ bet, view }: { bet: Bet; view: DuelView }) {
+  const { open } = useModal();
+
+  if (view.phase === "settled") return <ResolvedOutcome bet={bet} />;
+  if (view.phase === "expired") return null;
+
+  if (view.mayAccept) {
+    return (
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Ghost/tertiary (§5.3) — a decline is not destructive-ember: ember
+            means "the action you are about to take is destructive", and this
+            one hands everyone their coins back. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            open("duel-accept", bet.id);
+          }}
+          className="h-8 shrink-0 px-2 text-xs font-semibold uppercase text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+        >
+          Decline
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            open("duel-accept", bet.id);
+          }}
+          className={cn(
+            "h-8 shrink-0 bg-jade px-3 text-xs font-semibold uppercase text-black rounded-sm",
+            "transition motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
+          )}
+        >
+          Accept
+        </button>
+      </div>
+    );
+  }
+
+  if (view.mayResolve) {
+    return (
+      <Link
+        href={`/bet/${bet.id}`}
+        className="flex h-8 shrink-0 items-center rounded-sm border border-border bg-transparent px-3 text-xs font-semibold uppercase text-foreground transition-colors hover:border-jade/50 hover:text-jade"
+      >
+        Resolve
+      </Link>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * One feed row (§5.1).
+ *
+ * `featured` and `soonest` were a single prop until Extra Phase 3, and the
+ * split is a design decision rather than a refactor:
+ *
+ *  - **`featured` spends the dashboard's one diagonal cut** (§4.3's "max one
+ *    diagonal brand element visible per viewport", `design-dashboard.md` §3) —
+ *    the `cut-sm` icon chip and the `cut-mirror` 6% jade corner tint. Task 6
+ *    reassigns that budget from the closing-soonest bet to a duel awaiting the
+ *    viewer, so exactly one row still carries it, but it is no longer always
+ *    the same row.
+ *  - **`soonest` marks the closing-soonest OPEN pool bet**, the only row
+ *    eligible for §5.2's <1h treatment: the pulsing rail, the `CLOSING SOON`
+ *    label and the jade countdown. That is state language about a betting
+ *    window, and a challenge arriving in someone's feed is no reason to
+ *    extinguish it.
+ *
+ * Before this phase both were the same row, which is why one boolean did both
+ * jobs; a pinned duel is what forces them apart.
+ */
+export function BetRow({
+  bet,
+  featured,
+  soonest,
+}: {
+  bet: Bet;
+  featured?: boolean;
+  soonest?: boolean;
+}) {
+  const { team, currentUser, wagers, userById, duelFor } = useTeam();
   const { open } = useModal();
   const { show } = useToast();
   const now = useNow();
@@ -224,6 +453,54 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
     typeof window === "undefined" ? "" : window.location.origin,
   );
 
+  /**
+   * `isDuel` and `duelView` are two different questions and the row asks both.
+   *
+   * `bet.kind` is the truth about what this bet IS — it is `not null` in the
+   * schema and arrives with every row. `duelFor` is whether this client also
+   * holds the `bet_duels` side row, and it can miss even though `create_duel`
+   * writes both in one transaction: the two arrive on separate realtime
+   * bindings, so between the `bets` INSERT and the `bet_duels` INSERT there is
+   * a real frame where the kind is known and the duel is not. `applyRemote`
+   * also drops a duel whose bet this client does not hold, which the same race
+   * can produce in the other order.
+   *
+   * Keying the POOL CHROME on `duelView` would render that frame as an
+   * ordinary pool bet — odds preview, POOL total, and a live jade `Wager`
+   * button on a bet `place_wager` refuses outright. So everything that must
+   * NOT appear on a duel keys on `isDuel`, and only the duel-specific content
+   * keys on `duelView`. The gap between them renders as a quiet row: title,
+   * countdown, share, and nothing to press.
+   */
+  const isDuel = bet.kind === "duel";
+  const duel = isDuel ? duelFor(bet.id) : undefined;
+  let duelView: DuelView | null = null;
+  if (duel) {
+    // `now == null` on the server and on the first client render — `useNow` is
+    // hydration-safe by design, and substituting `Date.now()` here would
+    // reintroduce the mismatch it exists to prevent. `0` is the honest stand-in
+    // rather than an arbitrary one: `computeDuelPhase`'s first two arms are
+    // stored facts (resolved, accepted) and only its third consults the clock,
+    // so an epoch-zero "now" makes the function answer from the row alone and
+    // report `"pending"` for anything still open. One tick later the real clock
+    // arrives and an already-lapsed challenge settles into `"expired"`. The
+    // reverse fallback would be the dangerous one: reading unaccepted duels as
+    // expired for a frame flashes `VOID` across live challenges.
+    const phase: DuelPhase = computeDuelPhase(bet, duel, now ?? 0);
+    const mayAccept = phase === "pending" && canAcceptDuel(team, currentUser.id, duel);
+    const mayResolve = phase === "accepted" && canResolveDuel(team, currentUser.id, duel);
+    duelView = {
+      duel,
+      phase,
+      mayAccept,
+      mayResolve,
+      awaitingYou: mayAccept || mayResolve,
+      readsAsVoid:
+        phase === "expired" ||
+        (bet.state === "resolved" && bet.resolution?.kind === "void"),
+    };
+  }
+
   const betWagers = wagers.filter((w) => w.betId === bet.id);
   const poolStats = getPoolStats(bet, wagers);
   const poolTotal = poolStats.reduce((sum, o) => sum + o.total, 0);
@@ -233,9 +510,15 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
   const { label: countdownLabel, msLeft } =
     bet.state === "open" && now != null ? formatTimeLeft(bet.closesAt, now) : { label: "—", msLeft: null as number | null };
   const closingSoon =
-    bet.state === "open" && featured && msLeft != null && msLeft > 0 && msLeft < ONE_HOUR_MS;
+    bet.state === "open" &&
+    Boolean(soonest) &&
+    msLeft != null &&
+    msLeft > 0 &&
+    msLeft < ONE_HOUR_MS;
 
-  const isVoid = bet.state === "resolved" && bet.resolution?.kind === "void";
+  const isVoid =
+    (bet.state === "resolved" && bet.resolution?.kind === "void") ||
+    Boolean(duelView?.readsAsVoid);
 
   function handleShare(e: React.MouseEvent) {
     e.preventDefault();
@@ -283,11 +566,14 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
         bet.state === "closed" && "opacity-90",
       )}
     >
-      <Rail bet={bet} featured={featured} msLeft={msLeft} />
+      <Rail bet={bet} closingSoon={closingSoon} duelView={duelView} />
 
       {/* Featured-row corner tint (design-dashboard.md §5.1): a flat 6% jade
           fill behind a diagonal cut — no gradient (banned list #3), the
-          diagonal is the 68° cut-mirror shape reused from the brand motif. */}
+          diagonal is the 68° cut-mirror shape reused from the brand motif.
+          Deliberately a separate layer rather than the row's own background:
+          `bg-jade-wash` is the hover fill, and a permanently-hovered-looking
+          row is a bug report waiting to happen. */}
       {featured && (
         <div className="pointer-events-none absolute inset-y-0 right-0 w-24 cut-mirror bg-jade/6" />
       )}
@@ -306,7 +592,7 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
             featured ? "cut-sm" : "rounded-sm",
           )}
         >
-          {bet.iconEmoji ?? "🎲"}
+          {bet.iconEmoji ?? (bet.kind === "duel" ? DUEL_GLYPH : "🎲")}
         </div>
 
         <div className="min-w-0">
@@ -324,21 +610,69 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
                 <UserName user={creator} className="text-xs" />
               </>
             )}
-            <StateLabel bet={bet} featured={featured} msLeft={msLeft} />
+            <StateLabel bet={bet} closingSoon={closingSoon} duelView={duelView} />
           </div>
         </div>
       </div>
 
-      {/* odds / pool / countdown */}
-      <div className="flex min-w-0 basis-full items-center gap-4 sm:basis-auto sm:flex-1">
-        <OddsPreview bet={bet} poolStats={poolStats} />
+      {/* odds / pool / countdown — or, for a duel, versus / stake / countdown */}
+      <div
+        className={cn(
+          // `sm:flex-1` BEFORE `sm:basis-auto`, and that order is load-bearing.
+          // This cell is the only one on the row whose classes go through
+          // `cn`, and tailwind-merge drops the earlier of two classes that set
+          // the same property — `flex-1` is a shorthand that also sets
+          // `flex-basis`, so writing them the other way round silently deletes
+          // `sm:basis-auto` and leaves the cell at `flex-basis: 0`. Its
+          // neighbour (the icon + title cell) is a plain string literal, never
+          // merged, and keeps a content-sized basis; a basis-0 cell beside a
+          // basis-auto one gets only leftover space, which is what collapsed
+          // the versus composition to zero width and spilled it over the stake.
+          "flex min-w-0 basis-full items-center gap-x-4 sm:flex-1 sm:basis-auto",
+          // A duel packs three cells where a pool bet packs two-and-a-half, so
+          // below `sm` the versus takes its own line rather than squeezing the
+          // stake and the deadline off the row. The outer row is already
+          // `flex-wrap` with a `min-h-`, not a fixed height, so it just grows.
+          isDuel ? "flex-wrap gap-y-1.5 sm:flex-nowrap" : "gap-y-2",
+        )}
+      >
+        {isDuel ? (
+          duelView && (
+            <>
+            {/* `basis-32`, not the `flex-1` the odds preview beside it uses.
+                `flex-1` is `flex: 1 1 0%`, and with two `shrink-0` siblings in
+                a cell this narrow that resolves to a real width of ZERO — the
+                avatars then spill out over the stake figures, which is the bug
+                this basis exists to prevent. Starting at 8rem and shrinking
+                from there gives the composition a floor and degrades by
+                truncating names, which is what `Versus` is built to do.
+                `sm:grow` and not `sm:flex-1`, deliberately: `flex-1` is a
+                shorthand that also sets `flex-basis: 0%`, Tailwind emits it
+                after `basis-*` in the cascade, and it therefore silently wins.
+                `grow` (+ the default `shrink: 1`) leaves the basis alone.
+                `overflow-hidden` is the belt to that braces: whatever the
+                arithmetic, it clips instead of overlapping. */}
+            <Versus
+              challengerId={duelView.duel.challengerId}
+              challengeeId={duelView.duel.challengeeId}
+              size="dense"
+              className="basis-full overflow-hidden sm:grow sm:basis-32"
+            />
+            <DuelStake stake={duelView.duel.stake} />
+            </>
+          )
+        ) : (
+          <>
+            <OddsPreview bet={bet} poolStats={poolStats} />
 
-        <div className="ml-auto hidden shrink-0 flex-col items-end lg:flex">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            Pool
-          </span>
-          <CoinAmount amount={poolTotal} className="text-sm" />
-        </div>
+            <div className="ml-auto hidden shrink-0 flex-col items-end lg:flex">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                Pool
+              </span>
+              <CoinAmount amount={poolTotal} className="text-sm" />
+            </div>
+          </>
+        )}
 
         <div
           className={cn(
@@ -347,7 +681,23 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
             "sm:ml-0 ml-auto lg:ml-3",
           )}
         >
-          {bet.state === "open" && (now == null ? "—" : countdownLabel)}
+          {/* §5.1 makes the countdown "the only urgency signal, no separate
+              badge", so a duel's accept deadline has to ride this same cell —
+              and it gets an explicit prefix. The channel has carried exactly
+              one meaning app-wide ("betting closes in"); a second, unlabelled
+              one on it is a guaranteed misread. Sans prefix, mono numerals
+              (§3: prose is sans, scanned values are mono). */}
+          {duelView?.phase === "pending" && (
+            <span className="font-sans text-xs text-muted-foreground">
+              Accept by{" "}
+            </span>
+          )}
+          {bet.state === "open" &&
+            (duelView?.readsAsVoid
+              ? formatShortDate(bet.closesAt)
+              : now == null
+                ? "—"
+                : countdownLabel)}
           {bet.state === "closed" &&
             (now == null ? "—" : `closed ${formatRelativePast(bet.closesAt, now)}`)}
           {bet.state === "resolved" && formatShortDate(bet.closesAt)}
@@ -356,9 +706,15 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
 
       {/* participants / share / CTA */}
       <div className="flex basis-full items-center justify-between gap-3 sm:basis-auto sm:justify-end">
-        <div className="hidden md:block">
-          <AvatarCluster userIds={distinctWagerUserIds} max={3} size={20} />
-        </div>
+        {/* A duel's participants are already the versus cell, in full and by
+            name. Repeating them as an overlapping stack would say the two
+            people are on the same side, which is the one thing the row exists
+            to deny. */}
+        {!isDuel && (
+          <div className="hidden md:block">
+            <AvatarCluster userIds={distinctWagerUserIds} max={3} size={20} />
+          </div>
+        )}
 
         <button
           type="button"
@@ -370,21 +726,27 @@ export function BetRow({ bet, featured }: { bet: Bet; featured?: boolean }) {
           <Share2 className="size-3.5" />
         </button>
 
-        {bet.state === "open" && (
-          <button
-            type="button"
-            onClick={handleWager}
-            className={cn(
-              "h-8 shrink-0 bg-jade px-3 text-xs font-semibold uppercase text-black rounded-sm",
-              "transition motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
-              featured && "cut-sm",
+        {isDuel ? (
+          duelView && <DuelCta bet={bet} view={duelView} />
+        ) : (
+          <>
+            {bet.state === "open" && (
+              <button
+                type="button"
+                onClick={handleWager}
+                className={cn(
+                  "h-8 shrink-0 bg-jade px-3 text-xs font-semibold uppercase text-black rounded-sm",
+                  "transition motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
+                  featured && "cut-sm",
+                )}
+              >
+                Wager
+              </button>
             )}
-          >
-            Wager
-          </button>
-        )}
 
-        {bet.state === "resolved" && <ResolvedOutcome bet={bet} />}
+            {bet.state === "resolved" && <ResolvedOutcome bet={bet} />}
+          </>
+        )}
       </div>
     </div>
   );

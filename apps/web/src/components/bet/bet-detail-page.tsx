@@ -5,10 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "cn";
 import {
+  canAcceptDuel,
   canCloseBetEarly,
   canComment,
+  canDeclineDuel,
   canDeleteBet,
+  canDeleteDuel,
   canResolveBet,
+  canResolveDuel,
+  computeDuelPhase,
   computeEffectiveState,
   getPoolStats,
   settleBet,
@@ -16,6 +21,8 @@ import {
   type Bet,
   type BetResolution,
   type BetState,
+  type Duel,
+  type DuelPhase,
 } from "@repo/shared";
 import { AuthGated } from "@/components/app-gate";
 import { TeamGate } from "@/components/team-gate";
@@ -23,14 +30,24 @@ import { TopBar } from "@/components/shell/top-bar";
 import { useLiveBetThread, useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useToast } from "@/lib/toast-context";
+import { useFeatureFlag } from "@/lib/feature-flags";
 import { useNow } from "@/lib/use-now";
-import { formatRelativePast, formatShortDate, formatTimeLeft } from "@/lib/format";
+import {
+  formatRelativePast,
+  formatShortDate,
+  formatTimeLeft,
+  formatVoidLabel,
+} from "@/lib/format";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
+import { Versus } from "@/components/sl/versus";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 
 const eyebrowClass =
   "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+
+/** §5.1's duel glyph, shared with the feed row — never the pool bet's 🎲. */
+const DUEL_GLYPH = "⚔️";
 
 /**
  * Bet detail (UX-015, the one allowed full page): full bet info, wager list,
@@ -39,6 +56,12 @@ const eyebrowClass =
  * permissions.ts, with the same rules enforced again by the RPCs behind them.
  * Since roadmap Phase 7 every one of them — resolve and the comment thread
  * included — is a real Postgres write.
+ *
+ * Extra Phase 3 gave a duel its own layout on this page: versus at the
+ * comfortable tier, stake and payout, the mediator named, the challengee's
+ * accept/decline pair, and a resolve panel that is two participant buttons
+ * plus Void. Comments are untouched and work exactly as they do on a pool bet
+ * — that is the owner's "everyone can chat about it", and it needed no code.
  */
 export function BetDetailPage({ betId }: { betId: string }) {
   return (
@@ -61,13 +84,20 @@ export function BetDetailPage({ betId }: { betId: string }) {
 
 function BetDetail({ betId }: { betId: string }) {
   const { bets, team } = useTeam();
+  const duelsEnabled = useFeatureFlag("duel-bets");
   // Roadmap Phase 8: this page's own channel — the comment thread (UX-018).
   // The bet itself, its wagers and its pool arrive on the team channel the
   // provider already holds. Subscribed before the not-found branch below on
   // purpose: a bet created moments ago in another session shows up here rather
   // than leaving the visitor on a dead end until they refresh.
   useLiveBetThread(betId);
-  const bet = bets.find((b) => b.id === betId);
+  const found = bets.find((b) => b.id === betId);
+  // ARC-016: with `duel-bets` off, a duel's row leaves the feed and its page
+  // leaves with it — otherwise the kill switch would only hide the door while
+  // leaving a link straight through the wall. It hides the SURFACE and nothing
+  // else: the RPCs, the expiry sweep and the departure cascade keep settling
+  // and refunding underneath.
+  const bet = found?.kind === "duel" && !duelsEnabled ? undefined : found;
 
   if (!bet) {
     return (
@@ -83,16 +113,42 @@ function BetDetail({ betId }: { betId: string }) {
   return <BetDetailContent bet={bet} />;
 }
 
-function stateLabel(effectiveState: BetState, bet: Bet): string {
+function stateLabel(
+  effectiveState: BetState,
+  bet: Bet,
+  duelPhase: DuelPhase | null,
+): string {
+  // D8 half (a) again: a lapsed, unswept challenge is void on every read, and
+  // the header must say so before anything has persisted it.
+  if (duelPhase === "expired") return formatVoidLabel("expired");
+  if (duelPhase === "pending") return "AWAITING ANSWER";
   if (effectiveState === "open") return "OPEN";
   if (effectiveState === "closed") return "AWAITING RESULT";
-  return bet.resolution?.kind === "void" ? "VOID · REFUNDED" : "RESOLVED";
+  return bet.resolution?.kind === "void"
+    ? formatVoidLabel(bet.resolution.reason)
+    : "RESOLVED";
 }
 
 function BetDetailContent({ bet }: { bet: Bet }) {
-  const { wagers, team, currentUser, userById } = useTeam();
+  const { wagers, team, currentUser, userById, duelFor } = useTeam();
   const { open } = useModal();
   const now = useNow();
+
+  // `isDuel` is what the bet IS (a `not null` column that always arrives);
+  // `duel` is whether this client also holds the side row, which can lag by a
+  // frame because the two travel on separate realtime bindings. Everything
+  // that must not appear on a duel — the pool stats, the options list, the
+  // Wager button, early close — keys on `isDuel`; only duel-specific CONTENT
+  // keys on `duel`. See the longer note in `bet-row.tsx`.
+  const isDuel = bet.kind === "duel";
+  const duel = isDuel ? duelFor(bet.id) : undefined;
+  // `now ?? 0` for the same reason the feed row uses it: `useNow` is null until
+  // the client mounts, and epoch zero makes `computeDuelPhase` answer from the
+  // stored row alone rather than flashing VOID across live challenges for a
+  // frame. See the long note in `bet-row.tsx`.
+  const duelPhase: DuelPhase | null = duel
+    ? computeDuelPhase(bet, duel, now ?? 0)
+    : null;
 
   // Until the clock mounts (useNow is null on the first render) fall back to
   // the stored state; the effective open→closed auto-transition kicks in one
@@ -106,11 +162,39 @@ function BetDetailContent({ bet }: { bet: Bet }) {
   const playerCount = new Set(betWagers.map((w) => w.userId)).size;
   const creator = userById(bet.creatorId);
 
+  // Every duel control asks BOTH a roster+id predicate and the clock. Neither
+  // implies the other: the predicates never look at `closesAt` and
+  // `computeDuelPhase` never looks at who is asking.
+  const mayAcceptDuel =
+    duel != null &&
+    duelPhase === "pending" &&
+    canAcceptDuel(team, currentUser.id, duel);
+  const mayDeclineDuel =
+    duel != null &&
+    bet.state !== "resolved" &&
+    canDeclineDuel(team, currentUser.id, duel);
+  const mayResolveDuel =
+    duel != null &&
+    duelPhase === "accepted" &&
+    canResolveDuel(team, currentUser.id, duel);
+
+  // `close_bet_early` refuses a duel outright — "A duel has no betting window
+  // to close." — so the control is not merely disabled, it is absent.
   const mayCloseEarly =
-    effectiveState === "open" && canCloseBetEarly(team, currentUser.id, bet);
+    !isDuel &&
+    effectiveState === "open" &&
+    canCloseBetEarly(team, currentUser.id, bet);
   const mayResolve =
-    effectiveState === "closed" && canResolveBet(team, currentUser.id, bet);
-  const mayDelete = canDeleteBet(team, currentUser.id, bet);
+    !isDuel &&
+    effectiveState === "closed" &&
+    canResolveBet(team, currentUser.id, bet);
+  // D6: deletion keeps the ordinary creator-or-moderator rule plus the one
+  // condition only a duel has — it must not be accepted yet. After acceptance
+  // both stakes are down and deleting would be the challenger's escape hatch
+  // from a bet they are losing.
+  const mayDelete = duel
+    ? canDeleteDuel(team, currentUser.id, bet, duel)
+    : canDeleteBet(team, currentUser.id, bet);
   const mayComment = canComment(team, currentUser.id);
 
   const winningOptionId =
@@ -121,7 +205,7 @@ function BetDetailContent({ bet }: { bet: Bet }) {
       {/* header */}
       <header className="mt-3 flex items-start gap-4">
         <div className="flex size-12 shrink-0 items-center justify-center rounded-sm bg-surface-2 text-2xl">
-          {bet.iconEmoji ?? "🎲"}
+          {bet.iconEmoji ?? (duel ? DUEL_GLYPH : "🎲")}
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold leading-tight text-text-strong sm:text-2xl">
@@ -141,14 +225,18 @@ function BetDetailContent({ bet }: { bet: Bet }) {
             <span
               className={cn(
                 "text-[11px] font-semibold uppercase tracking-wider",
-                effectiveState === "open" ? "text-jade/80" : "text-muted-foreground",
+                effectiveState === "open" && duelPhase !== "expired"
+                  ? "text-jade/80"
+                  : "text-muted-foreground",
               )}
             >
-              {stateLabel(effectiveState, bet)}
+              {stateLabel(effectiveState, bet, duelPhase)}
             </span>
           </div>
         </div>
-        {effectiveState === "open" && (
+        {/* No `Wager` on a duel for anyone, at any breakpoint, in any state —
+            `place_wager` refuses it, so the button would be a lie. */}
+        {!isDuel && effectiveState === "open" && (
           <button
             type="button"
             onClick={() => open("wager", bet.id)}
@@ -159,107 +247,122 @@ function BetDetailContent({ bet }: { bet: Bet }) {
         )}
       </header>
 
-      {/* stats strip */}
-      <div className="mt-5 grid grid-cols-2 gap-3 border-y border-border py-3 sm:grid-cols-4">
-        <div>
-          <p className={eyebrowClass}>Pool</p>
-          <CoinAmount amount={poolTotal} className="text-sm text-foreground" />
-        </div>
-        <div>
-          <p className={eyebrowClass}>Max / user</p>
-          <CoinAmount amount={bet.maxWagerPerUser} className="text-sm text-foreground" />
-        </div>
-        <div>
-          <p className={eyebrowClass}>
-            {effectiveState === "open" ? "Closes in" : "Closed"}
-          </p>
-          <p className="font-mono text-sm tabular-nums text-foreground">
-            {effectiveState === "open"
-              ? now == null
-                ? "—"
-                : formatTimeLeft(bet.closesAt, now).label
-              : formatShortDate(bet.closesAt)}
-          </p>
-        </div>
-        <div>
-          <p className={eyebrowClass}>Players</p>
-          <p className="font-mono text-sm tabular-nums text-foreground">{playerCount}</p>
-        </div>
-      </div>
+      {isDuel ? (
+        duel && (
+          <DuelPanel
+          bet={bet}
+          duel={duel}
+          phase={duelPhase}
+          mayAccept={mayAcceptDuel}
+            mayDecline={mayDeclineDuel}
+          />
+        )
+      ) : (
+        <>
+          {/* stats strip */}
+          <div className="mt-5 grid grid-cols-2 gap-3 border-y border-border py-3 sm:grid-cols-4">
+            <div>
+              <p className={eyebrowClass}>Pool</p>
+              <CoinAmount amount={poolTotal} className="text-sm text-foreground" />
+            </div>
+            <div>
+              <p className={eyebrowClass}>Max / user</p>
+              <CoinAmount amount={bet.maxWagerPerUser} className="text-sm text-foreground" />
+            </div>
+            <div>
+              <p className={eyebrowClass}>
+                {effectiveState === "open" ? "Closes in" : "Closed"}
+              </p>
+              <p className="font-mono text-sm tabular-nums text-foreground">
+                {effectiveState === "open"
+                  ? now == null
+                    ? "—"
+                    : formatTimeLeft(bet.closesAt, now).label
+                  : formatShortDate(bet.closesAt)}
+              </p>
+            </div>
+            <div>
+              <p className={eyebrowClass}>Players</p>
+              <p className="font-mono text-sm tabular-nums text-foreground">{playerCount}</p>
+            </div>
+          </div>
 
-      {/* options */}
-      <section className="mt-6">
-        <p className={eyebrowClass}>Options</p>
-        <ul className="mt-2 space-y-2">
-          {poolStats.map((opt) => {
-            const isWinner = opt.optionId === winningOptionId;
-            const isLoser = winningOptionId != null && !isWinner;
-            return (
-              <li
-                key={opt.optionId}
-                className={cn(
-                  "relative overflow-hidden rounded-sm border p-3",
-                  isWinner
-                    ? "border-jade bg-jade-wash"
-                    : isLoser
-                      ? "border-rust-border"
-                      : "border-border",
-                )}
-              >
-                {/* live pool-share fill behind the row content */}
-                <div
-                  className={cn(
-                    "absolute inset-y-0 left-0",
-                    isWinner
-                      ? "bg-jade/10"
-                      : isLoser
-                        ? "bg-rust-wash"
-                        : "bg-surface-2",
-                  )}
-                  style={{ width: `${Math.round(opt.share * 100)}%` }}
-                />
-                <div className="relative flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {!isLoser && <span className="shrink-0 font-mono text-jade">/</span>}
-                    <span
-                      className={cn(
-                        "truncate text-sm",
-                        isWinner
-                          ? "font-semibold text-text-strong"
-                          : isLoser
-                            ? "text-negative"
-                            : "text-foreground",
-                      )}
-                    >
-                      {opt.label}
-                    </span>
-                    {isWinner && (
-                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-jade">
-                        Winner
-                      </span>
-                    )}
-                  </span>
-                  <span
+          {/* options */}
+          <section className="mt-6">
+            <p className={eyebrowClass}>Options</p>
+            <ul className="mt-2 space-y-2">
+              {poolStats.map((opt) => {
+                const isWinner = opt.optionId === winningOptionId;
+                const isLoser = winningOptionId != null && !isWinner;
+                return (
+                  <li
+                    key={opt.optionId}
                     className={cn(
-                      "flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums",
-                      isLoser ? "text-negative" : "text-muted-foreground",
+                      "relative overflow-hidden rounded-sm border p-3",
+                      isWinner
+                        ? "border-jade bg-jade-wash"
+                        : isLoser
+                          ? "border-rust-border"
+                          : "border-border",
                     )}
                   >
-                    <CoinAmount amount={opt.total} />
-                    <span>{Math.round(opt.share * 100)}%</span>
-                    <span className={cn(isLoser && "line-through")}>
-                      {opt.multiplier ? `${opt.multiplier.toFixed(2)}x` : "—"}
-                    </span>
-                  </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+                    {/* live pool-share fill behind the row content */}
+                    <div
+                      className={cn(
+                        "absolute inset-y-0 left-0",
+                        isWinner
+                          ? "bg-jade/10"
+                          : isLoser
+                            ? "bg-rust-wash"
+                            : "bg-surface-2",
+                      )}
+                      style={{ width: `${Math.round(opt.share * 100)}%` }}
+                    />
+                    <div className="relative flex items-center justify-between gap-3">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {!isLoser && <span className="shrink-0 font-mono text-jade">/</span>}
+                        <span
+                          className={cn(
+                            "truncate text-sm",
+                            isWinner
+                              ? "font-semibold text-text-strong"
+                              : isLoser
+                                ? "text-negative"
+                                : "text-foreground",
+                          )}
+                        >
+                          {opt.label}
+                        </span>
+                        {isWinner && (
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-jade">
+                            Winner
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums",
+                          isLoser ? "text-negative" : "text-muted-foreground",
+                        )}
+                      >
+                        <CoinAmount amount={opt.total} />
+                        <span>{Math.round(opt.share * 100)}%</span>
+                        <span className={cn(isLoser && "line-through")}>
+                          {opt.multiplier ? `${opt.multiplier.toFixed(2)}x` : "—"}
+                        </span>
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </>
+      )}
 
       {mayCloseEarly && <CloseEarlyControl betId={bet.id} />}
       {mayResolve && <ResolvePanel bet={bet} />}
+      {mayResolveDuel && duel && <DuelResolvePanel bet={bet} duel={duel} />}
       {bet.state === "resolved" && bet.resolution && (
         <SettlementBlock bet={bet} resolution={bet.resolution} />
       )}
@@ -296,6 +399,150 @@ function BetDetailContent({ bet }: { bet: Bet }) {
       <CommentsSection betId={bet.id} canPost={mayComment} />
 
       {mayDelete && <DeleteBetPanel bet={bet} />}
+    </>
+  );
+}
+
+/**
+ * The duel's replacement for the stats strip and the options list (Extra
+ * Phase 3, task 9).
+ *
+ * The options list is not merely re-skinned, it is gone: a duel's two options
+ * ARE its two people, `getPoolStats` returns a flat 2.00x on each because the
+ * stakes are symmetric, and a pool-share bar that is always 50/50 is a
+ * decoration pretending to be data. The versus composition says the same thing
+ * truthfully, at §4.5's comfortable tier because this is the page with room
+ * for it.
+ *
+ * The mediator line is the one fact this page has that the row does not have
+ * space for, and it reads off the ROW (`duel.anyModerator`), never off
+ * `team.accessMode`: D9 applies at creation and never retroactively, so a duel
+ * started while the team was restricted keeps its guarantee after the team is
+ * flipped back, and a duel started after the flip does not gain one.
+ */
+function DuelPanel({
+  bet,
+  duel,
+  phase,
+  mayAccept,
+  mayDecline,
+}: {
+  bet: Bet;
+  duel: Duel;
+  phase: DuelPhase | null;
+  mayAccept: boolean;
+  mayDecline: boolean;
+}) {
+  const { team, userById } = useTeam();
+  const { open } = useModal();
+  const now = useNow();
+
+  const mediator = duel.mediatorId == null ? undefined : userById(duel.mediatorId);
+  // D7's stranding guarantee, and the reason `userById` alone is not enough to
+  // answer this cell. `userById` resolves anyone this client can READ — RLS
+  // admits every teammate-of-a-teammate — so a mediator who has LEFT still
+  // resolves to a name and would be printed as the person to wait for, while
+  // `canResolveDuel` has already handed the duel to the moderator pool. The
+  // roster is the authority here, exactly as it is there.
+  const mediatorOnRoster =
+    duel.mediatorId != null &&
+    team.members.some((m) => m.userId === duel.mediatorId);
+
+  return (
+    <>
+      <section className="mt-5 border-y border-border py-4">
+        <Versus
+          challengerId={duel.challengerId}
+          challengeeId={duel.challengeeId}
+          size="comfortable"
+        />
+      </section>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 border-b border-border pb-3 sm:grid-cols-4">
+        <div>
+          <p className={eyebrowClass}>Stake each</p>
+          <CoinAmount amount={duel.stake} className="text-sm text-foreground" />
+        </div>
+        <div>
+          <p className={eyebrowClass}>Winner takes</p>
+          <CoinAmount amount={duel.stake * 2} className="text-sm text-foreground" />
+        </div>
+        {/* One cell, three readings, and NONE of them is `duel.expiresAt`.
+            That field is the ACCEPT DEADLINE — written equal to `closesAt` at
+            creation and, unlike `closesAt`, never overwritten on accept, which
+            is exactly what makes it look like a durable fact worth printing.
+            It is durable, and it is still the deadline: showing it under
+            "Challenged" states a date 24 hours after the thing it claims to
+            date.
+            While the challenge is open the cell is the live countdown. Once
+            accepted it becomes WHEN it was accepted — the one fact this page
+            has nowhere else, and the natural close of the sentence "Accept
+            by…". For a duel that was never accepted there is no such moment,
+            so it falls back to when the challenge was sent, which is also the
+            only reading under which "Challenged" is true. */}
+        <div>
+          <p className={eyebrowClass}>
+            {phase === "pending"
+              ? "Accept by"
+              : duel.acceptedAt != null
+                ? "Accepted"
+                : "Challenged"}
+          </p>
+          <p className="font-mono text-sm tabular-nums text-foreground">
+            {phase === "pending"
+              ? now == null
+                ? "—"
+                : formatTimeLeft(bet.closesAt, now).label
+              : formatShortDate(duel.acceptedAt ?? bet.createdAt)}
+          </p>
+        </div>
+        <div>
+          <p className={eyebrowClass}>Resolved by</p>
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-foreground">
+            {mediatorOnRoster && mediator && (
+              <UserName user={mediator} className="text-sm" />
+            )}
+            {/* Named someone who has since left. D7 hands the duel to the
+                moderator pool at read time rather than rewriting the row, so
+                the history still says who was chosen — and the cell has to say
+                the pool can act, or it names the one person who now cannot. */}
+            {duel.mediatorId != null && !mediatorOnRoster && (
+              <span className="text-sm text-muted-foreground">
+                {mediator ? `${mediator.displayName} (left)` : "Mediator left"}
+              </span>
+            )}
+            {(duel.anyModerator || (duel.mediatorId != null && !mediatorOnRoster)) && (
+              <span className="text-xs text-muted-foreground">
+                {duel.mediatorId != null ? "· any moderator" : "Any moderator"}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {(mayAccept || mayDecline) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface-1 p-3">
+          <span className="flex-1 text-xs text-muted-foreground">
+            You&apos;ve been challenged. Your stake leaves your balance the
+            moment you accept.
+          </span>
+          <button
+            type="button"
+            onClick={() => open("duel-accept", bet.id)}
+            className="h-8 rounded-sm border border-border px-3 text-xs font-semibold uppercase text-foreground transition-colors hover:border-jade/50 hover:text-jade"
+          >
+            Decline
+          </button>
+          <button
+            type="button"
+            disabled={!mayAccept}
+            onClick={() => open("duel-accept", bet.id)}
+            className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            Accept
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -610,6 +857,118 @@ function ResolvePanel({ bet }: { bet: Bet }) {
           : choice === "void"
             ? "Confirm void"
             : "Confirm result"}
+      </button>
+      {error && <p className="mt-2 text-xs text-negative">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * D6/D7's resolve control — two participant buttons plus Void, never an option
+ * list (Extra Phase 3, task 9).
+ *
+ * It is a separate component from `ResolvePanel` rather than a branch inside
+ * it because the two answer different questions. A pool bet's resolver picks
+ * an OPTION out of an arbitrary-length list; a duel's mediator picks a PERSON,
+ * and there are exactly two. Rendering people as options is how a mediator
+ * ends up scanning a list to find a name.
+ *
+ * The buttons map by `bet_options.position` — 0 is the challenger, 1 is the
+ * challengee, a fixed convention `create_duel`, `accept_duel` and every test
+ * depend on — and `team-data.ts` sorts the embed by that column. The button
+ * TEXT is the stored `label`, which is a display-name snapshot taken at
+ * creation and never updated: matching on the label against a current display
+ * name would break the moment someone renames themselves, which is exactly why
+ * `bet_options` has no UPDATE path at all.
+ *
+ * The void arm sends no reason. `resolve_bet` coalesces a duel's missing
+ * `p_void_reason` to `'mediator'` because only the server knows the caller
+ * passed the mediator authorization; guessing it here would be the client
+ * asserting something it cannot know.
+ */
+function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
+  const { resolveBet, userById } = useTeam();
+  const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const sides = [
+    { option: bet.options[0], userId: duel.challengerId },
+    { option: bet.options[1], userId: duel.challengeeId },
+  ].filter((s) => s.option != null);
+
+  async function confirm() {
+    if (!choice || pending) return;
+    setError(null);
+    setPending(true);
+    const resolution: BetResolution =
+      choice === "void"
+        ? { kind: "void" }
+        : { kind: "winner", winningOptionId: choice };
+    const result = await resolveBet(bet.id, resolution);
+    if (!result.ok) {
+      setPending(false);
+      setError(result.error);
+    }
+    // On success the bet becomes resolved and this panel unmounts.
+  }
+
+  return (
+    <section className="mt-4 rounded-sm border border-border bg-surface-1 p-4">
+      <p className={eyebrowClass}>Call it</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Winner takes <CoinAmount amount={duel.stake * 2} />. A void hands both
+        stakes back and nobody&apos;s P/L moves.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sides.map(({ option, userId }) => {
+          const user = userById(userId);
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setChoice(option.id)}
+              className={cn(
+                "flex items-center gap-2 border px-3 py-2 text-sm transition-colors",
+                choice === option.id
+                  ? "border-jade bg-jade-wash"
+                  : "border-border hover:border-border-strong",
+              )}
+            >
+              {user && <UserAvatar user={user} size={20} />}
+              <span
+                className="font-medium"
+                style={user ? { color: user.nameColor } : undefined}
+              >
+                {option.label}
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setChoice("void")}
+          className={cn(
+            "border px-3 py-2 text-xs font-medium uppercase tracking-wide transition-colors",
+            choice === "void"
+              ? "border-jade bg-jade-wash text-jade"
+              : "border-border text-muted-foreground hover:border-border-strong",
+          )}
+        >
+          Void — refund both
+        </button>
+      </div>
+      <button
+        type="button"
+        disabled={!choice || pending}
+        onClick={() => void confirm()}
+        className="cut-sm mt-3 h-9 px-4 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
+      >
+        {pending
+          ? "Paying out…"
+          : choice === "void"
+            ? "Confirm void"
+            : "Confirm winner"}
       </button>
       {error && <p className="mt-2 text-xs text-negative">{error}</p>}
     </section>

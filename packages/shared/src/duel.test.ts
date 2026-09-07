@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { deriveProfitLoss } from "./ledger";
 import { getPoolStats } from "./pari-mutuel";
 import {
+  canAcceptDuel,
   canCreateBet,
+  canDeclineDuel,
+  canDeleteDuel,
   canResolveDuel,
   canStartDuel,
   mustForceAnyModerator,
 } from "./permissions";
+import { validateDuelDraft, type DuelDraft } from "./validation";
 import {
   settleBet,
   voidDuelsForDepartingMember,
@@ -1029,5 +1033,291 @@ describe("canStartDuel / mustForceAnyModerator — D9's two halves", () => {
     expect(canResolveDuel(emptied, MODERATOR, duel)).toBe(true);
     expect(canResolveDuel(duelTeam, MODERATOR, duel)).toBe(true);
     expect(canResolveDuel(duelTeam, CHALLENGEE, duel)).toBe(false);
+  });
+});
+
+/**
+ * PIN 8 — the four predicates every Extra Phase 3 surface gates on, and the
+ * one property that makes them dangerous alone.
+ *
+ * These shipped with Extra Phase 2 and had no coverage until the surfaces
+ * arrived, which is the wrong order but a fixable one. What is worth pinning
+ * is not that they answer correctly — their bodies are four lines each — but
+ * that they answer a DELIBERATELY INCOMPLETE question, and that a caller
+ * cannot use one on its own.
+ *
+ * Every one of them is a roster+id rule. Not one looks at the clock, and none
+ * ever will: an unaccepted duel past its deadline is expired, and knowing that
+ * needs `bet.closesAt`, which is the bet's business and not the roster's. Both
+ * `permissions.ts`'s header block and `state-machine.ts`'s call forgetting the
+ * pairing "the single most likely bug in Extra Phase 3", and it presents as an
+ * Accept button on a challenge that lapsed yesterday. The first `it` below is
+ * that bug, written as an expectation, so that anyone who "fixes"
+ * `canAcceptDuel` by teaching it the clock breaks a test that explains why not
+ * — the clock belongs to `computeDuelPhase`, and duplicating it would give the
+ * app two answers to one question.
+ */
+describe("canAcceptDuel / canDeclineDuel — the challengee's two moves (D5)", () => {
+  it("admits only the challengee, and only while the duel is unanswered", () => {
+    const duel = fixtureDuel("b-duel-pending");
+    // b-duel-pending runs u-cg -> u-ld, so the leader is the one answering.
+    expect(duel.challengeeId).toBe(LEADER);
+
+    expect(canAcceptDuel(duelTeam, LEADER, duel)).toBe(true);
+    // Not the challenger: they committed their stake at creation and cannot
+    // accept on the other side.
+    expect(canAcceptDuel(duelTeam, CHALLENGEE, duel)).toBe(false);
+    // Not a moderator, and not the named mediator either — a duel is not a
+    // team matter to arbitrate into existence.
+    expect(canAcceptDuel(duelTeam, MODERATOR, duel)).toBe(false);
+    expect(canAcceptDuel(duelTeam, MEDIATOR, duel)).toBe(false);
+    expect(canAcceptDuel(duelTeam, STRANGER, duel)).toBe(false);
+
+    // Already accepted: b-duel-accepted's challengee is also the leader, so
+    // the only thing separating the two cases is the stored `acceptedAt`.
+    const accepted = fixtureDuel("b-duel-accepted");
+    expect(accepted.challengeeId).toBe(LEADER);
+    expect(accepted.acceptedAt).not.toBeNull();
+    expect(canAcceptDuel(duelTeam, LEADER, accepted)).toBe(false);
+  });
+
+  it("never consults the clock — which is why a surface must ask the phase too", () => {
+    const bet = fixtureBet("b-duel-pending");
+    const duel = fixtureDuel("b-duel-pending");
+    const afterDeadline = Date.parse(bet.closesAt) + 1;
+
+    // The challenge has lapsed on every reading that counts the clock...
+    expect(computeDuelPhase(bet, duel, afterDeadline)).toBe("expired");
+    // ...and the roster rule still says yes, because it was never asked about
+    // time. A surface that renders Accept off this alone offers a button the
+    // `accept_duel` RPC answers with "This challenge has expired."
+    expect(canAcceptDuel(duelTeam, LEADER, duel)).toBe(true);
+    expect(canDeclineDuel(duelTeam, LEADER, duel)).toBe(true);
+  });
+
+  it("keeps decline as its own body even though it agrees with accept today", () => {
+    const duel = fixtureDuel("b-duel-pending");
+
+    for (const userId of [LEADER, CHALLENGEE, MODERATOR, MEDIATOR, STRANGER]) {
+      expect(canDeclineDuel(duelTeam, userId, duel), `decline by ${userId}`).toBe(
+        canAcceptDuel(duelTeam, userId, duel),
+      );
+    }
+
+    // They are not the same question, and the day they diverge is already
+    // named: accepting has a money precondition (DOM-014 is absolute) that
+    // declining never will, because the broke challengee's ONLY legal move IS
+    // to decline, carrying `void_reason='insufficient-funds'`. An alias here
+    // would trap that person with no action at all the moment a balance check
+    // joined accept. This loop asserts today's agreement; the two bodies are
+    // what keep tomorrow's divergence from being silent.
+    expect(canDeclineDuel).not.toBe(canAcceptDuel);
+  });
+});
+
+/**
+ * PIN 9 — D6's deletion rule, the half that only duels have.
+ *
+ * Deletion keeps the ordinary `canDeleteBet` set — creator or moderator, with
+ * the leader inheriting via A-1 — and adds one condition: not yet accepted.
+ * Once both stakes are down, deleting is the challenger's escape hatch from a
+ * bet they are losing, so after acceptance the only honest exits are a
+ * resolution or a void, both of which move money through `app.settle_bet` and
+ * leave a history row.
+ */
+describe("canDeleteDuel — creator-or-moderator, and only before acceptance (D6)", () => {
+  it("lets the challenger cancel their own unanswered challenge", () => {
+    const bet = fixtureBet("b-duel-pending");
+    const duel = fixtureDuel("b-duel-pending");
+
+    // The challenger is also the bet's creator — `create_duel` inserts the
+    // `bets` row on their behalf — so `canDeleteBet` already admits them.
+    expect(bet.creatorId).toBe(duel.challengerId);
+    expect(canDeleteDuel(duelTeam, CHALLENGEE, bet, duel)).toBe(true);
+    // And a moderator who is nobody in this duel can too, exactly as on a
+    // pool bet.
+    expect(canDeleteDuel(duelTeam, MODERATOR, bet, duel)).toBe(true);
+    // The challengee is not admitted BY BEING THE CHALLENGEE — but this one
+    // is also the leader, and A-1 gives the leader every moderator power, so
+    // they are admitted the same way any other moderator is. Pinning it here
+    // because it looks wrong at a glance and is not: D6 kept the ordinary
+    // creator-or-moderator set and added exactly ONE condition to it, the
+    // unaccepted guard. Nothing is at risk either way — `delete_bet` runs
+    // `app.reverse_bet_effects` and hands the challenger their stake back, the
+    // same coins `decline_duel` would return. All that differs is the history
+    // row: a delete leaves none, a decline leaves `VOID · DECLINED`.
+    expect(canDeleteDuel(duelTeam, LEADER, bet, duel)).toBe(true);
+    // The plain-member challengee of a duel they did not create is the case
+    // that really is refused, and the mediator likewise.
+    const asMember = teamAs({
+      leaderId: MODERATOR,
+      members: duelTeam.members.map((m) =>
+        m.userId === LEADER ? { ...m, role: "member" as const } : m,
+      ),
+    });
+    expect(canDeleteDuel(asMember, LEADER, bet, duel)).toBe(false);
+    expect(canDeleteDuel(duelTeam, MEDIATOR, bet, duel)).toBe(false);
+  });
+
+  it("refuses an accepted duel to everyone, the leader included", () => {
+    const bet = fixtureBet("b-duel-accepted");
+    const duel = fixtureDuel("b-duel-accepted");
+
+    expect(duel.acceptedAt).not.toBeNull();
+    for (const userId of [CHALLENGER, LEADER, MODERATOR, MEDIATOR]) {
+      expect(canDeleteDuel(duelTeam, userId, bet, duel), `delete by ${userId}`).toBe(
+        false,
+      );
+    }
+    // Guard: the refusal has to come from the acceptance, not from the roster
+    // rule quietly saying no to all four anyway. The moderator IS admitted by
+    // the underlying `canDeleteBet` on the same bet.
+    expect(canDeleteDuel(duelTeam, MODERATOR, bet, { ...duel, acceptedAt: null })).toBe(
+      true,
+    );
+  });
+});
+
+/**
+ * PIN 10 — `validateDuelDraft`, the compose form's submit gate.
+ *
+ * `create_duel` re-checks every rule here and repeats every sentence
+ * byte-for-byte; this copy exists so a person sees the rule before a round
+ * trip, never as the enforcement. The cases below are the ones the form can
+ * actually produce.
+ *
+ * The last `it` is the important one and it is a NEGATIVE: D9 is deliberately
+ * not enforced here. In a restricted team a draft with `anyModerator: false`
+ * is perfectly valid and `create_duel` silently stores `true` instead —
+ * coercion, not refusal — so the challenger never sees an error for a control
+ * the UI had already ticked and disabled on their behalf. An issue code added
+ * here would surface exactly that error.
+ */
+describe("validateDuelDraft — the compose form's gate, and the rule it must NOT have (D9)", () => {
+  const context = { team: duelTeam, challengerId: CHALLENGER, balance: 535 };
+  // Annotated rather than inferred: without it `mediatorId` widens to `string`
+  // and the `{ mediatorId: null }` case below — the whole point of the field
+  // being nullable — stops type-checking.
+  const goodDraft: DuelDraft = {
+    title: "Caio vs Nina, one more time",
+    challengeeId: CHALLENGEE,
+    mediatorId: MEDIATOR,
+    anyModerator: false,
+    stake: 25,
+  };
+
+  it("passes a well-formed challenge", () => {
+    expect(validateDuelDraft(goodDraft, context)).toEqual([]);
+  });
+
+  it("reports one issue per broken rule, with the RPC's own sentence", () => {
+    const cases: [Partial<DuelDraft>, string, string][] = [
+      [{ title: "   " }, "title-required", "Give the bet a title."],
+      [{ challengeeId: "" }, "duel-target-required", "Pick who you're challenging."],
+      [
+        { challengeeId: CHALLENGER },
+        "duel-target-self",
+        "You can't challenge yourself.",
+      ],
+      [
+        { challengeeId: STRANGER },
+        "duel-target-required",
+        "Pick who you're challenging.",
+      ],
+      [
+        { mediatorId: CHALLENGEE },
+        "duel-mediator-invalid",
+        "The mediator has to be a teammate who isn't in the duel.",
+      ],
+      [
+        { mediatorId: null, anyModerator: false },
+        "duel-resolver-required",
+        "Pick a mediator, or let any moderator resolve it.",
+      ],
+      [
+        { stake: 0 },
+        "duel-stake-invalid",
+        "Stake must be a whole amount you can afford.",
+      ],
+      [
+        { stake: 536 },
+        "duel-stake-invalid",
+        "Stake must be a whole amount you can afford.",
+      ],
+      [
+        { stake: 2.5 },
+        "duel-stake-invalid",
+        "Stake must be a whole amount you can afford.",
+      ],
+    ];
+
+    for (const [override, code, message] of cases) {
+      const issues = validateDuelDraft({ ...goodDraft, ...override }, context);
+      expect(issues, `${code} for ${JSON.stringify(override)}`).toEqual([
+        { code, message },
+      ]);
+    }
+  });
+
+  it("accepts a stake equal to the whole balance but not a coin more", () => {
+    expect(validateDuelDraft({ ...goodDraft, stake: 535 }, context)).toEqual([]);
+    expect(
+      validateDuelDraft({ ...goodDraft, stake: 536 }, context),
+    ).toHaveLength(1);
+  });
+
+  it("never consults team.accessMode — D9 lives in create_duel, not here", () => {
+    const restricted = teamAs({ accessMode: "restricted" });
+
+    // The invariant, stated as the one thing that can be measured about a
+    // function's refusal to look at a field: every draft validates IDENTICALLY
+    // under both access modes. `validateDuelDraft`'s own doc comment forbids
+    // reading `team.accessMode` at length, and this loop is what makes that
+    // paragraph enforceable.
+    const drafts = [
+      goodDraft,
+      { ...goodDraft, mediatorId: null, anyModerator: true },
+      { ...goodDraft, mediatorId: null, anyModerator: false },
+      { ...goodDraft, challengeeId: CHALLENGER },
+      { ...goodDraft, stake: 9999 },
+    ];
+    for (const draft of drafts) {
+      expect(
+        validateDuelDraft(draft, { ...context, team: restricted }),
+        `restricted vs free-for-all: ${JSON.stringify(draft)}`,
+      ).toEqual(validateDuelDraft(draft, context));
+    }
+
+    // Which leaves a real gap between this gate and `create_duel`'s, and it is
+    // worth naming rather than discovering. Server-side the resolver check
+    // runs against the COERCED value, so `{mediatorId: null, anyModerator:
+    // false}` in a restricted team is ACCEPTED and stored as `true`. Here it
+    // is refused, because from this function's point of view the draft names
+    // no possible resolver:
+    expect(
+      validateDuelDraft(
+        { ...goodDraft, mediatorId: null, anyModerator: false },
+        { ...context, team: restricted },
+      ),
+    ).toEqual([
+      {
+        code: "duel-resolver-required",
+        message: "Pick a mediator, or let any moderator resolve it.",
+      },
+    ]);
+
+    // The gap is unreachable from the UI and that is `mustForceAnyModerator`'s
+    // entire job: the compose form renders the control ticked and disabled in
+    // a restricted team and validates + submits the EFFECTIVE value, so a
+    // draft carrying `false` never leaves it. D9 stays a coercion the
+    // challenger never sees, which was the point — the alternative is an error
+    // message about a control they were not allowed to touch.
+    expect(mustForceAnyModerator(restricted)).toBe(true);
+    expect(
+      validateDuelDraft(
+        { ...goodDraft, mediatorId: null, anyModerator: mustForceAnyModerator(restricted) },
+        { ...context, team: restricted },
+      ),
+    ).toEqual([]);
   });
 });

@@ -18,7 +18,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 | `design-stack.md` | APPROVED tech stack decision (Next.js 16 + Supabase + Vercel, in-house analytics/flags), free-tier ceilings, binding implementation rules |
 | `design-visual-identity.md` | Visual identity system: dark-only black/white/jade tokens (oklch), typography, slash motif, component specs, banned-cliché list. Supersedes original UX-020 wording (see its §0.1) |
 | `design-dashboard.md` | Dashboard information architecture: shell (top bar + ticker + Pulse Rail), bet feed, future-feature placeholder inventory, scarcity ruling for co-occurring cut-* motifs, responsive tiers, Phase-1 component map |
-| `plan-mvp-roadmap.md` | Path-to-MVP roadmap: 9 one-session phases from current mock-only prototype to full [mvp] set on a 100%-local Supabase backend; local-backend transition designated at its Phase 3 (still ARC-013 owner-gated); hosted backend out of scope |
+| `plan-mvp-roadmap.md` | Path-to-MVP roadmap: 9 one-session phases from mock-only prototype to the full [mvp] set on a 100%-local Supabase backend (all complete); its §8 continues with owner-ordered extra phases beyond that checkpoint — team chat, 1v1 duels (`DUEL-*`, §4.4), toasts. Hosted backend out of scope |
 
 ## 2. Product summary
 
@@ -29,6 +29,8 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 - `mvp` — required for MVP (includes design constraints that apply now even if the feature ships later).
 - `post-mvp` — explicitly on the vision's post-MVP feature list; first wave after MVP, behind feature flags.
 - `future` — vague "later/someday" in the vision; do not build, only avoid blocking.
+
+`post-mvp` is also the tag for a feature the owner ordered **after** the Phase 9 local-MVP checkpoint even though the vision never named it. `DUEL-*` (§4.4) is the first such family: shipped, behind a flag, and outside the closed [mvp] set rather than an addition to it.
 
 ## 4. Requirements
 
@@ -151,6 +153,20 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 - **ARC-018 [mvp]** ~30 members/team as soft, tunable scale target (see DOM-004).
 - **ARC-019 [mvp]** Assume few total teams / low concurrency during early access, consistent with free-tier constraint.
 
+### 4.4 1v1 duels (DUEL-*)
+
+Ordered by the owner on 2026-09-06, after the Phase 9 local-MVP checkpoint, and built as Extra Phases 2 and 3 of `plan-mvp-roadmap.md` §8. The vision names no such feature — there is no UX-/DOM-/ARC- id it belongs under — so it gets its own family rather than being retrofitted into a closed set. Each entry below is one of the owner rulings D1–D9 recorded in that roadmap; the roadmap keeps the argument, this keeps the requirement. Everything ships behind the `duel-bets` flag (ARC-016), which gates the SURFACES only: the RPCs, the expiry sweep and the departure cascade keep settling and refunding underneath, because a flag that could strand coins would be a leak and not a kill switch.
+
+- **DUEL-001 [post-mvp]** A duel is a `bets` row with `kind = 'duel'` plus a 1:1 `bet_duels` side table — not a new lifecycle and not a fourth column set on `bets`. `bets.state` still admits exactly `open → closed → resolved` and its transition trigger is unchanged. A future bet kind is one enum value plus one side table.
+- **DUEL-002 [post-mvp]** "Waiting to be accepted" is `kind='duel' AND accepted_at IS NULL AND state='open'`, and the existing clock carries it: `closes_at` is the accept deadline, so UX-008's sort, the countdown and the effective-state rule all work with no special case. Accepting does exactly what an early close does.
+- **DUEL-003 [post-mvp]** A void carries a reason (`mediator` / `declined` / `insufficient-funds` / `expired` / `participant-left`), as an enum and as a **suffix on the existing VOID label** — never a second state. A void is still a full refund with zero realized P/L. It exists so history can say the challengee *couldn't afford it* rather than the flat "void".
+- **DUEL-004 [post-mvp]** Nobody is notified; the feed is re-ordered instead. A duel awaiting *your* acceptance — or *your* ruling, as its mediator — sorts to the top of its existing group for you alone and carries a distinct row treatment. ARC-014 is untouched: no push, no email, no bell, no tab title, no badge.
+- **DUEL-005 [post-mvp]** Money moves twice and never on credit: the challenger's stake leaves at creation, the challengee's at accept. Stakes are symmetric and chosen by the challenger. If the challengee cannot cover it, accept is refused (DOM-014 is absolute) and the decline path is offered instead, carrying the insufficient-funds reason. No escrow, no held-balance column.
+- **DUEL-006 [post-mvp]** The creator of a duel may not resolve it, and may delete it only before it is accepted. Early close is refused outright — a bet nobody may wager in has no wagering window to close.
+- **DUEL-007 [post-mvp]** The mediator may be any teammate who is not one of the two participants, and "any moderator" is **additive**, not an alternative: whoever acts first resolves it, so a duel is never frozen behind one quiet person. A moderator who is a participant is excluded by the same rule that excludes the creator. If a named mediator leaves the team the duel falls back to the moderator pool at read time — a runtime check, never a stored reassignment, so nothing is ever stranded.
+- **DUEL-008 [post-mvp]** Expiry of the accept window is lazy and enforced twice: every read treats an unaccepted duel past its deadline as void, so the screen is never wrong, and an opportunistic sweep persists the void and the refund. Deliberately not scheduled — retention that depends on a scheduler stops silently the first time the scheduler does, on a deployment that pauses after 7 idle days.
+- **DUEL-009 [post-mvp]** A `restricted` team does **not** block duels; it forces "any moderator" on instead. Starting a duel is plain membership and DOM-002 does not gate it — the access mode rations bets posted for a team to wager into, and a duel is a private arrangement between two people who have already agreed to it. What the leader keeps is a guarantee that a moderator can always step in. Applied at creation and never retroactively: flipping the access mode afterwards never rewrites a duel already in flight.
+
 ## 5. Assumptions (defaults until owner overrides)
 
 - **A-1 — Leader privileges:** the vision names only "creator or moderator" for restricted-mode actions, early close, and resolution, and never states the leader inherits moderator powers. Default assumption: **leader holds all moderator permissions plus leader-only ones** (coin injection DOM-024; team deletion per DOM-033 assumption). Apply consistently everywhere. Flag to owner for confirmation.
@@ -174,6 +190,6 @@ Consolidated list agents should surface when relevant, not block on:
 
 **Phase 2 (ARC-011): fully local backend.** Entered 2026-09-05 on the owner's explicit ARC-013 order for the 1→2 move. Supabase runs 100% on the developer machine via CLI + Docker: full schema, RLS, storage and local auth providers are in place (`supabase/`), seeded from `mock-data.ts`.
 
-The frontend has NOT been migrated onto it yet — `apps/web` still runs on in-memory state, and there are no RPCs. That migration is roadmap Phases 4–9 (`plan-mvp-roadmap.md`).
+~~The frontend has NOT been migrated onto it yet — `apps/web` still runs on in-memory state, and there are no RPCs. That migration is roadmap Phases 4–9 (`plan-mvp-roadmap.md`).~~ **Superseded 2026-09-07:** that migration is done. Roadmap Phases 1–9 are all complete — `apps/web` reads and writes the local Postgres through RPCs, realtime, RLS and local auth, and the local-MVP checkpoint was reached at Phase 9. Work since then is `plan-mvp-roadmap.md` §8's owner-ordered extra phases: team chat (UX-019), 1v1 duels (`DUEL-*`, §4.4) and a real toast system.
 
 Phase 3 (ARC-012, hosted backend) requires its own separate, explicit, in-the-moment owner order. Finishing Phase 2 does not authorize it.

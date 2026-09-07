@@ -479,27 +479,59 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 | Cell | Spec |
 |---|---|
 | Rail | `absolute inset-y-0 left-0 w-[3px]` — jade-base solid (open) / N4 (closed-awaiting) / none (resolved/void, flat hairline only) |
-| Icon | `size-11 bg-surface-2 rounded-sm`, emoji/icon centered — never a circle (DOM-009). `cut-sm` is reserved for the single closing-soonest row only (see below) — never on every row at once (§4.3 scarcity cap) |
+| Icon | `size-11 bg-surface-2 rounded-sm`, emoji/icon centered — never a circle (DOM-009). Fallback glyph is 🎲 for a pool bet and ⚔️ for a duel (Extra Phase 3): two people arguing about one outcome is not a dice roll, and the pool default on a duel row contradicts the next three cells. `cut-sm` is reserved for the single **featured** row only (see below) — never on every row at once (§4.3 scarcity cap) |
 | Title | sans 500–600, `text-base`/`text-lg`, truncate; `by {creator}` at `text-xs` N6 + 16px avatar |
 | Odds preview | top 2 options by pool share stacked vertically (fits the 64px row), one per line: jade `/` bullet + sans label, and the odd inside its own **chip** — `bg-surface-3 rounded-sm px-1.5 py-0.5 min-w-14`, mono 500 `tabular-nums` right-aligned in a shared trailing column (the chip's fill edge, not typography, marks where a numeric label ends and the odd begins — the containment pattern every major sportsbook uses); §4.4 rank dimming on text (leader N8, runner-up N7, rest N6 — never N5 at text-sm, §2 contrast note); 3+ options append a `…` indicator (N6) and the block reveals the full option list in a tooltip (hover/focus, tap-to-toggle on touch), same columns + dimming; resolved rows follow §5.2 (winner jade `/` + N8 600 on a `bg-jade-wash` chip per §2.2 "positive chip bg"; losers chipless N6 400 + line-through odds, no prefix) |
 | Pool | stacked: `POOL` label (11px, uppercase, N6) over mono value + coin glyph |
 | Countdown | mono, color per state table §5.3 — the only urgency signal, no separate badge |
 | Participants | overlapping 20px circles, `-space-x-2`, max 3 + `+N` mono circle |
-| CTA | `WAGER` — jade-base fill, black text, `rounded-sm`, `h-8 px-3 text-xs uppercase`. `cut-sm` reserved for the closing-soonest row (below) and the one true Primary button on bet-detail (§5.3) — never on every row's CTA at once. On a resolved bet the user played, this cell is replaced by the outcome glyph (§5.2), not left as a dead button |
+| CTA | `WAGER` — jade-base fill, black text, `rounded-sm`, `h-8 px-3 text-xs uppercase`. `cut-sm` reserved for the featured row (below) and the one true Primary button on bet-detail (§5.3) — never on every row's CTA at once. On a resolved bet the user played, this cell is replaced by the outcome glyph (§5.2), not left as a dead button |
 
-**Closing-soon row**: background layer (not the row bg itself) gets a diagonal cut at the far edge with a 6% jade tint — reserved for the single soonest-closing bet on the dashboard, never every open row. This is also the one row whose icon chip and CTA use `cut-sm` instead of the default `rounded-sm`, per §4.3's scarcity cap.
+**Duel rows (Extra Phase 3) substitute three cells, drop one, and leave the rest alone.** A duel is a `kind` of bet, not a second row component, so the rail, the icon, the title and the share affordance are unchanged; what changes is everything that speaks pari-mutuel, plus the participants cell (dropped — see below the table).
 
-**Mobile (<640px)**: same rail+hairline, 2–3 stacked lines (icon+title / odds·pool·countdown / avatars+CTA), row min-height ~96px, full-width tap target.
+| Cell | Pool bet | Duel |
+|---|---|---|
+| Odds preview | as above | the **versus composition** (§5.6) at its dense size. `getPoolStats` on two symmetric stakes returns a truthful and useless flat 2.00x/2.00x, and pari-mutuel vocabulary on a two-person bet reads as a bug rather than as information — so this cell is REPLACED, never reused |
+| Pool | `POOL` + total | flat `STAKE n · WINNER TAKES 2n` — sans 600 11px uppercase labels (§3's Label role), mono `tabular-nums` figures with the coin glyph (§5.5). `· WINNER TAKES 2n` hides below `xl`; the POOL cell it replaces was gated at `lg`, and one step stricter is measured rather than taste — the versus needs real width and at 1024–1279px the two together squeeze it to nothing. `STAKE n` survives at every width, because the payout is 2× the stake and nothing else, so the half that stays is the half you cannot derive |
+| CTA | `WAGER` / outcome glyph | **per viewer, and never a dead button**: *Accept* + *Decline* for the challengee while the challenge is open (both open the answer modal, §5.4), *Resolve* for an eligible resolver once accepted (an outline link to the bet page — a resolution is two participant buttons plus Void, a panel and not a row control), the outcome delta once settled, and nothing at all for everyone else. `WAGER` never appears on a duel for anyone, at any breakpoint, in any state: `place_wager` refuses one outright, so the button would be a lie even where it fits |
+
+The countdown keeps its own cell and gains an explicit `Accept by` prefix while a challenge is pending — sans prefix, mono numerals. This cell has carried exactly one meaning app-wide ("betting closes in") and a second, unlabelled one on the same channel is a guaranteed misread; the prefix is words on the existing cell, never a second badge.
+
+The participants cell is **omitted** on a duel: the versus already names both people in full, and repeating them as an overlapping stack (§5.6's avatar cluster is same-side by construction) says they are on the same side, which is the one thing the row exists to deny.
+
+**Featured row** (was "Closing-soon row" until Extra Phase 3 — see the reassignment below): background layer (not the row bg itself) gets a diagonal cut at the far edge with a 6% jade tint — **one row per viewport**, never every open row. This is also the one row whose icon chip and CTA use `cut-sm` instead of the default `rounded-sm`, per §4.3's scarcity cap. Never a permanent `bg-jade-wash` fill: that is the hover background (§2.2), the row already ships `hover:bg-surface-1`, and a permanently-hovered-looking row is a bug report waiting to happen.
+
+**Which row is featured — reassigned by Extra Phase 3, task 6.** The dashboard's single diagonal used to belong unconditionally to the soonest-closing OPEN row. It now goes to **a duel awaiting the viewer's answer or ruling** whenever there is one, and falls back to the soonest-closing open pool bet when there is not. A decision only you can make outranks a clock everyone can see, and the cut is the strongest "look here" the system owns. Consequences, both deliberate:
+
+- **Featuring and the <1h state are now two different things**, carried by two props (`featured`, `soonest`). §5.2's Closing-soon row keeps its pulsing rail, its `CLOSING SOON` label and its jade countdown when a challenge takes the cut — that is state language about a betting window, and a challenge arriving in someone's feed is no reason to extinguish it. What it loses is the corner tint and the two `cut-sm` chips. Before this phase both jobs were one prop, because both always landed on the same row.
+- **The budget is still one.** Exactly one `cut-mirror` tint and one `cut-sm` icon chip render per feed, allocated once in `bet-feed.tsx` rather than decided per row.
+
+**Mobile (<640px)**: same rail+hairline, 2–3 stacked lines (icon+title / odds·pool·countdown / avatars+CTA), row min-height ~96px, full-width tap target. A duel adds a fourth: the versus takes its own line rather than squeezing the stake and the deadline off the row.
 
 ### 5.2 State language (rail + label + countdown color + motion — never a colored chip)
 
 | State | Rail | Label | Countdown | Extra |
 |---|---|---|---|---|
 | Open | jade solid | none (rail is enough) | N6 mono | static |
-| Closing soon (<1h) | jade + pulse (opacity 100→60→100, 1.6s) | `CLOSING SOON` jade/80 | jade, semibold | featured slash-corner tint (§5.1) — this row never gets the literal `box-shadow` glow; that's reserved for bet-detail's hero countdown under 5 minutes (§6) |
+| Closing soon (<1h) | jade + pulse (opacity 100→60→100, 1.6s) | `CLOSING SOON` jade/80 | jade, semibold | takes the featured slash-corner tint (§5.1) **when no challenge is waiting on the viewer** — Extra Phase 3 reassigned that budget; the pulse, the label and the jade countdown are unaffected either way. This row never gets the literal `box-shadow` glow; that's reserved for bet-detail's hero countdown under 5 minutes (§6) |
+| Awaiting you (duel, Extra Phase 3) | unchanged for the underlying state — jade if the challenge is still open, N4 once accepted | `AWAITING YOU` jade/80, replacing `AWAITING RESULT` where both would apply | unchanged, with the `Accept by` prefix while pending | the featured tint + `cut-sm` icon chip (§5.1). **Per viewer**: the same row is ordinary for everybody else. This is D4's entire notification story — a pull, computed from `duelFor` and the shared predicates, never a push (ARC-014) |
 | Closed / awaiting result | N4, static | `AWAITING RESULT` N6 | replaced by static "closed 2h ago" | row `opacity-90`, no CTA |
 | Resolved | rail removed, flat hairline only | none | none | winner/loser split below |
-| Void / refunded | rail removed | `VOID · REFUNDED` N6 | — | one thin diagonal hairline across the row (not a pill, not strikethrough font) |
+| Void / refunded | rail removed | `VOID · REFUNDED` N6, with a reason suffix on a duel (below) | — | one thin diagonal hairline across the row (not a pill, not strikethrough font) |
+
+**Void reasons (Extra Phase 3, D3).** A duel's void carries a reason, and it is a **suffix on the existing label**, never a second state: the treatment underneath is unchanged (rail removed, one thin 68° hairline, N6 letters).
+
+| Stored reason | Label |
+|---|---|
+| `expired` | `VOID · NOT ACCEPTED IN TIME` |
+| `declined` | `VOID · DECLINED` |
+| `insufficient-funds` | `VOID · COULDN'T COVER IT` |
+| `participant-left` | `VOID · PLAYER LEFT` |
+| `mediator`, or none recorded | `VOID · REFUNDED` |
+
+**Rust is banned on every one of them**, and this is where someone will reach for it: they all read like failures and not one of them is. §2.3b puts "open/closed/void state (void is a refund, not a loss — it stays N5/N6)" in its where-rust-is-banned list, and nobody lost a coin in any of these — the money went home. N5 remains the void concept's token and the hairline's weight; the letters stay N6, because §2.1 bans N5 for uppercase label text at any apparent size.
+
+An **unaccepted challenge past its deadline shows `VOID · NOT ACCEPTED IN TIME` before anything has persisted it** (D8 half (a)). The rail goes, the hairline appears and the Accept/Decline controls leave, all on the clock alone. The sweep that makes the refund real is opportunistic, and on a deployment that pauses after 7 idle days "nothing has swept for a week" is the expected case, not an outage — so the screen is written to be right without it.
 
 **Winners vs losers on a resolved bet — position + weight + slash glyph, never color:**
 - Winning option: full-opacity N8 text, jade `/` prefix, sorts to top.
@@ -538,13 +570,14 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 - Transaction history rows: dense, `py-2.5 border-b`, columns date (mono, N6) · description (N7) · delta (glyph-prefixed mono, right) · balance-after (mono, N6, smaller, right).
 - Wager input "cap reached" state: disabled/greyed at the balance/max-bet ceiling, never a red-bordered invalid state.
 
-### 5.6 Leaderboard, poor podium, rank badges (DOM-027/028/029)
+### 5.6 Leaderboard, poor podium, rank badges, versus (DOM-027/028/029)
 
 - **No 3D podium graphic.** Both boards are lists using the bet-row anatomy: oversized mono rank digit (rank 1 largest, stepping down by rank 5+), avatar, name (in the user's own name-color, §2.4), balance right-aligned mono.
 - **Richest list**: rank-1 row gets `cut-sm` on its right edge + a 1px jade top line + jade rank digit. Ranks 2–3 full-opacity white digit, 4+ muted (N6).
 - **Poor podium**: mirrored motif *and* the rust hue (owner ruling 2026-09-05 — this bullet previously read "never ember/red, zero color difference"). `cut-mirror` (opposite corner) + a 1px rust **bottom** hairline mirroring the richest board's jade top line + `rust-wash` row fill; rank digit rust at 1, `rust/80` at 2–3, muted from 4 down — the exact emphasis ramp of the richest board, in the other hue. Copy still does the heavy lifting (dry/ironic tag line under rank 1, e.g. "House's favorite donor", itself in rust). The Poorest tab's active tick is rust, the Richest tab's is jade.
 - **Inline rank badges** (chat, participant lists): small **slanted parallelogram tag** (not a pill) — `#1` jade fill/black text; `#2`/`#3` jade border/jade text on transparent; `TOP 5` neutral border/N6 text; `BOTTOM 5` same shape mirrored horizontally, `\` prefix instead of a down-arrow icon, rust border + rust text.
 - **Role badges** (moderator/member) are visually distinct from rank badges: rank badges are the slanted parallelogram; role badges are a plain square-cornered label with an icon (shield/star glyph), never the parallelogram shape — the two "badge" concepts must not be visually confusable in the same name-adjacent slot.
+- **Versus composition** (duel bet row, bet-detail hero — Extra Phase 3, 2026-09-07): two identity clusters opposed across a `vs` mark. Each side is the same atomic cluster as chat and the participant list (§5.7/§5.11) — `UserAvatar` + the name in its own `--name-color-N` + the inline rank badge — composed, never re-drawn. The challenger reads left-aligned, the challengee `flex-row-reverse` and right-aligned, so opposition is carried by layout. Two sizes, differing only in avatar px and type scale and never in *what* is shown: **dense** (20px avatar, `text-xs`) for the 64px feed row, **comfortable** (32px, `text-sm`) for the detail hero — §4.5's two tiers, so a duel neither gains nor loses a badge by being looked at more closely. Names truncate from a `min-w-0` wrapper (a `truncate` on `UserName` itself lands on its outer `inline-flex` and clips nothing); a participant this client cannot resolve renders a neutral `—` placeholder rather than collapsing its side, which is reachable on a duel that settled before someone left. **The separator is the word mark, not a diagonal**: §4.3's motif table bans the 68° hairline on list separators and table rows, and the one viewport that would sanction it — the bet-detail hero — has already spent its single cut on §5.11's `cut-md`. Not to be confused with the avatar cluster two bullets up, which is overlapping and same-side by construction and means the opposite thing.
 
 ### 5.7 Chat / comments
 
@@ -569,10 +602,13 @@ No `bg-card`/`rounded-xl`/shadow. Bets render **edge-to-edge**, separated by `bo
 | Color swatch picker | name color (§2.4), 10 curated swatches, `rounded-full` swatches |
 | Icon-set grid picker | avatar / bet emoji, `cut-sm` chip per option, selected state = jade border, not a filled background |
 | File upload | custom avatar — same `cut-sm` frame as generated avatars, no circle crop for uploads on non-avatar contexts |
+| Typeahead / player search | The app's **one** combobox (roster picker, Extra Phase 3): roster on focus, substring filter on type, arrow/enter/escape, `role="combobox"` + `aria-activedescendant` roving VIRTUAL focus (DOM focus never leaves the input), a removable selection chip once picked, and an explicit no-match line that is **not** a validation error — one dry N6 sentence, no ember, no `role="alert"`. Panel is §4.2's floating row — `bg-surface-2` + `border-border-strong`, **no shadow** (that belongs to the modal alone) and no `cut-*`. Renders **in flow**, not as an absolute popup: inside `ModalShell` the body is `overflow-y-auto` inside an `overflow-hidden` panel, and absolutely-positioned content is clipped there AND contributes no scroll height, so it cannot be scrolled to. Options are Dense tier (§4.5) with `bg-surface-3` as the active row, applied from state — pointer hover MOVES the active index rather than painting a second highlight. Moderators sort first and carry the **role** badge (§5.6's square-cornered label), never `RankBadge`. Banned-list #13 reserves dropdowns for "genuinely long/rare lists" and a ~30-person roster picked once per challenge is exactly that carve-out — a segmented control would be 30 tabs. It queries nothing: a client-side filter over `team.members`, zero egress, no new vendor (`design-stack.md` §4 rule 5) |
 | Validation error | Ember icon + ember border on the *field*; the error **message** reads `--negative` (rust) — it shares the token with losses because both mean "this went badly", and gray-on-gray error copy was the previous rule's real cost. Surrounding body copy still stays N7, and saturated red is still banned |
 | Focus ring | jade, 1–2px, on every interactive element — the **only** focus color in the app |
 
 **A field's error and a toast are different jobs (Extra Phase 4):** a field owns its own validation error — the ember icon, the ember border and the message beside the field, per the Validation-error row above — while a toast (§5.9) reports the outcome of an action the person took. A toast never reports a bad form field while the field itself sits unmarked.
+
+**A toggle stands in for the checkbox nobody specified (Extra Phase 3, task 2):** the owner's wording for the duel's *any moderator* control was "checkbox", and this document has never specified one — the word appears nowhere in it and no `<input type="checkbox">` exists anywhere in the app. Rather than ship an unspecified control silently, the control is the Toggle/switch row above, and this paragraph is the record of the substitution. It is the second toggle in the system, after the access-mode switch that row names; nothing in that row ever forbade a second, it simply had never had one. One deliberate divergence from it: when the toggle is **forced** (a `restricted` team stores `any_moderator = true` whatever the challenger ticked, D9) it renders on and disabled at §5.3's `opacity-40`, not the access-mode switch's `opacity-60`, with the reason in N6 beneath it — "you may not change this" and "this is settled for you" are different states, and the stronger dim is what stops a forced-on switch reading as something still worth pressing. Never a silent lock, and never an error: the coercion is silent server-side precisely so nobody is told off for a control they were not allowed to touch.
 
 ### 5.9 Toasts
 
@@ -599,6 +635,7 @@ First shipped use: Extra Phase 1's chat send-failure toast (`\` glyph — flood/
 - Rich odds display: per-option pool share + implied multiplier as jade/neutral bars, distinguished by position/fill-state first (§4.4), chart-hue subset only as a last resort for 4+ simultaneous series.
 - Participant list: avatar + name (own color) + badge + amount, same atomic identity cluster as chat (§5.7/§5.6).
 - Resolution banner: same non-traffic-light treatment as bet-row §5.2, scaled up, comfortable spacing tier.
+- **Duel layout (Extra Phase 3, task 9):** the rich odds display is REPLACED, not re-skinned — a duel's two options are its two people and a pool-share bar that is always 50/50 is decoration pretending to be data. In its place: the versus composition at comfortable size (§5.6), then a four-cell strip of `STAKE EACH` / `WINNER TAKES` / `ACCEPT BY`-or-`CHALLENGED` / `RESOLVED BY`. The mediator is read off the stored row and never re-derived from the team's current access mode (D9 applies at creation, never retroactively); a named mediator who has left the roster reads `gone`, because D7 hands the duel to the moderator pool at read time rather than rewriting who was chosen. The challengee gets the accept/decline pair here as well as on the row, and an eligible resolver gets a panel of two participant buttons plus Void — labelled from `bet_options` by **position** (0 = challenger, 1 = challengee) and never by matching a label against a current display name, since those labels are snapshots taken at creation and have no UPDATE path. Early close is absent rather than disabled: a duel has no betting window to close. Comments are untouched and identical to a pool bet's.
 
 ### 5.12 Social/OG previews
 
@@ -673,7 +710,8 @@ Rule: humor replaces color as the "this is the losing board" signal (§5.6) — 
 
 **Dashboard**
 - [ ] Open bets before closed, soonest-closing first within open (visual break ≠ just a color change — use a section label + hairline)
-- [ ] At most one row carries the closing-soon jade tint/pulse (not a `box-shadow` glow — that's bet-detail-only, §6)
+- [ ] At most one row carries the featured jade tint (§5.1) — a challenge awaiting the viewer if there is one, otherwise the closing-soonest open bet; and at most one carries the closing-soon pulse (not a `box-shadow` glow — that's bet-detail-only, §6)
+- [ ] A duel row shows versus + flat stake, never odds or POOL, and never a `WAGER` control
 - [ ] Empty state uses the shared ghost-S-mark pattern, dry copy, one CTA
 - [ ] Skeleton rows shaped like real rows, opacity-breathe only
 
@@ -681,6 +719,7 @@ Rule: humor replaces color as the "this is the losing board" signal (§5.6) — 
 - [ ] Header is the one hero surface allowed `cut-md`
 - [ ] Odds bars distinguished by fill/position first, chart-hue subset only if 4+ options
 - [ ] Resolution banner reuses bet-row win/loss glyph language, scaled up, never introduces new color logic
+- [ ] A duel replaces the odds display with the versus composition and resolves by person, not by option
 - [ ] Chat section stays dense, no bubbles, hairline-sparse
 
 **Modals** (UX-014/015/016)

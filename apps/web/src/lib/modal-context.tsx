@@ -19,7 +19,13 @@ export type ModalId =
   | "team-settings"
   | "create-team"
   | "leave-team"
-  | "chat";
+  | "chat"
+  // 1v1 duels (Extra Phase 3). Both take a payload: "start-duel" takes none,
+  // "duel-accept" takes the BET id — `Duel.betId` is simultaneously the
+  // primary and foreign key, so there is no separate duel id in the system to
+  // pass instead (D1).
+  | "start-duel"
+  | "duel-accept";
 
 export interface ModalState {
   active: { id: ModalId; payload?: unknown } | null;
