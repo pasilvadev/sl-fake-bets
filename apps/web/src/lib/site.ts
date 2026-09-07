@@ -25,4 +25,4 @@ export function siteUrl(): URL {
 /** UX-020/021: the product is "SL". Never "Soulless", anywhere a user can read. */
 export const SITE_NAME = "SL";
 
-export const SITE_TAGLINE = "Bet fake coins with your friends on anything.";
+export const SITE_TAGLINE = "Make stupid fake bets on stupid things";

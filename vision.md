@@ -47,3 +47,5 @@
 ## Escala/limites: Começar com um numero pequeno de times (penso max 30 pessoas), vamos fazer o app todo em inglês de inicio, deixar tradução pt-br pro futuro.
 
 ## Operacional : Observabilidade/analytics mínima: funil de onboarding, quantos convites viram cadastro. Feature flags para ligar features pós-MVP sem deploy.
+
+## Visual vibe: O app deve ser descontraido. A identidade visual atende perfeitamente o gosto, mas o target audience do app é grupos de amigos se divertindno com coisas estupidas e zuando uns aos outros. Os botões, textos, helper texts, tooltips, devem ser mais descontraidos. Make fun of the losers, make the winners feel cocky. Mas sem exageros, não queremos que vire um app de tiktoker trying too hard to be funny.
