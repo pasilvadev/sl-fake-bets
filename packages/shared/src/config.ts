@@ -4,7 +4,15 @@
  */
 
 export interface BetDurationPreset {
-  label: string;
+  /**
+   * The whole preset. No `label` since UX-027: a duration chip has to read
+   * "24 hours" or "24 horas" depending on the reader, and this package cannot
+   * know which. `create-bet-modal.tsx` derives the label from `minutes` via
+   * the `createBetModal.duration*` messages — which is strictly better than
+   * the string it replaced, because open decision #2 says these numbers are
+   * placeholders the owner will retune, and a hand-typed "24 hours" beside a
+   * changed `minutes` would have been a lie the compiler could not see.
+   */
   minutes: number;
   isDefault: boolean;
 }
@@ -21,9 +29,9 @@ export const CONFIG = Object.freeze({
    * PLACEHOLDER values — open decision #2; owner picks the real ones later.
    */
   BET_DURATION_PRESETS: [
-    { label: "1 hour", minutes: 60, isDefault: false },
-    { label: "24 hours", minutes: 60 * 24, isDefault: true },
-    { label: "7 days", minutes: 60 * 24 * 7, isDefault: false },
+    { minutes: 60, isDefault: false },
+    { minutes: 60 * 24, isDefault: true },
+    { minutes: 60 * 24 * 7, isDefault: false },
   ] as readonly BetDurationPreset[],
   /**
    * Team chat message length cap (UX-019, Extra Phase 1). Has a SQL twin —

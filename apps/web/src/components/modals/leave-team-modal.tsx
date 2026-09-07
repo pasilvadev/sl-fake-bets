@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
@@ -19,6 +20,7 @@ export function LeaveTeamModal() {
   const { team, balance, canLeave, leaveTeam } = useTeam();
   const { show } = useToast();
   const { errorText } = useErrorText();
+  const t = useTranslations("leaveTeamModal");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -35,13 +37,13 @@ export function LeaveTeamModal() {
       // D3: leaving is one of the six destructive successes, so it takes the
       // ember rail. The store is above ModalRoot and above the TeamGate this
       // tears down, which is why the toast survives both (D1).
-      show({ kind: "destructive", text: `You left "${name}".` });
+      show({ kind: "destructive", text: t("left", { team: name }) });
     } else setError(errorText(result));
   }
 
   return (
     <ModalShell
-      eyebrow="LEAVE TEAM"
+      eyebrow={t("eyebrow")}
       title={team.name}
       onClose={close}
       danger
@@ -54,7 +56,7 @@ export function LeaveTeamModal() {
               onClick={close}
               className="h-9 flex-1 border border-border px-5 text-xs font-semibold uppercase tracking-wide text-foreground transition-colors hover:border-jade/50 hover:text-jade"
             >
-              Stay
+              {t("stay")}
             </button>
             <button
               type="button"
@@ -62,7 +64,7 @@ export function LeaveTeamModal() {
               onClick={() => void submit()}
               className="cut-danger h-9 flex-1 bg-destructive px-5 text-xs font-semibold uppercase tracking-wide text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
             >
-              {pending ? "Leaving…" : "Leave team"}
+              {pending ? t("submitting") : t("submit")}
             </button>
           </div>
         </div>
@@ -70,20 +72,19 @@ export function LeaveTeamModal() {
     >
       <div className="space-y-3">
         <p className="text-sm text-foreground">
-          Leaving drops your membership in {team.name} for good.
+          {t("lead", { team: team.name })}
         </p>
         <ul className="space-y-1.5 text-xs text-muted-foreground">
           <li className="flex items-center gap-1.5">
-            Your balance here — <CoinAmount amount={balance} /> — is deleted.
-            Balances are per team.
+            {t("balancePrefix")} <CoinAmount amount={balance} />{" "}
+            {t("balanceSuffix")}
           </li>
-          <li>Your wagers on open and closed bets are pulled from their pools.</li>
-          <li>Resolved bets keep their history. You can rejoin with the invite code.</li>
+          <li>{t("wagersPulled")}</li>
+          <li>{t("historyKept")}</li>
         </ul>
         {!canLeave && (
           <p className="text-xs text-negative">
-            You lead this team — delete it instead, or hand it over once
-            leadership transfer exists.
+            {t("leaderNote")}
           </p>
         )}
       </div>

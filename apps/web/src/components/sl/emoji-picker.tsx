@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import {
   BET_EMOJI_CATEGORIES,
   betEmojiFor,
@@ -54,6 +55,8 @@ export function EmojiPicker({
   value: string;
   onChange: (next: string) => void;
 }) {
+  const t = useTranslations("emojiPicker");
+  const tCategories = useTranslations("emojiCategories");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -84,7 +87,7 @@ export function EmojiPicker({
   const visible = useMemo(() => groups.flatMap((g) => g.emoji), [groups]);
 
   const selected = value ? betEmojiFor(value) : undefined;
-  const emptyLine = "No emoji matches that.";
+  const emptyLine = t("emptyLine");
 
   // Clamped at read time rather than stored-and-corrected: a query that
   // shrinks the grid under the active index must not leave `tabIndex={0}` on a
@@ -245,10 +248,10 @@ export function EmojiPicker({
           )}
           <span className="sr-only">
             {selected
-              ? `Bet icon: ${selected.name}. Change it.`
+              ? t("selected", { name: selected.name })
               : value
-                ? `Bet icon: ${value}. Change it.`
-                : "Pick a bet icon"}
+                ? t("selected", { name: value })
+                : t("pick")}
           </span>
         </button>
 
@@ -264,11 +267,11 @@ export function EmojiPicker({
                 onClick={() => onChange("")}
                 className="underline-offset-2 outline-none transition-colors hover:text-foreground hover:underline focus-visible:ring-1 focus-visible:ring-jade/40"
               >
-                clear
+                {t("clearSelection")}
               </button>
             </>
           ) : (
-            "Optional — a bet with no icon gets the dice."
+            t("optional")
           )}
         </div>
       </div>
@@ -286,8 +289,8 @@ export function EmojiPicker({
                 // alone would leave it pointing at whatever is now 40th.
                 setActive(0);
               }}
-              placeholder="Search icons…"
-              aria-label="Search bet icons"
+              placeholder={t("placeholder")}
+              aria-label={t("search")}
               // Byte-identical to `create-bet-modal.tsx`'s `inputClass` and to
               // `player-search.tsx`'s field, `px-3 py-2` included: §5.8 has one
               // row for text fields, and a search box a few pixels shorter than
@@ -312,7 +315,7 @@ export function EmojiPicker({
                 return groups.map((category) => (
                   <div key={category.id} className="space-y-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {category.label}
+                      {tCategories(category.id)}
                     </p>
                     <div className="grid grid-cols-8 gap-1.5">
                       {category.emoji.map((entry) => {

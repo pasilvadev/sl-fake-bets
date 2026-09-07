@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "cn";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   canAcceptDuel,
   canDeclineDuel,
@@ -50,6 +50,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
   const locale = useLocale();
 
   const { errorText } = useErrorText();
+  const t = useTranslations("duelAcceptModal");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, setPending] = useState<"accept" | "decline" | null>(null);
 
@@ -58,9 +59,9 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
 
   if (!bet || !duel) {
     return (
-      <ModalShell eyebrow="CHALLENGE" title="Challenge not found" onClose={close}>
+      <ModalShell eyebrow={t("eyebrow")} title={t("notFound")} onClose={close}>
         <p className="text-sm text-muted-foreground">
-          This challenge no longer exists.
+          {t("gone")}
         </p>
       </ModalShell>
     );
@@ -96,7 +97,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
       setSubmitError(errorText(result));
       return;
     }
-    show({ kind: "success", text: "Challenge accepted.", key: "duel-answer" });
+    show({ kind: "success", text: t("accepted"), key: "duel-answer" });
     close();
   }
 
@@ -115,24 +116,24 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
     }
     // `destructive`, not `failure`: the act worked, and it destroyed a bet.
     // `failure` would claim the decline did not happen.
-    show({ kind: "destructive", text: "Challenge declined.", key: "duel-answer" });
+    show({ kind: "destructive", text: t("declined"), key: "duel-answer" });
     close();
   }
 
   const closedReason =
     phase === "expired"
-      ? "This challenge expired before anyone answered it."
+      ? t("expired")
       : phase === "accepted"
-        ? "This challenge has already been accepted."
+        ? t("alreadyAccepted")
         : phase === "settled"
-          ? "This challenge is already settled."
+          ? t("settled")
           : !mayAccept && !mayDecline
-            ? "Only the person challenged can answer this."
+            ? t("notYours")
             : null;
 
   return (
     <ModalShell
-      eyebrow="CHALLENGE"
+      eyebrow={t("eyebrow")}
       title={`${bet.iconEmoji ? `${bet.iconEmoji} ` : ""}${bet.title}`}
       onClose={close}
       footer={
@@ -153,10 +154,10 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
               )}
             >
               {pending === "decline"
-                ? "Declining…"
+                ? t("declining")
                 : affordable
-                  ? "Decline"
-                  : "I'm too poor"}
+                  ? t("decline")
+                  : t("declineBroke")}
             </button>
             <button
               type="button"
@@ -164,7 +165,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
               onClick={() => void runAccept()}
               className="cut-sm h-9 flex-1 px-4 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
             >
-              {pending === "accept" ? "Accepting…" : "Accept"}
+              {pending === "accept" ? t("accepting") : t("accept")}
             </button>
           </div>
         </div>
@@ -185,30 +186,30 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
 
         <div className="grid grid-cols-2 gap-3 border-y border-border py-3">
           <div>
-            <p className={eyebrowClass}>Stake</p>
+            <p className={eyebrowClass}>{t("stake")}</p>
             <CoinAmount amount={duel.stake} className="text-sm text-foreground" />
           </div>
           <div>
-            <p className={eyebrowClass}>Your balance</p>
+            <p className={eyebrowClass}>{t("yourBalance")}</p>
             <CoinAmount amount={balance} className="text-sm text-foreground" />
           </div>
           <div>
-            <p className={eyebrowClass}>If you win</p>
+            <p className={eyebrowClass}>{t("ifYouWin")}</p>
             <CoinDelta amount={duel.stake} className="text-sm" />
           </div>
           <div>
-            <p className={eyebrowClass}>If you lose</p>
+            <p className={eyebrowClass}>{t("ifYouLose")}</p>
             <CoinDelta amount={-duel.stake} className="text-sm" />
           </div>
         </div>
 
         {stillOpen && (
           <p className="text-xs text-muted-foreground">
-            Accept by{" "}
+            {t("acceptByPrefix")}{" "}
             <span className="font-mono tabular-nums">
               {now == null ? "—" : formatTimeLeft(locale, bet.closesAt, now).label}
             </span>{" "}
-            or it voids itself and the stake goes back.
+            {t("acceptBySuffix")}
           </p>
         )}
 
@@ -216,9 +217,9 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
           // Not a validation error — no field produced it, so no ember border
           // and no rust. It is a plain statement of why the primary is dim.
           <p className="text-xs text-muted-foreground">
-            You need <CoinAmount amount={duel.stake} /> to take this on and
-            you&apos;ve got <CoinAmount amount={balance} />. Declining refunds
-            them and the history will say you couldn&apos;t cover it.
+            {t("needMorePrefix")} <CoinAmount amount={duel.stake} />{" "}
+            {t("needMoreMiddle")} <CoinAmount amount={balance} />
+            {t("needMoreSuffix")}
           </p>
         )}
       </div>

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { ArrowDown } from "lucide-react";
 import { cn } from "cn";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { CONFIG, validateChatMessage, type ChatMessage, type User } from "@repo/shared";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -147,6 +147,8 @@ export function ChatRows({
 }
 
 function NewDivider() {
+  const t = useTranslations("chatThread");
+
   // A hairline, not a pill or a count (task 10) — the badge-shaped "N new"
   // affordance is `ChatNewPill` below, and it answers a DIFFERENT question
   // (how many arrived since I scrolled away just now) from this divider's
@@ -161,12 +163,12 @@ function NewDivider() {
   return (
     <div
       role="separator"
-      aria-label="New messages"
+      aria-label={t("newMessages")}
       className="my-1.5 flex items-center gap-2"
     >
       <span className="h-px flex-1 bg-muted-foreground/40" />
       <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        New
+        {t("newDivider")}
       </span>
       <span className="h-px flex-1 bg-muted-foreground/40" />
     </div>
@@ -238,13 +240,14 @@ export function ChatComposer({
   onSend,
   pending,
   disabled,
-  placeholder = "Say something",
+  placeholder,
 }: {
   onSend: (body: string) => Promise<MutationResult>;
   pending: boolean;
   disabled: boolean;
   placeholder?: string;
 }) {
+  const t = useTranslations("chatThread");
   const [body, setBody] = useState("");
 
   const overLimit = body.length > CONFIG.CHAT_MESSAGE_MAX_CHARS;
@@ -271,14 +274,14 @@ export function ChatComposer({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           disabled={disabled || pending}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("placeholder")}
           className="h-8 min-w-0 flex-1 rounded-none border border-border bg-surface-2 px-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40 disabled:opacity-40"
         />
         {/* Send affordance is the brand slash itself (§5.7) — see header. */}
         <button
           type="submit"
           disabled={!canSubmit}
-          aria-label="Send message"
+          aria-label={t("send")}
           className="flex size-8 shrink-0 items-center justify-center font-mono text-muted-foreground transition-colors hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
         >
           /
@@ -337,7 +340,8 @@ export function ChatSkeleton({ rows }: { rows: number }) {
  * "dashboard, poor podium, transaction history, chat, and participant list."
  */
 export function ChatEmpty() {
-  return <EmptyState line="No messages yet. Someone has to go first." />;
+  const t = useTranslations("emptyState");
+  return <EmptyState line={t("noMessages")} />;
 }
 
 /**
@@ -349,12 +353,13 @@ export function ChatEmpty() {
  * from what the database actually enforces.
  */
 export function ChatEndOfHistory() {
+  const t = useTranslations("chatThread");
+
   return (
     <div className="flex items-center gap-2 py-3">
       <span className="h-px flex-1 bg-border" />
       <p className="shrink-0 px-1 text-center text-[11px] text-muted-foreground">
-        That&apos;s the last {CONFIG.CHAT_RETENTION_DAYS} days — older messages
-        are cleared automatically.
+        {t("endOfHistory", { days: CONFIG.CHAT_RETENTION_DAYS })}
       </p>
       <span className="h-px flex-1 bg-border" />
     </div>
@@ -387,6 +392,8 @@ export function ChatNewPill({
   count: number;
   onClick: () => void;
 }) {
+  const t = useTranslations("chatThread");
+
   if (count <= 0) return null;
 
   return (
@@ -396,7 +403,7 @@ export function ChatNewPill({
         onClick={onClick}
         className="pointer-events-auto flex items-center gap-1.5 border border-jade-border bg-jade-wash px-3 py-1 text-xs font-semibold text-jade transition motion-safe:hover:brightness-110 motion-safe:active:brightness-95"
       >
-        {count} new
+        {t("newCount", { count })}
         <ArrowDown className="size-3" aria-hidden />
       </button>
     </div>

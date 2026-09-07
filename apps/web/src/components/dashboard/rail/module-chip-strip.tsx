@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CONFIG } from "@repo/shared";
+import { useTranslations } from "next-intl";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { useTeam } from "@/lib/team-context";
@@ -13,12 +14,13 @@ import { ChatModule } from "./chat-module";
 
 type SheetId = "wallet" | "standings" | "team" | "chat";
 
-const SHEET_EYEBROWS: Record<SheetId, string> = {
-  wallet: "WALLET",
-  standings: "STANDINGS",
-  team: "TEAM",
-  chat: "TEAM CHAT",
-};
+/** Sheet → the `moduleChipStrip` key holding its eyebrow. */
+const SHEET_EYEBROW_KEY = {
+  wallet: "eyebrowWallet",
+  standings: "eyebrowStandings",
+  team: "eyebrowTeam",
+  chat: "eyebrowChat",
+} as const satisfies Record<SheetId, string>;
 
 /**
  * Mobile/tablet (<1024px) replacement for the rail (design-dashboard.md §6):
@@ -56,6 +58,7 @@ const SHEET_EYEBROWS: Record<SheetId, string> = {
 export function ModuleChipStrip() {
   const { team, balance, richest, currentUser, chat, loadChat } = useTeam();
   const showChat = useFeatureFlag("global-team-chat");
+  const t = useTranslations("moduleChipStrip");
   const [active, setActive] = useState<SheetId | null>(null);
 
   const richestRankIndex = richest.findIndex((m) => m.userId === currentUser.id);
@@ -81,7 +84,7 @@ export function ModuleChipStrip() {
           onClick={() => setActive("wallet")}
           className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
         >
-          Wallet
+          {t("wallet")}
           <CoinAmount amount={balance} />
         </button>
 
@@ -90,7 +93,7 @@ export function ModuleChipStrip() {
           onClick={() => setActive("standings")}
           className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
         >
-          Standings
+          {t("standings")}
           <span className="font-mono tabular-nums text-muted-foreground">
             #{richestRank ?? "–"}
           </span>
@@ -101,7 +104,7 @@ export function ModuleChipStrip() {
           onClick={() => setActive("team")}
           className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
         >
-          Team
+          {t("team")}
           <span className="font-mono tabular-nums text-muted-foreground">
             {team.members.length}/{CONFIG.TEAM_TARGET_SIZE}
           </span>
@@ -113,7 +116,7 @@ export function ModuleChipStrip() {
             onClick={() => setActive("chat")}
             className="flex h-9 shrink-0 items-center gap-2 rounded-sm border border-border bg-surface-1 px-3 text-xs text-foreground"
           >
-            Chat
+            {t("chat")}
             {chat.unreadCount > 0 && (
               <span className="flex items-center gap-1">
                 <span className="size-1.5 rounded-full bg-jade" aria-hidden />
@@ -128,7 +131,7 @@ export function ModuleChipStrip() {
 
       {active && (
         <ModalShell
-          eyebrow={SHEET_EYEBROWS[active]}
+          eyebrow={t(SHEET_EYEBROW_KEY[active])}
           title={team.name}
           onClose={() => setActive(null)}
         >

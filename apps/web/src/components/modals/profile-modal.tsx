@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useErrorText } from "@/lib/use-error-text";
+import { useTranslations } from "next-intl";
 import { validateProfileDraft, type ProfileDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
@@ -30,6 +31,7 @@ export function ProfileModal() {
   const { currentUser, updateProfile } = useTeam();
 
   const { errorText, codeText } = useErrorText();
+  const t = useTranslations("profileModal");
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: currentUser.displayName,
     nameColor: currentUser.nameColor,
@@ -57,8 +59,8 @@ export function ProfileModal() {
 
   return (
     <ModalShell
-      eyebrow="PROFILE"
-      title="Edit profile"
+      eyebrow={t("eyebrow")}
+      title={t("title")}
       onClose={close}
       footer={
         <div className="space-y-2">
@@ -69,7 +71,7 @@ export function ProfileModal() {
             onClick={() => void submit()}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {pending ? "Saving…" : "Save"}
+            {pending ? t("submitting") : t("submit")}
           </button>
         </div>
       }

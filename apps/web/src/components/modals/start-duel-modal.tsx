@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import { CONFIG, mustForceAnyModerator, validateDuelDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
@@ -54,21 +55,20 @@ function AnyModeratorToggle({
   forced: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const t = useTranslations("startDuelModal");
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-3 border border-border p-3">
         <div className="min-w-0">
-          <p className="text-sm text-foreground">Any moderator can resolve it</p>
-          <p className="text-xs text-muted-foreground">
-            Additive — whoever acts first settles it, so it never waits on one
-            quiet person.
-          </p>
+          <p className="text-sm text-foreground">{t("anyModerator")}</p>
+          <p className="text-xs text-muted-foreground">{t("anyModeratorHint")}</p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={checked}
-          aria-label="Any moderator can resolve it"
+          aria-label={t("anyModerator")}
           disabled={forced}
           onClick={() => onChange(!checked)}
           className={cn(
@@ -93,7 +93,7 @@ function AnyModeratorToggle({
       </div>
       {forced && (
         <p className="text-xs text-muted-foreground">
-          Restricted team: moderators can always resolve.
+          {t("restrictedNote")}
         </p>
       )}
     </div>
@@ -128,6 +128,7 @@ export function StartDuelModal() {
   const { show } = useToast();
 
   const { errorText, issueText } = useErrorText();
+  const t = useTranslations("startDuelModal");
   const [title, setTitle] = useState("");
   const [challengeeId, setChallengeeId] = useState<string | null>(null);
   const [mediatorId, setMediatorId] = useState<string | null>(null);
@@ -212,7 +213,7 @@ export function StartDuelModal() {
     // Synchronous, in the handler of the action this person took — the only
     // shape §5.9/D5 permits. Nothing notifies the challengee (ARC-014); their
     // signal is the feed pin, pull-based, on their next look.
-    show({ kind: "success", text: "Challenge sent.", key: "duel-start" });
+    show({ kind: "success", text: t("sent"), key: "duel-start" });
     close();
   }
 
@@ -221,8 +222,8 @@ export function StartDuelModal() {
 
   return (
     <ModalShell
-      eyebrow="NEW 1V1"
-      title="Challenge a teammate"
+      eyebrow={t("eyebrow")}
+      title={t("title")}
       onClose={close}
       footer={
         <div className="space-y-2">
@@ -233,7 +234,7 @@ export function StartDuelModal() {
             onClick={() => void submit()}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {pending ? "Sending…" : "Send challenge"}
+            {pending ? t("submitting") : t("submit")}
           </button>
         </div>
       }
@@ -246,20 +247,20 @@ export function StartDuelModal() {
               namespaced because two modals can never be open at once but a
               hardcoded `title` would be a poor neighbour if that changed. */}
           <label htmlFor="start-duel-title" className={labelClass}>
-            Title
+            {t("titleLabel")}
           </label>
           <input
             id="start-duel-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Who wins at pool on Saturday?"
+            placeholder={t("titlePlaceholder")}
             className={inputClass}
           />
         </div>
 
         <PlayerSearch
-          label="Opponent"
+          label={t("opponentLabel")}
           value={challengeeId}
           onChange={(next) => {
             setChallengeeId(next);
@@ -269,13 +270,13 @@ export function StartDuelModal() {
             if (next != null && next === mediatorId) setMediatorId(null);
           }}
           excludeUserIds={opponentExcludes}
-          placeholder="Search the roster"
-          emptyLine="Nobody on the roster by that name."
+          placeholder={t("opponentPlaceholder")}
+          emptyLine={t("opponentEmpty")}
         />
 
         <div className="space-y-1.5">
           <label htmlFor="start-duel-stake" className={labelClass}>
-            Stake
+            {t("stakeLabel")}
           </label>
           <input
             id="start-duel-stake"
@@ -303,7 +304,7 @@ export function StartDuelModal() {
               onClick={() => setClampedStake(balance)}
               className="border border-border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-jade/50 hover:text-jade"
             >
-              Max
+              {t("max")}
             </button>
           </div>
           {/* The symmetric-stake sentence, live under the field. It is the
@@ -311,22 +312,22 @@ export function StartDuelModal() {
               `settleBet` pays a flat 2.00x, which is why this feature added no
               payout formula at all (Extra Phase 2, task 6). */}
           <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-            You both put up <CoinAmount amount={stake} /> · winner takes{" "}
+            {t("bothPutUp")} <CoinAmount amount={stake} /> {t("winnerTakes")}{" "}
             <CoinAmount amount={stake * 2} />
           </p>
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            Your balance: <CoinAmount amount={balance} />
+            {t("yourBalance")} <CoinAmount amount={balance} />
           </p>
         </div>
 
         <PlayerSearch
-          label="Mediator"
+          label={t("mediatorLabel")}
           value={mediatorId}
           onChange={setMediatorId}
           excludeUserIds={mediatorExcludes}
-          placeholder="Search the roster"
-          emptyLine="Nobody on the roster by that name."
-          hint="Anyone but the two of you — or leave it empty and turn on the switch below."
+          placeholder={t("opponentPlaceholder")}
+          emptyLine={t("opponentEmpty")}
+          hint={t("mediatorHint")}
         />
 
         <AnyModeratorToggle
@@ -340,8 +341,7 @@ export function StartDuelModal() {
             the deadline the row stores, and no client value is ever sent for
             it (design-stack.md §4 rule 4; the two must move together). */}
         <p className="text-xs text-muted-foreground">
-          They have {CONFIG.DUEL_ACCEPT_WINDOW_HOURS} hours to accept. Your
-          stake leaves your balance now and comes back if they don&apos;t.
+          {t("acceptWindow", { hours: CONFIG.DUEL_ACCEPT_WINDOW_HOURS })}
         </p>
       </div>
     </ModalShell>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type Team, type TeamMember } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
@@ -13,6 +13,7 @@ export function TransactionsModal() {
   const { close } = useModal();
   const { currentUser, transactions, teams } = useTeam();
   const locale = useLocale();
+  const t = useTranslations("transactionsModal");
 
   const myTransactions = transactions
     .filter((t) => t.userId === currentUser.id)
@@ -29,13 +30,13 @@ export function TransactionsModal() {
 
   return (
     <ModalShell
-      eyebrow="WALLET"
-      title="Transaction history"
+      eyebrow={t("eyebrow")}
+      title={t("title")}
       onClose={close}
       footer={
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Lifetime P/L by team
+            {t("lifetime")}
           </p>
           {myTeams.map(({ team, member }) => (
             <div key={team.id} className="flex items-center justify-between text-sm">
@@ -48,7 +49,7 @@ export function TransactionsModal() {
     >
       {myTransactions.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          No transactions yet.
+          {t("empty")}
         </p>
       ) : (
         <ul>

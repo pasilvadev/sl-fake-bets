@@ -5,6 +5,7 @@ import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { useToast } from "@/lib/toast-context";
+import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 import {
   ChatComposer,
@@ -71,6 +72,8 @@ export function ChatModal() {
   const { show } = useToast();
 
   const { errorText, codeText } = useErrorText();
+  const t = useTranslations("chatModule");
+  const tThread = useTranslations("chatThread");
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const loadingEarlierRef = useRef(false);
@@ -144,7 +147,7 @@ export function ChatModal() {
   const composerDisabled = chat.status !== "ready";
 
   return (
-    <ModalShell eyebrow="TEAM CHAT" title={team.name} onClose={close}>
+    <ModalShell eyebrow={t("eyebrow")} title={team.name} onClose={close}>
       {/* Negative margins cancel ModalShell's own `px-6 py-4` on this
           content slot so the composer's `border-t` runs edge-to-edge across
           the panel — §5.7's "fixed to panel bottom" read literally — while
@@ -185,7 +188,7 @@ export function ChatModal() {
           onSend={handleSend}
           pending={sendPending}
           disabled={composerDisabled}
-          placeholder={composerDisabled ? "Loading chat…" : "Say something"}
+          placeholder={composerDisabled ? t("loading") : tThread("placeholder")}
         />
       </div>
     </ModalShell>

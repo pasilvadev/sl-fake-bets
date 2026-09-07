@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "cn";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
+import { useTranslations } from "next-intl";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -19,6 +20,7 @@ function rankSize(rank: number): string {
 
 /** DOM-027/028/029: full leaderboard modal, Richest/Poorest tabs. */
 export function StandingsFullModal() {
+  const tr = useTranslations("standingsFullModal");
   const { close } = useModal();
   const { richest, poorest, userById } = useTeam();
   const [tab, setTab] = useState<Tab>("richest");
@@ -27,7 +29,7 @@ export function StandingsFullModal() {
   const allSolvent = tab === "poorest" && poorest.every((m) => m.profitLoss >= 0);
 
   return (
-    <ModalShell eyebrow="LEADERBOARD" title="Standings" onClose={close}>
+    <ModalShell eyebrow={tr("eyebrow")} title={tr("title")} onClose={close}>
       <div className="space-y-4">
         <div className="flex gap-2">
           {(["richest", "poorest"] as const).map((t) => (
@@ -44,14 +46,14 @@ export function StandingsFullModal() {
                   : "border-border text-muted-foreground hover:border-border-strong",
               )}
             >
-              {t === "richest" ? "Richest" : "Poorest"}
+              {t === "richest" ? tr("richest") : tr("poorest")}
             </button>
           ))}
         </div>
 
         {allSolvent ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Everyone&apos;s still solvent. Suspicious.
+            {tr("empty")}
           </p>
         ) : (
           <ul>
@@ -107,7 +109,7 @@ export function StandingsFullModal() {
                     <UserName user={user} badge />
                     {isPoorestTop && (
                       <p className="text-xs text-rust">
-                        House&apos;s favorite donor
+                        {tr("donorNote")}
                       </p>
                     )}
                   </div>

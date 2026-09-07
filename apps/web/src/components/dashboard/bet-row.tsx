@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Share2 } from "lucide-react";
 import { cn } from "cn";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   canAcceptDuel,
   canResolveDuel,
@@ -137,6 +137,7 @@ const optionsGridClass =
 
 /** Top-2-by-pool odds preview stacked vertically; "…" + hover tooltip lists every option for 3+. */
 function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[] }) {
+  const t = useTranslations("betRow");
   const resolution = bet.resolution;
   const isResolvedWinner = bet.state === "resolved" && resolution?.kind === "winner";
 
@@ -180,7 +181,7 @@ function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[]
         >
           {preview}
           <span
-            aria-label={`+${extra} more option${extra > 1 ? "s" : ""}`}
+            aria-label={t("moreOptions", { count: extra })}
             className="shrink-0 font-mono text-sm leading-none text-muted-foreground"
           >
             …
@@ -216,16 +217,18 @@ function OddsPreview({ bet, poolStats }: { bet: Bet; poolStats: OptionPoolStat[]
  * derive in your head.
  */
 function DuelStake({ stake }: { stake: number }) {
+  const t = useTranslations("betRow");
+
   return (
     <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Stake
+        {t("stake")}
       </span>
       <CoinAmount amount={stake} className="text-sm text-foreground" />
       <span className="hidden items-center gap-1.5 xl:flex">
         <span className="text-muted-foreground">·</span>
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Winner takes
+          {t("winnerTakes")}
         </span>
         <CoinAmount amount={stake * 2} className="text-sm text-foreground" />
       </span>
@@ -256,22 +259,23 @@ function StateLabel({
   duelView: DuelView | null;
 }) {
   const locale = useLocale();
+  const tState = useTranslations("state");
 
   let text: string | null = null;
   let className = "text-muted-foreground";
 
   if (duelView?.awaitingYou) {
-    text = "AWAITING YOU";
+    text = tState("awaitingYou");
     className = "text-jade/80";
   } else if (duelView?.readsAsVoid && bet.state !== "resolved") {
     // The lazily-expired case: nothing has persisted a resolution yet, so
     // `bet.resolution` is still absent and only the clock knows.
     text = formatVoidLabel(locale, "expired");
   } else if (bet.state === "open" && closingSoon) {
-    text = "CLOSING SOON";
+    text = tState("closingSoon");
     className = "text-jade/80";
   } else if (bet.state === "closed") {
-    text = "AWAITING RESULT";
+    text = tState("awaitingResult");
   } else if (bet.state === "resolved" && bet.resolution?.kind === "void") {
     text = formatVoidLabel(locale, bet.resolution.reason);
   }
@@ -314,6 +318,7 @@ function Rail({
 /** Resolved CTA cell: pari-mutuel outcome as a CoinDelta, never a dead button. */
 function ResolvedOutcome({ bet }: { bet: Bet }) {
   const { currentUser, wagers } = useTeam();
+  const tState = useTranslations("state");
 
   if (!bet.resolution) return null;
 
@@ -329,7 +334,7 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
   if (bet.resolution.kind === "void") {
     return (
       <span className="text-[11px] font-semibold uppercase text-muted-foreground">
-        Refunded
+        {tState("refunded")}
       </span>
     );
   }
@@ -359,6 +364,7 @@ function ResolvedOutcome({ bet }: { bet: Bet }) {
  */
 function DuelCta({ bet, view }: { bet: Bet; view: DuelView }) {
   const { open } = useModal();
+  const t = useTranslations("betRow");
 
   if (view.phase === "settled") return <ResolvedOutcome bet={bet} />;
   if (view.phase === "expired") return null;
@@ -378,7 +384,7 @@ function DuelCta({ bet, view }: { bet: Bet; view: DuelView }) {
           }}
           className="h-8 shrink-0 px-2 text-xs font-semibold uppercase text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
         >
-          Decline
+          {t("decline")}
         </button>
         <button
           type="button"
@@ -392,7 +398,7 @@ function DuelCta({ bet, view }: { bet: Bet; view: DuelView }) {
             "transition motion-safe:hover:brightness-110 motion-safe:active:brightness-95",
           )}
         >
-          Accept
+          {t("accept")}
         </button>
       </div>
     );
@@ -404,7 +410,7 @@ function DuelCta({ bet, view }: { bet: Bet; view: DuelView }) {
         href={`/bet/${bet.id}`}
         className="flex h-8 shrink-0 items-center rounded-sm border border-border bg-transparent px-3 text-xs font-semibold uppercase text-foreground transition-colors hover:border-jade/50 hover:text-jade"
       >
-        Resolve
+        {t("resolve")}
       </Link>
     );
   }
@@ -447,6 +453,7 @@ export function BetRow({
   const { show } = useToast();
   const now = useNow();
   const locale = useLocale();
+  const t = useTranslations("betRow");
 
   // Same origin idiom as invite-modal.tsx. The difference worth knowing: that
   // modal only ever renders after a click, so its guard is there for the type;
@@ -536,9 +543,9 @@ export function BetRow({
     // ten rapid clicks — or a success followed by a failure — must land on one
     // card, replacing its text in place.
     const onCopied = () =>
-      show({ kind: "success", text: "Link copied.", key: "share-copy" });
+      show({ kind: "success", text: t("shareCopied"), key: "share-copy" });
     const onFailed = () =>
-      show({ kind: "failure", text: "Couldn't copy the link.", key: "share-copy" });
+      show({ kind: "failure", text: t("shareFailed"), key: "share-copy" });
 
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       // `.then(ok, fail)` and not `await`: the handler stays synchronous, so
@@ -671,7 +678,7 @@ export function BetRow({
 
             <div className="ml-auto hidden shrink-0 flex-col items-end lg:flex">
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                Pool
+                {t("pool")}
               </span>
               <CoinAmount amount={poolTotal} className="text-sm" />
             </div>
@@ -693,7 +700,7 @@ export function BetRow({
               (§3: prose is sans, scanned values are mono). */}
           {duelView?.phase === "pending" && (
             <span className="font-sans text-xs text-muted-foreground">
-              Accept by{" "}
+              {t("acceptBy")}{" "}
             </span>
           )}
           {bet.state === "open" &&
@@ -703,7 +710,11 @@ export function BetRow({
                 ? "—"
                 : countdownLabel)}
           {bet.state === "closed" &&
-            (now == null ? "—" : `closed ${formatRelativePast(locale, bet.closesAt, now)}`)}
+            (now == null
+              ? "—"
+              : t("closedAgo", {
+                  ago: formatRelativePast(locale, bet.closesAt, now),
+                }))}
           {bet.state === "resolved" && formatShortDate(locale, bet.closesAt)}
         </div>
       </div>
@@ -723,8 +734,8 @@ export function BetRow({
         <button
           type="button"
           onClick={handleShare}
-          title="Copy share link"
-          aria-label="Copy share link"
+          title={t("share")}
+          aria-label={t("share")}
           className="text-muted-foreground transition-colors hover:text-foreground"
         >
           <Share2 className="size-3.5" />
@@ -744,7 +755,7 @@ export function BetRow({
                   featured && "cut-sm",
                 )}
               >
-                Wager
+                {t("wager")}
               </button>
             )}
 

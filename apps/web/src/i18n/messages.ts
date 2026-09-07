@@ -1,4 +1,8 @@
-import type { MutationErrorCode, ValidationCode } from "@repo/shared";
+import type {
+  BetEmojiCategoryId,
+  MutationErrorCode,
+  ValidationCode,
+} from "@repo/shared";
 import en from "../../messages/en.json";
 import ptBR from "../../messages/pt-BR.json";
 import { DEFAULT_LOCALE, type Locale } from "./config";
@@ -51,6 +55,15 @@ const _errorsAreExhaustive: Record<MutatorOnlyCode, string> = en.errors;
 const _validationIsExhaustive: Record<ValidationCode, string> = en.validation;
 void _errorsAreExhaustive;
 void _validationIsExhaustive;
+
+/**
+ * The picker's nine headings are exhaustive over the catalog's category ids
+ * (Phase 3, task 4) — a category added to `emoji-catalog.ts` without a heading
+ * is a typecheck failure here, not a raw key in the picker.
+ */
+const _emojiCategoriesAreExhaustive: Record<BetEmojiCategoryId, string> =
+  en.emojiCategories;
+void _emojiCategoriesAreExhaustive;
 
 /**
  * Which namespace holds this code's sentence.

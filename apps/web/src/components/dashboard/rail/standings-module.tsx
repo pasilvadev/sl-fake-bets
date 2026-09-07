@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { type TeamMember } from "@repo/shared";
+import { useTranslations } from "next-intl";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
@@ -71,6 +72,7 @@ function StandingRow({
   tab: Tab;
 }) {
   const { userById } = useTeam();
+  const t = useTranslations("standingsModule");
   const user = userById(member.userId);
   if (!user) return null;
 
@@ -83,7 +85,7 @@ function StandingRow({
       <div className="min-w-0 flex-1">
         <UserName user={user} badge className="truncate text-sm" />
         {tab === "poorest" && rank === 0 && (
-          <p className="text-[11px] text-rust">House&apos;s favorite donor</p>
+          <p className="text-[11px] text-rust">{t("donorNote")}</p>
         )}
       </div>
       {tab === "richest" ? (
@@ -103,6 +105,7 @@ function StandingRow({
 export function StandingsModule() {
   const { richest, poorest } = useTeam();
   const { open } = useModal();
+  const t = useTranslations("standingsModule");
   const [tab, setTab] = useState<Tab>("richest");
 
   const list = (tab === "richest" ? richest : poorest).slice(0, 5);
@@ -117,16 +120,16 @@ export function StandingsModule() {
     <section className="rounded-sm border border-border bg-surface-1 p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          STANDINGS
+          {t("eyebrow")}
         </p>
         <div className="flex">
           <TabButton
-            label="Richest"
+            label={t("richest")}
             active={tab === "richest"}
             onClick={() => setTab("richest")}
           />
           <TabButton
-            label="Poorest"
+            label={t("poorest")}
             active={tab === "poorest"}
             tone="rust"
             onClick={() => setTab("poorest")}
@@ -135,9 +138,7 @@ export function StandingsModule() {
       </div>
 
       {allSolvent ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          Everyone&apos;s still solvent. Suspicious.
-        </p>
+        <p className="py-2 text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
         <div className="divide-y divide-border">
           {list.map((member, i) => (
@@ -151,7 +152,7 @@ export function StandingsModule() {
         onClick={() => open("standings-full")}
         className="mt-3 block text-xs text-jade hover:underline"
       >
-        View full leaderboard
+        {t("full")}
       </button>
     </section>
   );

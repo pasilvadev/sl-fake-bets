@@ -65,17 +65,47 @@ export interface BetEmoji {
   readonly keywords: string;
 }
 
-/** A named group of entries — one heading in the picker's grid. */
+/**
+ * A named group of entries — one heading in the picker's grid.
+ *
+ * No `label` since UX-027 (plan-i18n-ptbr.md Phase 3, task 4): the nine
+ * headings are the only part of this catalog a user reads as PROSE, so they
+ * moved to `apps/web/messages/*.json` under `emojiCategories`, keyed by the
+ * `id` below. Keeping an English `label` here as well would have put the same
+ * sentence in two files, which is the one thing §4's editing surface is
+ * supposed to make impossible.
+ *
+ * The ~350 `name`/`keywords` deliberately did NOT move — that is Phase 4,
+ * item 1, and the interim behaviour is stated there and honest: the picker's
+ * CATEGORIES are Portuguese, its SEARCH is English, and a pt-BR user browses
+ * instead of typing.
+ */
+export type BetEmojiCategoryId =
+  | "bets"
+  | "sports"
+  | "games"
+  | "food"
+  | "animals"
+  | "faces"
+  | "places"
+  | "nature"
+  | "objects";
+
 export interface BetEmojiCategory {
-  readonly id: string;
-  readonly label: string;
+  /**
+   * A literal union rather than `string`, since UX-027: the picker's nine
+   * headings live in `apps/web/messages/*.json` keyed by this id, and
+   * `i18n/messages.ts` types that record over exactly this union. Widen it to
+   * `string` and that check silently becomes vacuous — the failure mode being
+   * a new category rendering `emojiCategories.crypto` at a user.
+   */
+  readonly id: BetEmojiCategoryId;
   readonly emoji: readonly BetEmoji[];
 }
 
 export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   {
     id: "bets",
-    label: "Bets & luck",
     emoji: [
       { char: "🎲", name: "dice", keywords: "dice die roll random gamble luck" },
       { char: "🃏", name: "joker", keywords: "joker card wild poker gamble bet" },
@@ -115,7 +145,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "sports",
-    label: "Sports",
     emoji: [
       { char: "⚽", name: "soccer ball", keywords: "soccer football ball match kick" },
       { char: "🏀", name: "basketball", keywords: "basketball hoop nba ball court" },
@@ -163,7 +192,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "games",
-    label: "Games & media",
     emoji: [
       { char: "🎮", name: "game controller", keywords: "video game controller gamepad console gaming" },
       { char: "🕹️", name: "joystick", keywords: "joystick arcade retro game controller" },
@@ -203,7 +231,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "food",
-    label: "Food & drink",
     emoji: [
       { char: "🍕", name: "pizza", keywords: "pizza slice cheese pepperoni food" },
       { char: "🍔", name: "burger", keywords: "hamburger burger cheeseburger fast food" },
@@ -253,7 +280,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "animals",
-    label: "Animals",
     emoji: [
       { char: "🐶", name: "dog face", keywords: "dog face puppy pet cute" },
       { char: "🐱", name: "cat face", keywords: "cat face kitten pet cute" },
@@ -329,7 +355,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "faces",
-    label: "Faces & hands",
     emoji: [
       { char: "😀", name: "grinning face", keywords: "grinning face happy smile grin joy" },
       { char: "😂", name: "laughing tears", keywords: "laughing tears joy crying lol funny hilarious" },
@@ -376,7 +401,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "places",
-    label: "Travel & places",
     emoji: [
       { char: "🚗", name: "car", keywords: "car automobile sedan vehicle" },
       { char: "🚕", name: "taxi", keywords: "taxi cab car ride" },
@@ -417,7 +441,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "nature",
-    label: "Weather & nature",
     emoji: [
       { char: "☀️", name: "sun", keywords: "sun sunny clear weather hot sunshine" },
       { char: "⛅", name: "partly cloudy", keywords: "partly cloudy sun cloud weather" },
@@ -455,7 +478,6 @@ export const BET_EMOJI_CATEGORIES: readonly BetEmojiCategory[] = [
   },
   {
     id: "objects",
-    label: "Objects & symbols",
     emoji: [
       { char: "💡", name: "light bulb", keywords: "light bulb idea hint bright tip" },
       { char: "🔑", name: "key", keywords: "key unlock password access important win" },

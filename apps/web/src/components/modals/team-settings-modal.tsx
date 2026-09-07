@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { Ban, UserX } from "lucide-react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { TeamAccessMode, TeamMember } from "@repo/shared";
 import type { MutationResult } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
@@ -35,23 +35,22 @@ function AccessModeToggle({
   editable: boolean;
   onChange: (next: TeamAccessMode) => void;
 }) {
+  const t = useTranslations("teamSettingsModal");
   const freeForAll = accessMode === "free-for-all";
 
   return (
     <div className="flex items-center justify-between border border-border p-3">
       <div>
-        <p className="text-sm text-foreground">Free-for-all</p>
+        <p className="text-sm text-foreground">{t("freeForAll")}</p>
         <p className="text-xs text-muted-foreground">
-          {freeForAll
-            ? "Anyone can create bets & invite."
-            : "Only mods & the leader can create bets & invite."}
+          {freeForAll ? t("freeForAllHint") : t("restrictedHint")}
         </p>
       </div>
       <button
         type="button"
         role="switch"
         aria-checked={freeForAll}
-        aria-label="Free-for-all access mode"
+        aria-label={t("accessToggleLabel")}
         disabled={!editable}
         onClick={() => onChange(freeForAll ? "restricted" : "free-for-all")}
         className={cn(
@@ -84,6 +83,7 @@ function MemberRow({ member }: { member: TeamMember }) {
   const { show } = useToast();
   const locale = useLocale();
   const { errorText } = useErrorText();
+  const t = useTranslations("teamSettingsModal");
   const [action, setAction] = useState<RowAction | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -94,9 +94,9 @@ function MemberRow({ member }: { member: TeamMember }) {
 
   const isTeamLeader = member.userId === team.leaderId;
   const roleLabel = isTeamLeader
-    ? "LEADER"
+    ? t("roleLeader")
     : member.role === "moderator"
-      ? "MOD"
+      ? t("roleMod")
       : "—";
   // The leader can't be kicked, banned, or removed at all (DOM-001).
   const showActions = canManage && !isTeamLeader;
@@ -154,7 +154,7 @@ function MemberRow({ member }: { member: TeamMember }) {
             <button
               type="button"
               onClick={() => setAction(action === "kick" ? null : "kick")}
-              aria-label={`Kick ${user.displayName}`}
+              aria-label={t("kick", { name: user.displayName })}
               className={iconButtonClass}
             >
               <UserX className="size-3.5 text-ember" />
@@ -162,7 +162,7 @@ function MemberRow({ member }: { member: TeamMember }) {
             <button
               type="button"
               onClick={() => setAction(action === "ban" ? null : "ban")}
-              aria-label={`Ban ${user.displayName}`}
+              aria-label={t("ban", { name: user.displayName })}
               className={iconButtonClass}
             >
               <Ban className="size-3.5 text-ember" />
@@ -185,7 +185,10 @@ function MemberRow({ member }: { member: TeamMember }) {
               // call sites — "1 coins added" would be the one ungrammatical
               // sentence in the set (§7: a plain statement, and plain means
               // correct English).
-              `${formatCoins(locale, coins)} coin${coins === 1 ? "" : "s"} added to ${user.displayName}.`,
+              t("coinsAdded", {
+                coins: formatCoins(locale, coins),
+                name: user.displayName,
+              }),
             );
           }}
           className="mt-2 flex items-center gap-2 pl-10"
@@ -196,7 +199,7 @@ function MemberRow({ member }: { member: TeamMember }) {
             autoFocus
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount"
+            placeholder={t("amount")}
             className="h-8 w-28 border border-border bg-surface-1 px-2 font-mono text-xs tabular-nums text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40"
           />
           <button
@@ -204,14 +207,14 @@ function MemberRow({ member }: { member: TeamMember }) {
             disabled={pending}
             className="h-8 rounded-sm bg-jade px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
           >
-            Inject
+            {t("inject")}
           </button>
           <button
             type="button"
             onClick={reset}
             className="h-8 px-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            Cancel
+            {t("cancel")}
           </button>
         </form>
       )}
@@ -220,8 +223,8 @@ function MemberRow({ member }: { member: TeamMember }) {
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-10">
           <span className="text-xs text-muted-foreground">
             {action === "kick"
-              ? `Kick ${user.displayName}? Their balance and active wagers go with them.`
-              : `Ban ${user.displayName}? Same as a kick, and the invite link stops working for them.`}
+              ? t("kickConfirm", { name: user.displayName })
+              : t("banConfirm", { name: user.displayName })}
           </span>
           <button
             type="button"
@@ -232,20 +235,20 @@ function MemberRow({ member }: { member: TeamMember }) {
                   ? kickMember(member.userId)
                   : banMember(member.userId),
                 action === "kick"
-                  ? `${user.displayName} removed from the team.`
-                  : `${user.displayName} banned from the team.`,
+                  ? t("kicked", { name: user.displayName })
+                  : t("banned", { name: user.displayName }),
               )
             }
             className="cut-danger disabled:opacity-40 disabled:pointer-events-none h-8 bg-destructive px-3 text-xs font-semibold uppercase text-black transition-[filter] motion-safe:hover:brightness-110"
           >
-            Confirm {action}
+            {action === "kick" ? t("confirmKick") : t("confirmBan")}
           </button>
           <button
             type="button"
             onClick={reset}
             className="h-8 rounded-sm border border-border px-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            Cancel
+            {t("cancel")}
           </button>
         </div>
       )}
@@ -261,6 +264,7 @@ function DeleteTeamPanel() {
   const { team, deleteTeam } = useTeam();
   const { show } = useToast();
   const { errorText } = useErrorText();
+  const t = useTranslations("teamSettingsModal");
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -279,7 +283,7 @@ function DeleteTeamPanel() {
       close();
       // D1/D3: the store sits above ModalRoot, so this outlives the modal that
       // closes on the line before — order between the two does not matter.
-      show({ kind: "destructive", text: `Team "${name}" deleted.` });
+      show({ kind: "destructive", text: t("deleted", { team: name }) });
     } else setError(errorText(result));
   }
 
@@ -288,20 +292,20 @@ function DeleteTeamPanel() {
       <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Danger zone
       </p>
-      <p className="text-sm text-foreground">Delete team</p>
+      <p className="text-sm text-foreground">{t("deleteTeam")}</p>
       <p
         className={cn(
           "text-xs text-muted-foreground transition-opacity",
           matches && "opacity-0",
         )}
       >
-        Permanent. Every bet, wager, balance and history row goes with it.
+        {t("deleteWarning")}
       </p>
       <input
         type="text"
         value={confirmText}
         onChange={(e) => setConfirmText(e.target.value)}
-        placeholder={`Type "${team.name}" to confirm`}
+        placeholder={t("deleteConfirmPlaceholder", { team: team.name })}
         className={cn(
           "w-full border bg-surface-1 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none",
           matches ? "border-jade" : "border-border",
@@ -313,7 +317,7 @@ function DeleteTeamPanel() {
         onClick={() => void submit()}
         className="cut-danger h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-destructive opacity-40 pointer-events-none transition-opacity enabled:opacity-100 enabled:pointer-events-auto"
       >
-        {pending ? "Deleting…" : "Delete team"}
+        {pending ? t("deleting") : t("deleteTeam")}
       </button>
       {error && <p className="text-xs text-negative">{error}</p>}
     </div>
@@ -325,6 +329,7 @@ export function TeamSettingsModal() {
   const { close } = useModal();
   const { team, isLeader, canManage, canDelete, updateTeamSettings } = useTeam();
   const { errorText } = useErrorText();
+  const t = useTranslations("teamSettingsModal");
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   async function changeAccessMode(accessMode: TeamAccessMode) {
@@ -334,15 +339,16 @@ export function TeamSettingsModal() {
 
   return (
     <ModalShell
-      eyebrow="TEAM"
+      eyebrow={t("eyebrow")}
       title={team.name}
       onClose={close}
       danger={canDelete}
       footer={
         !canManage ? undefined : (
           <p className="text-[11px] text-muted-foreground">
-            {isLeader ? "Leader controls" : "Moderator controls"} — changes apply
-            immediately.
+            {t("controlsNote", {
+              who: isLeader ? t("leaderControls") : t("moderatorControls"),
+            })}
           </p>
         )
       }
@@ -350,7 +356,7 @@ export function TeamSettingsModal() {
       <div className="space-y-6">
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Access mode
+            {t("accessLabel")}
           </p>
           <AccessModeToggle
             accessMode={team.accessMode}
@@ -364,7 +370,7 @@ export function TeamSettingsModal() {
 
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Roster ({team.members.length})
+            {t("roster", { count: team.members.length })}
           </p>
           <ul>
             {team.members.map((member) => (

@@ -8,6 +8,7 @@ import {
   type ProfileDraft,
 } from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslations } from "next-intl";
 import { AVATAR_MAX_BYTES, uploadAvatar } from "@/lib/data/team-mutations";
 import { AVATAR_ICONS } from "@/components/sl/avatar-icons";
 import { UserAvatar } from "@/components/sl/user-avatar";
@@ -73,6 +74,7 @@ export function ProfileFields({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const fileInput = useRef<HTMLInputElement>(null);
+  const t = useTranslations("profileFields");
   const [uploading, setUploading] = useState(false);
 
   function setUploadingState(next: boolean) {
@@ -96,7 +98,7 @@ export function ProfileFields({
           htmlFor="profile-display-name"
           className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
         >
-          Display name
+          {t("displayName")}
         </label>
         <input
           id="profile-display-name"
@@ -109,7 +111,7 @@ export function ProfileFields({
 
       <div className="space-y-1.5">
         <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Name color
+          {t("nameColor")}
         </span>
         <div className="flex flex-wrap gap-2">
           {NAME_COLOR_SWATCHES.map((swatchClass, i) => {
@@ -118,7 +120,7 @@ export function ProfileFields({
               <button
                 key={hex}
                 type="button"
-                aria-label={`Name color ${i + 1}`}
+                aria-label={t("nameColorOption", { index: i + 1 })}
                 aria-pressed={draft.nameColor === hex}
                 onClick={() => onChange({ ...draft, nameColor: hex })}
                 className={cn(
@@ -134,14 +136,17 @@ export function ProfileFields({
 
       <div className="space-y-1.5">
         <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Avatar
+          {t("avatar")}
         </span>
         <div className="grid grid-cols-4 gap-2">
           {AVATAR_ICONS.map(({ id, Icon }) => (
             <button
               key={id}
               type="button"
-              aria-label={id.replace("icon-", "Avatar ")}
+              // The icon id ("icon-dice") is the name; only the frame around
+              // it is copy. Nothing in `AVATAR_ICONS` is translated — the ids
+              // are a stable vocabulary, like the emoji catalog's (§7).
+              aria-label={t("avatarOption", { name: id.replace("icon-", "") })}
               aria-pressed={draft.avatar === id}
               onClick={() => onChange({ ...draft, avatar: id })}
               className={cn(
@@ -172,10 +177,10 @@ export function ProfileFields({
             onClick={() => fileInput.current?.click()}
             className="border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-jade/50 hover:text-jade disabled:opacity-40 disabled:pointer-events-none"
           >
-            {uploading ? "Uploading…" : "Upload image"}
+            {uploading ? t("uploading") : t("upload")}
           </button>
           <span className="text-[11px] text-muted-foreground">
-            PNG, JPEG, WebP or GIF · max {AVATAR_MAX_BYTES / 1024 / 1024} MB
+            {t("uploadHint", { mb: AVATAR_MAX_BYTES / 1024 / 1024 })}
           </span>
           <UserAvatar
             user={{

@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 
 /**
  * Modal chrome (§5.4): flat black/75 backdrop (no blur; a click that both
@@ -31,6 +32,7 @@ export function ModalShell({
    * on the backdrop's onClick.
    */
   const pressStartedOnBackdrop = useRef(false);
+  const t = useTranslations("modalShell");
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -99,7 +101,7 @@ export function ModalShell({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("close")}
             className="text-muted-foreground transition-colors hover:text-foreground outline-none focus-visible:ring-1 focus-visible:ring-jade/40"
           >
             <X className="size-4" />

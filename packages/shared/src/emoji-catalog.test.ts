@@ -91,7 +91,7 @@ function inRange(cp: number, [lo, hi]: readonly [number, number]): boolean {
 }
 
 describe("BET_EMOJI_CATEGORIES shape", () => {
-  it("has categories, each with a unique id, a label and entries", () => {
+  it("has categories, each with a unique id and entries", () => {
     expect(BET_EMOJI_CATEGORIES.length).toBeGreaterThan(0);
 
     const ids = BET_EMOJI_CATEGORIES.map((c) => c.id);
@@ -101,7 +101,6 @@ describe("BET_EMOJI_CATEGORIES shape", () => {
       expect(category.id, `category id: ${JSON.stringify(category)}`).toMatch(
         /^[a-z][a-z-]*$/,
       );
-      expect(category.label.trim(), `label of ${category.id}`).not.toBe("");
       expect(category.emoji.length, `entries in ${category.id}`).toBeGreaterThan(
         0,
       );
@@ -222,10 +221,11 @@ describe("every entry is searchable", () => {
     ).toEqual([]);
   });
 
-  it("gives every category a label no other category uses", () => {
-    const labels = BET_EMOJI_CATEGORIES.map((c) => c.label);
-    expect(new Set(labels).size).toBe(labels.length);
-  });
+  // The heading each id renders as lives in `apps/web/messages/*.json` since
+  // UX-027, and its exhaustiveness is checked there — `i18n/messages.ts` types
+  // `emojiCategories` as a record over exactly these ids, so a category added
+  // here without a heading is a `pnpm typecheck` failure rather than a raw
+  // key on someone's screen.
 });
 
 describe("betEmojiFor", () => {

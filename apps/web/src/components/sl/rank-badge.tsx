@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import type { RankBadgeKind } from "@/lib/team-context";
 
 /**
@@ -15,10 +16,14 @@ export function RankBadge({
   kind: RankBadgeKind;
   className?: string;
 }) {
+  const t = useTranslations("rankBadge");
   const mirrored = kind === "bottom5";
 
+  // `kind` falls through as its own text for the numeric badges ("1", "2",
+  // "3") — a numeral is the same in both languages, which is why they are not
+  // catalog entries (§7's allowed-literal list).
   const label =
-    kind === "top5" ? "TOP 5" : kind === "bottom5" ? "\\ BOTTOM 5" : kind;
+    kind === "top5" ? t("top5") : kind === "bottom5" ? t("bottom5") : kind;
 
   const toneClasses =
     kind === "1"

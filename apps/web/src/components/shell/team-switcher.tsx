@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 import { ChevronDown } from "lucide-react";
 import { Popover } from "radix-ui";
@@ -47,6 +48,7 @@ export function TeamSwitcher() {
   const { team, teams, setTeamId, openBetCountFor, joinTeamByCode } = useTeam();
   const { open } = useModal();
   const { errorText } = useErrorText();
+  const t = useTranslations("teamSwitcher");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -118,7 +120,7 @@ export function TeamSwitcher() {
               }}
               className="flex h-8 w-full items-center rounded-sm px-2 text-left text-sm text-foreground transition-colors hover:bg-surface-3"
             >
-              Create a team
+              {t("createTeam")}
             </button>
 
             {/* Inline join-code form, one fewer hop than a modal. */}
@@ -132,7 +134,7 @@ export function TeamSwitcher() {
                   setJoinCode(e.target.value);
                   setJoinError(null);
                 }}
-                placeholder="Invite code"
+                placeholder={t("codePlaceholder")}
                 className="h-7 min-w-0 flex-1 rounded-sm border border-border bg-surface-1 px-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-jade focus:outline-none focus:ring-1 focus:ring-jade/40"
               />
               <button
@@ -140,7 +142,7 @@ export function TeamSwitcher() {
                 disabled={joining}
                 className="h-7 shrink-0 rounded-sm px-2 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               >
-                {joining ? "…" : "Join"}
+                {joining ? "…" : t("join")}
               </button>
             </form>
             {joinError && (

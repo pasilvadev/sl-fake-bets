@@ -5,6 +5,7 @@ import { Maximize2 } from "lucide-react";
 import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
+import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 import {
   ChatComposer,
@@ -78,6 +79,8 @@ export function ChatModule({
   const { show } = useToast();
 
   const { errorText, codeText } = useErrorText();
+  const t = useTranslations("chatModule");
+  const tThread = useTranslations("chatThread");
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const loadingEarlierRef = useRef(false);
@@ -200,7 +203,7 @@ export function ChatModule({
     >
       <div className="mb-3 flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          TEAM CHAT
+          {t("eyebrow")}
         </p>
         <div className="flex items-center gap-2">
           {chat.unreadCount > 0 && (
@@ -215,7 +218,7 @@ export function ChatModule({
             <button
               type="button"
               onClick={() => open("chat")}
-              aria-label="Open full chat history"
+              aria-label={t("openFull")}
               className="text-muted-foreground transition-colors hover:text-jade"
             >
               <Maximize2 className="size-3.5" aria-hidden />
@@ -245,7 +248,7 @@ export function ChatModule({
               disabled={loadingEarlier}
               className="mb-1 block w-full py-1 text-center text-xs text-jade hover:underline disabled:pointer-events-none disabled:opacity-40"
             >
-              {loadingEarlier ? "Loading…" : "See earlier messages"}
+              {loadingEarlier ? t("loadingMore") : t("earlier")}
             </button>
           ) : (
             <ChatEndOfHistory />
@@ -259,7 +262,7 @@ export function ChatModule({
         onSend={handleSend}
         pending={sendPending}
         disabled={composerDisabled}
-        placeholder={composerDisabled ? "Loading chat…" : "Say something"}
+        placeholder={composerDisabled ? t("loading") : tThread("placeholder")}
       />
     </section>
   );

@@ -5,6 +5,7 @@ import { canStartDuel } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useFeatureFlag } from "@/lib/feature-flags";
+import { useTranslations } from "next-intl";
 
 /**
  * The mobile FAB tier (design-dashboard.md §6): below `sm` the top bar's two
@@ -38,6 +39,7 @@ import { useFeatureFlag } from "@/lib/feature-flags";
 export function CreateBetFab() {
   const { team, currentUser, canCreateBet } = useTeam();
   const { open } = useModal();
+  const t = useTranslations("createBetFab");
   const mayStartDuel =
     useFeatureFlag("duel-bets") && canStartDuel(team, currentUser.id);
 
@@ -49,7 +51,7 @@ export function CreateBetFab() {
         <button
           type="button"
           onClick={() => open("start-duel")}
-          aria-label="Start 1v1"
+          aria-label={t("startDuel")}
           className="flex size-11 items-center justify-center rounded-full border border-border bg-surface-2 text-foreground transition-colors hover:border-jade/50 hover:text-jade"
         >
           <Swords className="size-5" />
@@ -60,7 +62,7 @@ export function CreateBetFab() {
         <button
           type="button"
           onClick={() => open("create-bet")}
-          aria-label="Create bet"
+          aria-label={t("createBet")}
           className="flex size-14 items-center justify-center rounded-full bg-jade text-black transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95"
         >
           <Plus className="size-6" />

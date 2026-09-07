@@ -11,6 +11,7 @@ import {
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 import { EmojiPicker } from "@/components/sl/emoji-picker";
 import { ModalShell } from "@/components/sl/modal-shell";
@@ -26,11 +27,33 @@ const inputClass =
  * validateBetDraft — the same rules the `create_bet` RPC enforces, so the form
  * can refuse a bad draft before a round trip and the server still decides.
  */
+/**
+ * A duration chip's text, derived from its `minutes` (UX-027, Phase 3).
+ *
+ * `BetDurationPreset` lost its `label` because a chip has to read "24 hours"
+ * or "24 horas" depending on who is looking, and `@repo/shared` cannot know
+ * which. Deriving it also removes a way for open decision #2 to go wrong: the
+ * owner retunes `minutes` and the chip follows, where a hand-typed label
+ * would have quietly disagreed with the number it named.
+ *
+ * Anything under a day reads in hours; a day or more reads in days. Both are
+ * ICU `plural` blocks, so "1 hour" and "24 horas" both come out right.
+ */
+function durationLabel(
+  t: ReturnType<typeof useTranslations<"createBetModal">>,
+  minutes: number,
+): string {
+  return minutes < 60 * 24
+    ? t("durationHours", { count: Math.round(minutes / 60) })
+    : t("durationDays", { count: Math.round(minutes / (60 * 24)) });
+}
+
 export function CreateBetModal() {
   const { close } = useModal();
   const { addBet } = useTeam();
 
   const { errorText, issueText } = useErrorText();
+  const t = useTranslations("createBetModal");
   const [title, setTitle] = useState("");
   const [emoji, setEmoji] = useState("");
   const [options, setOptions] = useState(["", ""]);
@@ -111,8 +134,8 @@ export function CreateBetModal() {
 
   return (
     <ModalShell
-      eyebrow="NEW BET"
-      title="Create a bet"
+      eyebrow={t("eyebrow")}
+      title={t("title")}
       onClose={close}
       footer={
         <div className="space-y-2">
@@ -125,7 +148,7 @@ export function CreateBetModal() {
             onClick={() => void submit()}
             className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 motion-safe:active:brightness-95 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {pending ? "Creating…" : "Create bet"}
+            {pending ? t("submitting") : t("submit")}
           </button>
         </div>
       }
@@ -133,13 +156,13 @@ export function CreateBetModal() {
       <div className="space-y-5">
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Title
+            {t("titleLabel")}
           </label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Will it rain on Friday?"
+            placeholder={t("titlePlaceholder")}
             className={inputClass}
           />
         </div>
@@ -149,14 +172,14 @@ export function CreateBetModal() {
               control to point `htmlFor` at — the same reason the avatar grid in
               `profile-fields.tsx` labels itself this way. */}
           <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Icon
+            {t("iconLabel")}
           </span>
           <EmojiPicker value={emoji} onChange={setEmoji} />
         </div>
 
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Options
+            {t("optionsLabel")}
           </label>
           <div className="space-y-2">
             {options.map((option, index) => (
@@ -165,14 +188,14 @@ export function CreateBetModal() {
                   type="text"
                   value={option}
                   onChange={(e) => updateOption(index, e.target.value)}
-                  placeholder={`Option ${index + 1}`}
+                  placeholder={t("optionPlaceholder", { index: index + 1 })}
                   className={inputClass}
                 />
                 {options.length > MIN_BET_OPTIONS && (
                   <button
                     type="button"
                     onClick={() => removeOption(index)}
-                    aria-label="Remove option"
+                    aria-label={t("removeOption")}
                     className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
                   >
                     ✕
@@ -187,19 +210,19 @@ export function CreateBetModal() {
               onClick={addOption}
               className="text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
             >
-              + Add option
+              {t("addOption")}
             </button>
           )}
         </div>
 
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Closes
+            {t("closesLabel")}
           </label>
           <div className="flex flex-wrap gap-2">
             {CONFIG.BET_DURATION_PRESETS.map((preset) => (
               <button
-                key={preset.label}
+                key={preset.minutes}
                 type="button"
                 onClick={() => setPresetMinutes(preset.minutes)}
                 className={cn(
@@ -209,7 +232,7 @@ export function CreateBetModal() {
                     : "border-border text-muted-foreground hover:border-border-strong",
                 )}
               >
-                {preset.label}
+                {durationLabel(t, preset.minutes)}
               </button>
             ))}
             <button
@@ -222,7 +245,7 @@ export function CreateBetModal() {
                   : "border-border text-muted-foreground hover:border-border-strong",
               )}
             >
-              Custom
+              {t("custom")}
             </button>
           </div>
           {presetMinutes === "custom" && (

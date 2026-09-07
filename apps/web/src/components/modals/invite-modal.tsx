@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "cn";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
+import { useTranslations } from "next-intl";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { SMark } from "@/components/sl/s-mark";
 
@@ -21,6 +22,7 @@ import { SMark } from "@/components/sl/s-mark";
  * the server. The guard is there for the type, not for a real code path.
  */
 export function InviteModal() {
+  const t = useTranslations("inviteModal");
   const { close } = useModal();
   const { team, bets } = useTeam();
   const [copied, setCopied] = useState(false);
@@ -43,7 +45,7 @@ export function InviteModal() {
 
   return (
     <ModalShell
-      eyebrow="INVITE FRIENDS"
+      eyebrow={t("eyebrow")}
       title={team.name}
       onClose={close}
       footer={
@@ -57,17 +59,17 @@ export function InviteModal() {
           <SMark className="size-8 text-jade" />
           <div>
             <p className="text-sm font-medium text-text-strong">
-              Join {team.name} on SL
+              {t("join", { team: team.name })}
             </p>
             <p className="text-xs text-muted-foreground">
-              {team.members.length} members · {openCount} open bets
+              {t("stats", { members: team.members.length, openBets: openCount })}
             </p>
           </div>
         </div>
 
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Invite link
+            {t("linkLabel")}
           </label>
           <div className="flex gap-2">
             <input
@@ -86,10 +88,10 @@ export function InviteModal() {
                   : "border-border text-foreground hover:border-jade/50 hover:text-jade",
               )}
             >
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("copied") : t("copy")}
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">Links never expire.</p>
+          <p className="text-xs text-muted-foreground">{t("neverExpires")}</p>
         </div>
       </div>
     </ModalShell>

@@ -20,16 +20,43 @@ type Filter = "All" | "Open" | "Closed" | "Resolved";
 
 const FILTERS: Filter[] = ["All", "Open", "Closed", "Resolved"];
 
-const EYEBROW_BY_FILTER: Record<Filter, string> = {
-  All: "ALL BETS",
-  Open: "OPEN BETS",
-  Closed: "CLOSED BETS",
-  Resolved: "RESOLVED BETS",
+/**
+ * Filter → message key. The Filter values stay English identifiers on purpose
+ * (D6): they are the state machine's vocabulary, not copy, and deriving a key
+ * from them keeps the two from drifting.
+ */
+const EYEBROW_KEY_BY_FILTER: Record<Filter, "eyebrowAll" | "eyebrowOpen" | "eyebrowClosed" | "eyebrowResolved"> = {
+  All: "eyebrowAll",
+  Open: "eyebrowOpen",
+  Closed: "eyebrowClosed",
+  Resolved: "eyebrowResolved",
+};
+
+/**
+ * Group heading → its own key, NOT the shared `state` namespace.
+ *
+ * A heading counts bets and a row's label describes one, and Portuguese makes
+ * that difference visible where English hides it: `state.open` is ABERTA
+ * (one aposta, feminine singular) while this heading has to read ABERTAS.
+ * Same word in `en`, different word in `pt-BR` — which is exactly the case
+ * D6's semantic-keys rule exists for.
+ */
+const GROUP_KEY: Record<Group["key"], "groupOpen" | "groupClosed" | "groupResolved"> = {
+  open: "groupOpen",
+  closed: "groupClosed",
+  resolved: "groupResolved",
+};
+
+const FILTER_KEY: Record<Filter, "filterAll" | "filterOpen" | "filterClosed" | "filterResolved"> = {
+  All: "filterAll",
+  Open: "filterOpen",
+  Closed: "filterClosed",
+  Resolved: "filterResolved",
 };
 
 interface Group {
+  /** Doubles as the `state` message key — the heading IS the state (§5.2). */
   key: "open" | "closed" | "resolved";
-  eyebrow: string;
   bets: Bet[];
 }
 
@@ -40,6 +67,7 @@ export function BetFeed() {
   // (D5's namespace-is-the-filename rule, with the one documented exception in
   // messages/README.md): §5.10's five dry lines read better edited together.
   const tEmpty = useTranslations("emptyState");
+  const t = useTranslations("betFeed");
   const duelsEnabled = useFeatureFlag("duel-bets");
   const now = useNow();
   const [filter, setFilter] = useState<Filter>("All");
@@ -119,9 +147,9 @@ export function BetFeed() {
           ];
 
     const all: Group[] = [
-      { key: "open", eyebrow: "OPEN", bets: pin(openBets) },
-      { key: "closed", eyebrow: "CLOSED", bets: pin(closed) },
-      { key: "resolved", eyebrow: "RESOLVED", bets: resolved },
+      { key: "open", bets: pin(openBets) },
+      { key: "closed", bets: pin(closed) },
+      { key: "resolved", bets: resolved },
     ];
 
     const shown =
@@ -171,7 +199,7 @@ export function BetFeed() {
     <div>
       <div className="flex items-center justify-between px-3 py-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {EYEBROW_BY_FILTER[filter]}
+          {t(EYEBROW_KEY_BY_FILTER[filter])}
         </p>
 
         <div className="inline-flex overflow-hidden rounded-sm border border-border">
@@ -190,7 +218,7 @@ export function BetFeed() {
                 )}
               >
                 {active && <span className="mr-1 text-jade">/</span>}
-                {f}
+                {t(FILTER_KEY[f])}
               </button>
             );
           })}
@@ -209,7 +237,7 @@ export function BetFeed() {
             <div key={group.key}>
               <div className="flex items-center gap-3 px-3 py-2">
                 <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {group.eyebrow}
+                  {t(GROUP_KEY[group.key])}
                 </span>
                 <div className="h-px flex-1 border-t border-border" />
               </div>

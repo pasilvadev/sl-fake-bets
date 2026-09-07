@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Shield } from "lucide-react";
 import { cn } from "cn";
+import { useTranslations } from "next-intl";
 import type { TeamMember, User } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
 import { UserAvatar } from "./user-avatar";
@@ -62,10 +63,12 @@ const labelClass =
  * be confusable where both could sit beside a name.
  */
 function ModeratorBadge() {
+  const t = useTranslations("playerSearch");
+
   return (
     <span className="inline-flex shrink-0 items-center gap-1 border border-border px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
       <Shield aria-hidden className="size-2.5" />
-      Mod
+      {t("mod")}
     </span>
   );
 }
@@ -92,6 +95,7 @@ export function PlayerSearch({
 }) {
   const { team, userById } = useTeam();
 
+  const t = useTranslations("playerSearch");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -275,7 +279,7 @@ export function PlayerSearch({
             ref={chipRef}
             type="button"
             onClick={clear}
-            aria-label={`Remove ${selected.displayName}`}
+            aria-label={t("remove", { name: selected.displayName })}
             className="shrink-0 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-jade/40"
           >
             ✕

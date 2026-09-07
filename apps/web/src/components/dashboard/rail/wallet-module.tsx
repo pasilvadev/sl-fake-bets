@@ -2,6 +2,7 @@
 
 import { cn } from "cn";
 import { CONFIG } from "@repo/shared";
+import { useTranslations } from "next-intl";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
@@ -40,6 +41,7 @@ export function WalletModule() {
   const { open } = useModal();
   const now = useNow();
   const showDonateTeaser = useFeatureFlag("coming-soon-teasers");
+  const t = useTranslations("walletModule");
 
   // The claim happens on team load (team-context), so by the time this renders
   // the row is normally already there; `now == null` is just the pre-hydration
@@ -56,7 +58,7 @@ export function WalletModule() {
   return (
     <section className="rounded-sm border border-border bg-surface-1 p-4">
       <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        WALLET
+        {t("eyebrow")}
       </p>
 
       {/* A negative balance is reachable by exactly one route — a resolved bet
@@ -70,22 +72,19 @@ export function WalletModule() {
         )}
       />
       {balance < 0 && (
-        <p className="mt-1 text-xs text-negative">
-          Overdrawn — a deleted bet took back a payout. No wagers until a
-          leader injection clears it.
-        </p>
+        <p className="mt-1 text-xs text-negative">{t("overdrawn")}</p>
       )}
 
       <p className="mt-2 text-xs text-muted-foreground">
-        Daily login:{" "}
+        {t("dailyLogin")}{" "}
         <span className="font-mono text-jade">
           +{CONFIG.DAILY_REWARD_COINS}
         </span>{" "}
-        {claimedToday ? "today ✓" : "on your next visit"}
+        {claimedToday ? t("claimedToday") : t("claimNext")}
       </p>
 
       <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-        Your P/L
+        {t("profitLoss")}
         <CoinDelta amount={member?.profitLoss ?? 0} />
       </p>
 
@@ -94,17 +93,17 @@ export function WalletModule() {
         onClick={() => open("transactions")}
         className="mt-3 block text-xs text-jade hover:underline"
       >
-        View transaction history
+        {t("history")}
       </button>
 
       {showDonateTeaser && (
-        <div className="mt-3" title="Coming soon">
+        <div className="mt-3" title={t("comingSoon")}>
           <button
             type="button"
             disabled
             className="h-8 w-full rounded-sm border border-border bg-transparent px-3 text-xs text-foreground opacity-40 pointer-events-none"
           >
-            Donate coins
+            {t("donate")}
           </button>
         </div>
       )}

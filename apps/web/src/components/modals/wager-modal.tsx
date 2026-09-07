@@ -6,6 +6,7 @@ import { canAcceptWagers, getPoolStats } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
@@ -26,6 +27,7 @@ export function WagerModal({ betId }: { betId: string }) {
   const now = useNow();
 
   const { errorText } = useErrorText();
+  const t = useTranslations("wagerModal");
   const [optionId, setOptionId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function WagerModal({ betId }: { betId: string }) {
 
   if (!bet) {
     return (
-      <ModalShell eyebrow="PLACE WAGER" title="Bet not found" onClose={close}>
+      <ModalShell eyebrow={t("eyebrow")} title={t("notFound")} onClose={close}>
         <p className="text-sm text-muted-foreground">
           This bet no longer exists.
         </p>
@@ -85,7 +87,7 @@ export function WagerModal({ betId }: { betId: string }) {
 
   return (
     <ModalShell
-      eyebrow="PLACE WAGER"
+      eyebrow={t("eyebrow")}
       title={`${bet.iconEmoji ? `${bet.iconEmoji} ` : ""}${bet.title}`}
       onClose={close}
       footer={
@@ -93,7 +95,7 @@ export function WagerModal({ betId }: { betId: string }) {
           {submitError && <p className="text-xs text-negative">{submitError}</p>}
           <div className="flex items-center justify-between gap-4">
             <div className="text-xs text-muted-foreground">
-              <span className="block">If it hits:</span>
+              <span className="block">{t("ifItHits")}</span>
               <CoinDelta amount={potential} className="text-sm" />
             </div>
             <button
@@ -106,7 +108,7 @@ export function WagerModal({ betId }: { betId: string }) {
                 "disabled:opacity-40 disabled:pointer-events-none",
               )}
             >
-              {pending ? "Placing…" : "Place wager"}
+              {pending ? t("submitting") : t("submit")}
             </button>
           </div>
         </div>
@@ -115,7 +117,7 @@ export function WagerModal({ betId }: { betId: string }) {
       <div className="space-y-4">
         {!acceptingWagers && (
           <p className="border border-border bg-surface-1 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Betting is closed for this bet.
+            {t("bettingClosed")}
           </p>
         )}
 
@@ -174,39 +176,37 @@ export function WagerModal({ betId }: { betId: string }) {
               onClick={() => setClampedAmount(cap)}
               className="border border-border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-jade/50 hover:text-jade"
             >
-              Max
+              {t("max")}
             </button>
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              Balance: <CoinAmount amount={balance} />
+              {t("balance")} <CoinAmount amount={balance} />
             </span>
             <span className="flex items-center gap-1">
-              Max/user: <CoinAmount amount={bet.maxWagerPerUser} />
+              {t("maxPerUser")} <CoinAmount amount={bet.maxWagerPerUser} />
             </span>
           </div>
           {existingStake > 0 && (
             <p className="text-xs text-muted-foreground">
-              You already have {existingStake} on this bet
+              {t("existing", { stake: existingStake })}
               {remainingMax > 0
-                ? ` — up to ${Math.max(0, remainingMax)} more allowed.`
-                : " — per-user max reached."}
+                ? t("existingRoom", { remaining: Math.max(0, remainingMax) })
+                : t("existingNoRoom")}
             </p>
           )}
           {cap === 0 && acceptingWagers && (
             <p className="text-xs text-negative">
               {balance < 0
-                ? "You're in the red — a leader injection has to clear it before you can bet."
+                ? t("overdrawn")
                 : balance === 0
-                  ? "No coins left to wager."
-                  : "You reached the per-user max for this bet."}
+                  ? t("noCoins")
+                  : t("maxReached")}
             </p>
           )}
           {atCap && cap > 0 && (
             <p className="text-xs text-muted-foreground">
-              {balance <= remainingMax
-                ? "Capped at your balance."
-                : "Capped at the per-user max."}
+              {balance <= remainingMax ? t("cappedBalance") : t("cappedMax")}
             </p>
           )}
         </div>
