@@ -18,16 +18,22 @@ in what Phases 3–8 actually shipped.
 
 ## 0. Where the app actually is
 
-Local only. There is no hosted project: ARC-012 (Supabase Cloud + Vercel) is the
-one `[mvp]` item deliberately outside the roadmap, gated by ARC-013 exactly as
-the Phase 1→2 transition was. So every number below is a *ceiling to plan
-against*, not a bill anyone is paying — which is the point of writing them down
-before the transition rather than after the first overage email.
+**Hosted, since 2026-09-07.** ARC-012 (Supabase Cloud + Vercel) went live that
+day under its own ARC-013 order (`plan-hosted-early-access.md`): two Supabase
+Cloud free projects in one org — `sl-fake-bets` (production, friends) and
+`sl-fake-bets-dev` (the owner's Docker-free daily driver) — plus one Vercel
+Hobby project, `sl-fake-bets`, live at `https://sl-fake-bets.vercel.app`. Every
+number below is now a *ceiling a real deployment is measured against*, not a
+hypothetical — which is still the point of having written them down before the
+transition rather than after the first overage email. The re-verification that
+transition demanded is recorded in §5.
 
 Measured on the local stack after Phases 3–8, with the seed fixtures loaded
 (3 teams, 12 accounts, 6 bets, plus the Phase-9 funnel walkthroughs):
 **12 MB total database, no table above 64 kB.** That is the empty-weight of the
-schema, and it is the baseline the §2 growth estimates start from.
+schema and the baseline the §2 growth estimates start from; Phase 5 of
+`plan-hosted-early-access.md` ("the first week") records the hosted equivalent
+here once a real week of friend traffic exists.
 
 ## 1. The ceilings
 
@@ -208,9 +214,15 @@ decision:
 A free Supabase project pauses after 7 days without traffic, and a paused
 project is a hard outage: no API, no auth, no realtime. For a friend-group app
 with quiet weeks this is **the most likely first production incident**, and it
-has nothing to do with load. `design-stack.md` §5 already names the mitigation —
-a GitHub Actions cron pinging a lightweight endpoint — and it belongs to the
-ARC-012 transition, not here.
+has nothing to do with load. **Live since 2026-09-07:** a daily **Vercel cron**
+(`/api/keepalive`, `0 9 * * *`) reads `feature_flags` on prod and counts as
+traffic — `design-stack.md` §5 has the mitigation's record, including why it
+is a Vercel cron rather than the GitHub Actions schedule this section
+originally pointed at (D4 of `plan-hosted-early-access.md`: a public repo's
+Actions schedule silently disables itself after 60 idle days, the wrong
+failure mode against a 7-day pause). The dev project is deliberately left
+unprotected and allowed to pause between the owner's sessions; Resume from the
+Dashboard, timed, is a Phase 5 drill of that same plan.
 
 ## 3. Which ceiling is hit first
 
@@ -298,8 +310,22 @@ the RPCs are its SQL twins.
 
 ## 5. When to re-read this document
 
-- Before the ARC-012 hosted transition — the first moment any of it becomes a
-  bill. Re-verify every quota then; these are September-2026 values.
+- ~~Before the ARC-012 hosted transition~~ — **done 2026-09-07.** The transition
+  happened (§0), and `plan-hosted-early-access.md` §2 is the re-verification
+  this bullet asked for — seven research passes, web-verified against vendor
+  docs that day. Five deltas from what this document had assumed, worth
+  carrying forward: the built-in mailer cannot reach anyone outside the
+  project's own team without custom SMTP, on any plan (why early access ships
+  password login instead of the OTP this repo's auth code was built for —
+  `design-stack.md` §1 Auth); projects created since 2026-05-30 don't
+  auto-expose `public` tables to the Data API by default (already handled —
+  every table and function here is granted by name); projects created since
+  2025-11-01 issue `sb_publishable_…`/`sb_secret_…` keys rather than the
+  legacy `anon`/`service_role` JWT pair, though both are issued side-by-side
+  and the app uses only the publishable one; a paused project restores in
+  minutes for up to **1 year** after pausing, not indefinitely; and the
+  mailer's recipient restriction is *per-project*, not lifted by a paid plan —
+  only custom SMTP lifts it. Next re-verification per the bullets below.
 - When any §3 ceiling passes 50%.
 - When a feature changes the *shape* of the maths rather than its magnitude:
   live per-second odds, presence, image-heavy chat, or anything that writes many

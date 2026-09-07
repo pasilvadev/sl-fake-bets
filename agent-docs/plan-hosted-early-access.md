@@ -15,7 +15,15 @@ registered and has been triggered once by hand. **What remains in Phase 3
 (tasks 5–9, 11) is human-and-device work no agent can perform** — a stranger's
 phone, a non-owner Google account, WhatsApp/Discord, and the owner's own
 production sign-in — handed back to the owner as a checklist in that phase's
-execution record.
+execution record. **Phase 4 is complete**, on the owner's "Execute phase 4 of
+the plan, trust the plan." order the same day (execution record under that
+phase, unlike Phases 2–3 this one needed no separate ARC-013 order — it moves
+no vision phase, only the documents describing the one Phase 3 already moved):
+`pnpm dev` against hosted dev works Docker-free, verified with a real sign-in
+through the form; `supabase/README.md` is rewritten hosted-first, with the
+local stack demoted to an appendix; and `design-stack.md`,
+`design-scale-and-free-tier.md`, `AGENT_SPEC.md` and `plan-mvp-roadmap.md` all
+state the hosted shape rather than the pre-transition one.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
@@ -1522,7 +1530,7 @@ nothing added to `found-bugs.md`. What actually happened, task by task.
   `public.teams`**, exactly as before, task 1's own read confirmed it last.
   Nothing in this session wrote to prod's application data.
 
-### Phase 4 — The Docker-free loop and the documents that describe it
+### Phase 4 — The Docker-free loop and the documents that describe it ✅ COMPLETE (2026-09-07)
 
 **Goal:** the owner's daily development needs no container, is documented in
 one place, and every agent-doc that described the local-only world tells the
@@ -1585,6 +1593,118 @@ truth about the hosted one.
   prod and how do I make sure I never reset it".
 
 **Sizing:** ~6 files, all prose. One session.
+
+**Execution record — Phase 4, 2026-09-07 (one agent session, on the owner's
+in-chat "Execute phase 4 of the plan, trust the plan." order).** All 7 tasks
+done. What actually happened, task by task.
+
+- *Task 1.* Confirmed live rather than inferred: Docker Desktop's daemon was
+  not running (`docker ps` → "Cannot connect to the Docker daemon"), port
+  3000 was free, and `pnpm dev` (turbo → `next dev`, Turbopack) came up in
+  ~1.1s reading `apps/web/.env.local`, which already pointed at hosted dev
+  (Phase 2). Headless Chrome over CDP (the
+  [[browser-verification-without-playwright]] recipe) loaded
+  `http://localhost:3000/`, filled the real sign-in form's `#email`/
+  `#password` with `rafa@sl.local` / `slfakebets` (native-setter trick, no
+  OTP step to drive — this plan's own Phase 1 already removed it), and
+  submitted: the app landed on the "SL Originals" dashboard with live hosted
+  data — pool amounts, rank, the pt-BR bet titles confirming `locale-pt-br`
+  is on, and the two `phase2 realtime probe bet` rows Phase 2's own record
+  left behind. Not a fresh `git clone` (this repo, not a new checkout), but
+  every mechanism the exit criterion names — no Docker, the real form,
+  hosted dev, real content — was exercised for real, not inferred. The dev
+  server and headless Chrome were both torn down afterward; port 3000
+  confirmed free again.
+- *Task 2.* `supabase/README.md` rewritten around the hosted shape: a new
+  "Hosted" section first (the two projects and their roles, the
+  linked-to-dev-forever rule, the six `pnpm` scripts, why the CLI's own
+  `db reset` prompt can't be trusted and what the two prod-guard scripts do
+  about it instead — read from the scripts themselves, not memory — the full
+  D10 secret map, how an agent gets a session on dev versus why there is
+  deliberately no equivalent on prod, and the day-to-day ops the task asked
+  for: reading prod's logs, flipping a flag, resetting a friend's password,
+  resuming a paused dev project). The Layout table gained the **9 migrations
+  shipped since it was last updated** (Extra Phases 1–2's chat/duel schema,
+  the pt-BR locale column, the two hosted-access migrations) — found stale by
+  `ls supabase/migrations/` returning 23 files against the table's 14 rows,
+  and fixed while the file was already open rather than left for a future
+  session to rediscover. "Things that will bite you" kept, with the
+  reset-prompt and `--include-seed` traps added and the Mailpit/OTP-flavored
+  bullets (now false — Phase 1 removed the OTP step entirely, local and
+  hosted alike) rewritten or relocated. The old "Running it" section is now
+  "Only if you ever need the full stack offline again", with the task's own
+  exact replacement line for the Mailpit caveat. **Verified**:
+  `grep -n "Mailpit" supabase/README.md` hits only inside that appendix
+  (checked against the file's own section boundaries via
+  `grep -n "^## "`); a same-file `OTP` grep hits only the same appendix's
+  dormant-template note.
+- *Task 3.* `design-stack.md`: the Auth row now states password + Google for
+  early access, the original OTP/magic-link recommendation struck through
+  and dated; the Hosting — backend row marks Phase 3 reached 2026-09-07 with
+  Docker struck through as the daily driver; §4 rule 5 untouched, as
+  instructed. §5: the keep-alive bullet now names the Vercel cron and why it
+  replaced the GitHub Actions proposal (D4); the Google "unverified app"
+  warning bullet is corrected per §2.2 (scope-gated, not universal, and moot
+  now that the screen is published); the magic-link bullet marked suspended
+  alongside OTP.
+- *Task 4.* `design-scale-and-free-tier.md`: §0 now opens "Hosted, since
+  2026-09-07" with the two project refs and the production URL, and points
+  this plan's own Phase 5 at where the hosted-baseline database size will
+  land; §2.6 names the Vercel cron and its D4 rationale in place of the
+  GitHub Actions placeholder it used to point at; §3's ordering left
+  untouched, as instructed; §5's first bullet marked done with the five
+  re-verification deltas §2.3 above actually found (the mailer's recipient
+  restriction, the Data-API exposure default, the publishable/secret key
+  pair, the 1-year pause-restore window, and that only custom SMTP — not a
+  paid plan — lifts the recipient restriction).
+- *Task 5.* `AGENT_SPEC.md`, exactly the four places D12 named, no
+  requirement tag touched: ARC-012 gained a dated note that early access
+  began 2026-09-07 and is the step past its "still dev/staging" wording;
+  ARC-006 gained the §6-item-7 resolution (password for early access, OTP +
+  reset deferred); UX-002 gained the D8 carve-out as a dated ruling; §7 now
+  leads with Phase 3 as the current phase, with the old Phase 2 paragraph and
+  the "requires its own order" sentence kept but marked superseded/satisfied
+  rather than deleted, so the ARC-013 rule itself (whatever comes next still
+  needs its own separate order) survives the edit rather than reading as
+  satisfied forever. The §1 doc registry's one-line status for this plan was
+  also refreshed to match this document's own top status block — not one of
+  D12's four places, but leaving it stale would have contradicted this
+  phase's own exit criterion that every document state the hosted shape.
+- *Task 6.* `plan-mvp-roadmap.md`: one line under its §4.1 item 1 noting the
+  OTP decision is suspended for early access by D1, and one pointer line
+  ("Hosting: see `plan-hosted-early-access.md`.") after the pt-BR stub that
+  closes its §8 — the last content in that section, so "after §8" reads as
+  after all of it. Nothing else touched, per the task's own "that document is
+  closed."
+- *Task 7.* `supabase/.temp` confirmed still gitignored (no action needed).
+  The "Local stack runbook" memory now points at the appendix heading by
+  name rather than a line number, and a second memory
+  ([[browser-verification-without-playwright]]) was corrected in the same
+  pass — its OTP-sign-in recipe is dead for this app since task 2's own
+  finding (Phase 1 removed the OTP step everywhere), and task 1's
+  verification above is the proof: the same CDP mechanics, pointed at
+  `#email`/`#password` instead of an OTP code, worked unchanged.
+  **`client_secret_898339473490-….json` in the repo root was left in place,
+  not moved** — the task itself gates this on the owner ("owner's file, agent
+  asks"), so it was asked rather than decided. **Owner answered the same
+  session: leave it where it is.** Gitignored, never committed, no leak risk —
+  just repo-root clutter the owner is fine with. Closed; no future session
+  should re-raise it.
+
+**Exit criteria, checked against the list above:**
+
+- `pnpm dev` against dev, no Docker — ✔ (task 1's live check).
+- Every document states the hosted shape — ✔ for the six touched here;
+  `grep -rn "GitHub Actions cron" agent-docs` returns two hits, both
+  historical (`design-stack.md`'s own struck-through bullet, and this
+  document's own D4 explaining what it replaced) — neither reads as current.
+- `grep -n "Mailpit" supabase/README.md` hits only the appendix — ✔.
+- The README's first screen answers the prod-push/never-reset question — ✔
+  (the "Hosted" section's first three subsections).
+
+**Left after this phase:** nothing. The client_secret file question was
+handed to the owner and answered the same session (above) — Phase 4 has no
+owner-only leftover, unlike Phase 3.
 
 ### Phase 5 — The first week
 

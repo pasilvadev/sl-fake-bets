@@ -45,7 +45,7 @@ The target of this plan is **local-MVP**: every `[mvp]`-tagged requirement in `A
 
 `AGENT_SPEC.md` leaves several points explicitly or implicitly open. Executing sessions follow these defaults — do not silently re-decide them differently; each is cheap to change if the owner overrules:
 
-1. **Email auth flavor = OTP code.** ARC-006 leaves magic link / OTP / password open; OTP is the lowest-friction flavor that also works cleanly against `supabase start`'s local mail sandbox (Inbucket/Mailpit).
+1. **Email auth flavor = OTP code.** ARC-006 leaves magic link / OTP / password open; OTP is the lowest-friction flavor that also works cleanly against `supabase start`'s local mail sandbox (Inbucket/Mailpit). **Suspended for early access, 2026-09-07** (D1, `plan-hosted-early-access.md`): the hosted free tier's built-in mailer cannot reach anyone outside the project's own Supabase team, so the hosted early access ships password login instead; OTP returns at full release with an SMTP vendor.
 2. **Onboarding grant is per team membership, applied on create/join.** DOM-021 phrases the grant per-user ("new users get…"), but DOM-013 makes balances per-team and `Transaction` requires a `teamId` — a signup-time grant has nowhere to land, and the spec never resolves this tension (it is not in its own open-decisions list). Default: every new membership starts at `CONFIG.ONBOARDING_GRANT_COINS` via an `"onboarding-grant"` transaction — which is exactly what the fixtures model.
 3. **Daily reward is per (user, team, calendar day), granted lazily on team load.** DOM-022 flags unconditional-vs-only-when-broke as ambiguous; spec default A-2 says unconditional. Per-team scoping follows the same rationale as #2.
 4. **Kick/ban wager cascade = remove the member's wagers from all active pools.** DOM-032 mandates the removal but explicitly leaves refunded-vs-forfeited-vs-removed open. Since the per-team balance is deleted along with the membership, "refund to the removed member" has no durable target; plain removal is the default — pools shrink and everyone else's odds recompute automatically because `getPoolStats` runs over live wagers. The cascade must still go through one shared `settlement.ts` helper so the Phase 2 in-memory version and the Phase 5 RPC behave identically.
@@ -874,3 +874,7 @@ What it changed that a reader of THIS doc needs to know:
 - One nullable column (`users.locale`) and one cookie. No new query on any path.
 
 Gated on the seeded `locale-pt-br` flag, so §6 risk 7 can be re-imposed by flipping one row in Studio.
+
+---
+
+Hosting: see `plan-hosted-early-access.md`.
