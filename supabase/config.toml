@@ -273,13 +273,22 @@ otp_expiry = 3600
 # sender_name = "Admin"
 
 # Decision §4.1 on ARC-006's open "email flavor" question: OTP code, not magic
-# link. The template below is what makes it a code — see the file for why.
-# Dormant until full release: plan-hosted-early-access.md D1 ships the alpha
-# on password + Google with no email sent at all; this stays configured,
-# untouched, so release does not redo the §2.1 research that produced it (§8).
-[auth.email.template.magic_link]
-subject = "Your SL sign-in code"
-content_path = "./supabase/templates/magic_link.html"
+# link. `supabase/templates/magic_link.html` is what makes it a code — see the
+# file for why. Dormant until full release: plan-hosted-early-access.md D1
+# ships the alpha on password + Google with no email sent at all.
+#
+# COMMENTED OUT, not deleted (Phase 2 task 8, 2026-09-07): with this block
+# active, `supabase config push` fails outright —
+#   400 "Email template modification is not available for free tier projects
+#        using the default email provider. Please upgrade your plan or
+#        configure a custom SMTP provider."
+# The CLI pushes the whole auth config in one call, so one un-pushable field
+# blocks `site_url`, the allow-list and Google with it. The template file is
+# untouched on disk; the full release (§8) adds the SMTP vendor and
+# uncomments these two lines together.
+# [auth.email.template.magic_link]
+# subject = "Your SL sign-in code"
+# content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -476,24 +485,28 @@ enabled = true
 # --linked` against dev (D3) — never resolves this block at all, because none
 # of them target the prod ref; the base config above is dev's config.
 #
-# CAVEAT, found while writing this (2026-09-07): Supabase's own docs describe
-# `[remotes.*]` as a *branching* feature — "each remote configuration must
-# reference an existing project ID" of a **persistent branch** of the current
-# project. `sl-fake-bets` was created as an independent project
-# (`supabase projects create`), not a branch of `sl-fake-bets-dev`, and
-# branching itself is a Pro-plan feature this org's two Nano projects (§2.3)
-# do not have. Whether `config push --project-ref <prod-ref>` honors this
-# block for a plain second project, silently ignores it, or errors is
-# therefore UNVERIFIED — Phase 2 task 8 is where that gets tested, against dev
-# first. If it does not apply, the fallback is the Management API directly
-# (`PATCH /v1/projects/{ref}/config/auth`), scripted per project — record in
-# plan-hosted-early-access.md which path worked.
+# RESOLVED, 2026-09-07 (Phase 2 task 8): this block is INERT for this org, and
+# is kept only as the record of that. Supabase documents `[remotes.*]` as a
+# *branching* feature — "each remote configuration must reference an existing
+# project ID" of a persistent branch of the current project. `sl-fake-bets` is
+# an independent project (`supabase projects create`), not a branch of
+# `sl-fake-bets-dev`, and branching is Pro-gated. Observed on the wire:
+# `supabase config push --project-ref <prod-ref>` neither errors nor applies
+# the override — it pushes the BASE config, so prod received
+# `site_url = http://localhost:3000` and the DEV Google client, and had to be
+# corrected with `PATCH /v1/projects/{ref}/config/auth`.
+#
+# **Never run a bare `supabase config push --project-ref <prod-ref>`.** The
+# prod path is `pnpm config:push:prod` (scripts/config-push-prod.sh), which
+# does that push and then repairs these two fields. The block below is left
+# uncommented because the CLI parses and ignores it harmlessly, and deleting
+# it would invite someone to re-derive the same question in six months.
 [remotes.production]
 project_id = "env(SUPABASE_PROD_PROJECT_REF)"
 
 [remotes.production.auth]
 # Dev's own site_url two screens up stays "http://localhost:3000" — that is
-# the base value every command that isn't this remote sees.
+# the base value every command sees, including (as it turns out) the prod push.
 site_url = "env(NEXT_PUBLIC_SITE_URL)"
 
 [remotes.production.auth.external.google]

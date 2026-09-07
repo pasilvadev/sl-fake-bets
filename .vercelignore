@@ -1,0 +1,22 @@
+# What a CLI upload (`vercel deploy`) must not send.
+#
+# Vercel's GIT integration honors .gitignore; a CLI upload does NOT — without
+# this file the first `vercel deploy` from this repo tried to upload 4.8 GB of
+# node_modules and build output (observed 2026-09-07, Phase 2 task 7).
+#
+# The CLI upload is the ONLY way to get a PREVIEW deployment of `main` here:
+# a Git-sourced deployment of the production branch is a PRODUCTION deployment
+# on Vercel regardless of `target` (plan-hosted-early-access.md, Phase 2's
+# execution record), so previews come from a branch or from this path.
+#
+# Everything here is either reinstalled (node_modules), rebuilt (.next,
+# .turbo, dist) or local-only (Docker volumes, env files, coverage).
+node_modules
+.next
+.turbo
+dist
+coverage
+.git
+supabase/.branches
+supabase/.temp
+*.log

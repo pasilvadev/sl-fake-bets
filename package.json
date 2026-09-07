@@ -14,7 +14,9 @@
     "db:push:dev": "supabase db push --linked",
     "db:push:prod": "bash scripts/db-push-prod.sh",
     "db:reset:dev": "supabase db reset --linked",
-    "db:status": "supabase migration list --linked"
+    "db:status": "supabase migration list --linked",
+    "config:push:dev": "supabase config push",
+    "config:push:prod": "bash scripts/config-push-prod.sh"
   },
   "devDependencies": {
     "turbo": "2.10.12",

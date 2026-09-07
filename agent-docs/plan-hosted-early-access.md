@@ -1,11 +1,13 @@
 # SL Fake Bets — Hosted Early Access Plan (ARC-012, and one step past it)
 
 **Status: IN EXECUTION since 2026-09-07.** Written and amended that day; the
-owner's Phase 0 A–B hand-off the same evening was the order. Phase 2's
-provisioning is done and Phase 1 is now done too (execution records under each
-phase, below); Phase 0 part C is the owner's; Phase 2 tasks 8–10 resume next,
-against the config and migrations Phase 1 just wrote; Phase 3 needs Phase 0
-part C.
+owner's Phase 0 A–B hand-off the same evening was the order. **Phases 1 and 2
+are both complete** (execution records under each phase, below): the hosted dev
+project holds the full schema and the alpha's auth configuration, both Supabase
+projects are configured, and a preview deployment is green. **Phase 3 is next
+and needs Phase 0 part C plus the owner's separate go** — its first step pushes
+the schema to production. Nothing is public yet: the production host still
+answers 404 and prod's database is empty.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
@@ -605,7 +607,7 @@ Each phase is sized for one fresh agent session and is executable from this
 document alone. Phase 1 needs nothing from Phase 0 and can start immediately;
 Phases 2–5 need Phase 0 A–B; Phase 3 step 3 needs Phase 0 C.
 
-### Phase 1 — Hosting-ready code (no accounts needed)
+### Phase 1 — Hosting-ready code (no accounts needed) ✅ COMPLETE (2026-09-07)
 
 **Goal:** make the tree deploy-correct and alpha-polished before any vendor
 exists, so Phase 2 is configuration, not debugging. Every change here is
@@ -972,7 +974,7 @@ applied or the Management API fallback is needed — record which, per D5);
 then task 9 (the owner's first real account through the new form) and task
 10's remaining pieces.
 
-### Phase 2 — Provision and wire (needs Phase 0 A–B) **[ARC-013: owner order required]**
+### Phase 2 — Provision and wire (needs Phase 0 A–B) ✅ COMPLETE (2026-09-07) **[ARC-013: owner order required]**
 
 **Goal:** both Supabase projects and the Vercel project exist, hold the full
 schema and the auth configuration, and a preview deployment of `main` runs
@@ -1229,6 +1231,121 @@ from the tasks above, and what is left.
   scripts and `scripts/db-push-prod.sh` are Phase 1 task 10; until they exist,
   the only commands that touch a hosted database are `supabase db push --linked`
   / `db reset --linked`, both of which land on dev by construction.
+
+**Execution record — Phase 2 tasks 8–10, 2026-09-07 (second agent session,
+after Phase 1).** The provisioning record above stops at "left in Phase 2, all
+gated on Phase 1". This is the rest of it. Phase 2 is now closed.
+
+- *Migrations.* `pnpm db:push:dev` applied the two migrations Phase 1 wrote
+  (`20260907130000_alpha_flags`, `20260907140000_analytics_events_size_check`)
+  — dev is at **23 applied**. Verified on the wire: `feature_flags` now has
+  **8** rows with `locale-pt-br = true` and `auth-google = true`, and
+  `analytics_events` carries `analytics_events_properties_size`.
+- *Task 8, first attempt: **`config push` fails on the free tier** because of
+  the email template.* The push is one API call for the whole auth config, so
+  the dormant `[auth.email.template.magic_link]` block took everything down
+  with it: `400 "Email template modification is not available for free tier
+  projects using the default email provider. Please upgrade your plan or
+  configure a custom SMTP provider."` **Fix: that block is now commented out**
+  in `config.toml` (the template FILE is untouched on disk), with the error
+  text and the reason in the comment. §8's full release uncomments the two
+  lines the same day it adds the SMTP vendor — the research §2.1 produced is
+  still not redone. Phase 1 was right to keep the block; nothing before this
+  moment could have known the hosted API rejects it.
+- *Task 8, dev.* `supabase config push --project-ref <dev-ref>` → `auth:
+  updated`. Read back from `GET /v1/projects/{ref}/config/auth`:
+  `site_url = http://localhost:3000`, the six-entry `uri_allow_list` (both
+  localhost spellings, both 127.0.0.1 spellings, the prod host, the
+  `https://*-sl-3407.vercel.app/**` preview wildcard), **`mailer_autoconfirm =
+  true`** (D1's whole premise — confirm-email is now OFF, where the hosted
+  default had it ON), `external_email_enabled = true`,
+  `password_min_length = 6`, Google enabled with the DEV client,
+  `external_google_skip_nonce_check = false`. The four hosted `env()` names
+  Phase 1 introduced (`SUPABASE_PROD_REDIRECT_URL`,
+  `SUPABASE_VERCEL_PREVIEW_REDIRECT_URL`, `SUPABASE_PROD_PROJECT_REF`,
+  `NEXT_PUBLIC_SITE_URL`) were filled into `supabase/.env` from
+  `supabase/.env.example` first — they had been named but never valued.
+- *Task 8, prod: **`[remotes.production]` does not apply. The D5 fallback is
+  the path.*** Phase 1's open question is now answered on the wire, not from
+  docs: `supabase config push --project-ref <prod-ref>` neither errored nor
+  honored the block — it pushed the BASE config, so prod received
+  `site_url = http://localhost:3000` and **the dev Google client id**. It was
+  corrected immediately with `PATCH /v1/projects/<prod-ref>/config/auth`
+  (`site_url`, `external_google_client_id`, `external_google_secret`,
+  `external_google_enabled`, `external_google_skip_nonce_check`), and prod now
+  reads back with `site_url = https://sl-fake-bets.vercel.app` and the
+  **production** Google client, everything else identical to dev.
+  **This is a trap that would silently re-arm**, so two things changed rather
+  than just a note: `scripts/config-push-prod.sh` (+ `pnpm config:push:prod`)
+  does the push and the repair in one command with the same
+  linked-to-prod guard `db-push-prod.sh` carries, and `pnpm config:push:dev`
+  exists so nobody reaches for a bare `config push --project-ref`. The
+  `[remotes.*]` block stays in `config.toml`, its comment rewritten from
+  "UNVERIFIED" to what was observed — deleting it would only invite the same
+  question to be re-derived later.
+- *Task 9, the first real account — through the real form, in a real browser.*
+  Headless Chrome over CDP against `next dev` → hosted dev. `/?mode=create`
+  renders `displayName`/`email`/`password`; submitting created the account and
+  landed on `NoTeamsScreen` with a session, **no email sent**
+  (`auth.users.confirmation_sent_at` is null and `email_confirmed_at` is set —
+  autoconfirm, exactly as task 8 configured). `public.users` for it:
+  `display_name = 'Pedro'`, **`profile_prefill = 'provider'`** — §2.5's
+  prefill claim, observed rather than inferred. Cookies cleared (sign-out),
+  the signed-out page returned; a **wrong** password produced the catalog
+  sentence and not SDK text — *"That email and password don't match — or
+  there's no account yet. New here? Create an account below."* — which is the
+  exact failure the Phase 1 risk paragraph said this screen is won or lost on;
+  the correct password signed back in. Then, still in the browser: created a
+  team, and the onboarding step rendered **"This is how your team sees you /
+  Pedro / LOOKS GOOD — CONTINUE"** — the typed name, "looks good" as the
+  primary action. Dashboard after: **105 coins**, wallet reading *"Daily login:
+  +5 today ✓"* — the 100-coin onboarding grant and the daily reward both fire
+  on hosted exactly as they do locally.
+- *Task 9, Google: **configured and accepted by Google; the consent screen
+  itself is the owner's to walk.*** `GET /auth/v1/authorize?provider=google`
+  on each project 302s to `accounts.google.com/o/oauth2/v2/auth` with the
+  right per-project client — dev `…q79r144v…` → `https://qkwvmdshqnkfqekilipo.supabase.co/auth/v1/callback`,
+  prod `…d31o26o0…` → `https://pgupqbizlfundbvxixvs.supabase.co/auth/v1/callback`
+  — and Google answers both with its sign-in flow, not `invalid_client` or
+  `redirect_uri_mismatch`. What an agent cannot do is authenticate as a
+  person, so **the round trip through consent back into a session is
+  deliberately left to Phase 3 step 3**, where the owner is at the keyboard
+  anyway. Everything up to Google's own login page is verified.
+- *Task 10, in two real browsers (the earlier record did it over the wire).*
+  Two headless Chrome profiles signed in through the real form as
+  `rafa@sl.local` and `duds@sl.local`, both on the same bet page; B posted a
+  comment through the app's own form and **A rendered it in 505 ms with no
+  reload**. Same mechanism as the wire probe, now through the UI that ships.
+- *Preview deployment, and the `.vercelignore` it needed.* A Git-sourced
+  deploy of `main` is production here (the earlier record), so the preview came
+  from a CLI upload — and the first attempt tried to upload **4.8 GB**, because
+  the Git integration honors `.gitignore` and a CLI upload does not.
+  **`.vercelignore` added at the repo root**; the retry deployed clean with
+  `target: null` (a true preview — the production host stays 404 until Phase
+  3). It renders the signed-out page, the sign-in form and the `/privacy` link.
+  The **build tag** needed one more turn: a CLI upload carries no git metadata,
+  so `VERCEL_GIT_COMMIT_SHA` is unset and the tag renders empty — correct
+  behavior, but it proves nothing. Re-deployed with
+  `--build-env VERCEL_GIT_COMMIT_SHA=$(git rev-parse HEAD)` and the page shows
+  **`61434b6`**, which is what actually verifies Phase 1 task 7's chain end to
+  end: turbo's strict env mode passing the var through → `next.config.ts`'s
+  `env` copy → the client component.
+- *Exit criteria, final:* migrations on dev ✔ (23 applied); `db-push-prod.sh`
+  dry-run against prod lists **the same 23 as pending** and the script aborted
+  on a non-`prod` confirmation ✔; privilege audit zero deviations ✔ (previous
+  record); preview green, signed-out page, build tag ✔; both projects
+  identical except `site_url` and the Google client ✔; password
+  create-account / sign-out / sign-in ✔, Google **configured, consent walk
+  deferred to Phase 3 step 3**; onboarding grant + daily reward ✔; **zero
+  emails attempted** ✔; Realtime between two browsers ✔; no prod secret key on
+  disk ✔.
+- *State left on dev:* one real account (`pedro@result.dev.br`, display name
+  "Pedro") leading a team called **"Alpha Test SL"**, and one extra comment row
+  in "SL Originals" from the realtime check. Dev is seed-resettable
+  (`pnpm db:reset:dev`) and none of it reaches prod.
+- *Untouched, on purpose:* prod's database is still **empty** — the first
+  `db:push:prod` is Phase 3 step 1, behind the owner's go, and §7 risk 11
+  names it as the first irreversible-in-spirit act of this plan.
 
 ### Phase 3 — Go live and verify on real devices (needs Phase 0 C)
 
