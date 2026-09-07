@@ -20,6 +20,7 @@ Machine-oriented translation of `/vision.md` for AI agents executing this projec
 | `design-dashboard.md` | Dashboard information architecture: shell (top bar + ticker + Pulse Rail), bet feed, future-feature placeholder inventory, scarcity ruling for co-occurring cut-* motifs, responsive tiers, Phase-1 component map |
 | `plan-mvp-roadmap.md` | Path-to-MVP roadmap: 9 one-session phases from mock-only prototype to the full [mvp] set on a 100%-local Supabase backend (all complete); its §8 continues with owner-ordered extra phases beyond that checkpoint — team chat, 1v1 duels (`DUEL-*`, §4.4), toasts. Hosted backend out of scope |
 | `plan-i18n-ptbr.md` | pt-BR localization plan (UX-027): next-intl without locale routing, cookie+account locale resolution, the single-file message-catalog editing surface the owner asked for, the `MutationResult`-carries-a-code refactor localization forces, and three build phases plus an explicit deferred set. English stays the source locale and fallback (UX-026) |
+| `plan-hosted-early-access.md` | The ARC-012 hosted transition and the step past it — a friends-only early access on Supabase Cloud free + Vercel Hobby with the owner developing Docker-free. Web-verified vendor facts (2026-09-07), twelve decisions (Brevo SMTP as an owner-approved third vendor, two Supabase projects, a guarded prod-push script, a Vercel keep-alive cron), a one-sitting owner checklist (Phase 0), and five agent phases. Status: PLAN, awaiting the owner's Phase 0 |
 
 ## 2. Product summary
 
