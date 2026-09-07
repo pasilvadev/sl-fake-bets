@@ -2,7 +2,11 @@
 
 import { useMemo, useRef, useState } from "react";
 import { cn } from "cn";
-import { NAME_COLORS, type ProfileDraft } from "@repo/shared";
+import {
+  NAME_COLORS,
+  type MutationErrorCode,
+  type ProfileDraft,
+} from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
 import { AVATAR_MAX_BYTES, uploadAvatar } from "@/lib/data/team-mutations";
 import { AVATAR_ICONS } from "@/components/sl/avatar-icons";
@@ -58,8 +62,13 @@ export function ProfileFields({
   onChange: (draft: ProfileDraft) => void;
   /** True while an avatar upload is in flight; the caller disables submit. */
   onBusyChange?: (busy: boolean) => void;
-  /** Upload failures — the caller owns where errors render. */
-  onUploadError?: (message: string | null) => void;
+  /**
+   * Upload failures — the caller owns where errors render. A CODE since
+   * UX-027 (D8): `profile-fields.tsx` has no business deciding what language
+   * "Image must be 2 MB or smaller." is in, and both callers already hold a
+   * translator for their own error slot.
+   */
+  onUploadError?: (code: MutationErrorCode | null) => void;
   ringPreview?: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);

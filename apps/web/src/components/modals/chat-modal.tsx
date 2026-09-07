@@ -5,6 +5,7 @@ import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { useToast } from "@/lib/toast-context";
+import { useErrorText } from "@/lib/use-error-text";
 import {
   ChatComposer,
   ChatEmpty,
@@ -69,6 +70,7 @@ export function ChatModal() {
     useTeam();
   const { show } = useToast();
 
+  const { errorText, codeText } = useErrorText();
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const loadingEarlierRef = useRef(false);
@@ -126,7 +128,7 @@ export function ChatModal() {
     // Same literal `"chat-send"` key the rail uses — at >=lg both surfaces
     // are mounted at once and share one toast layer, so a per-file key would
     // let a single rejected burst stack two cards (D6).
-    if (!result.ok) show({ kind: "failure", text: result.error, key: "chat-send" });
+    if (!result.ok) show({ kind: "failure", text: errorText(result), key: "chat-send" });
     return result;
   }
 
@@ -162,7 +164,7 @@ export function ChatModal() {
             <ChatSkeleton rows={10} />
           ) : chat.status === "error" ? (
             <p className="py-6 text-center text-sm text-negative">
-              {chat.error ?? "Could not load chat."}
+              {codeText(chat.error ?? "chat-load-failed")}
             </p>
           ) : chat.messages.length === 0 ? (
             <ChatEmpty />

@@ -9,6 +9,7 @@ import type { MutationResult } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
+import { useErrorText } from "@/lib/use-error-text";
 import { formatCoins } from "@/lib/format";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { UserAvatar } from "@/components/sl/user-avatar";
@@ -82,6 +83,7 @@ function MemberRow({ member }: { member: TeamMember }) {
     useTeam();
   const { show } = useToast();
   const locale = useLocale();
+  const { errorText } = useErrorText();
   const [action, setAction] = useState<RowAction | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +126,7 @@ function MemberRow({ member }: { member: TeamMember }) {
       // D3: a completed kick, ban or injection is destructive, not a jade
       // success. Unkeyed — kicking Ana and kicking Bruno each deserve a row.
       show({ kind: "destructive", text: successText });
-    } else setError(result.error);
+    } else setError(errorText(result));
   }
 
   return (
@@ -258,6 +260,7 @@ function DeleteTeamPanel() {
   const { close } = useModal();
   const { team, deleteTeam } = useTeam();
   const { show } = useToast();
+  const { errorText } = useErrorText();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -277,7 +280,7 @@ function DeleteTeamPanel() {
       // D1/D3: the store sits above ModalRoot, so this outlives the modal that
       // closes on the line before — order between the two does not matter.
       show({ kind: "destructive", text: `Team "${name}" deleted.` });
-    } else setError(result.error);
+    } else setError(errorText(result));
   }
 
   return (
@@ -321,11 +324,12 @@ function DeleteTeamPanel() {
 export function TeamSettingsModal() {
   const { close } = useModal();
   const { team, isLeader, canManage, canDelete, updateTeamSettings } = useTeam();
+  const { errorText } = useErrorText();
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   async function changeAccessMode(accessMode: TeamAccessMode) {
     const result = await updateTeamSettings({ accessMode });
-    setSettingsError(result.ok ? null : result.error);
+    setSettingsError(result.ok ? null : errorText(result));
   }
 
   return (

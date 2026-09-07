@@ -6,6 +6,7 @@ import { canAcceptWagers, getPoolStats } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { useErrorText } from "@/lib/use-error-text";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
 
@@ -24,6 +25,7 @@ export function WagerModal({ betId }: { betId: string }) {
   const bet = bets.find((b) => b.id === betId);
   const now = useNow();
 
+  const { errorText } = useErrorText();
   const [optionId, setOptionId] = useState<string | null>(null);
   const [amount, setAmount] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -77,7 +79,7 @@ export function WagerModal({ betId }: { betId: string }) {
     if (result.ok) {
       close();
     } else {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
     }
   }
 

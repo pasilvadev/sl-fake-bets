@@ -1,6 +1,6 @@
 import { CONFIG, type BetResolution, type BetVoidReason, type SettlementDelta } from "@repo/shared";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { fail, type MutationResult } from "./result";
+import { fail, unexpected, type MutationResult } from "./result";
 
 /**
  * The bet & wager write layer (roadmap Phase 6, extended in Phase 7).
@@ -41,7 +41,7 @@ import { fail, type MutationResult } from "./result";
 type Client = SupabaseClient;
 
 function asFailure(error: PostgrestError): MutationResult {
-  return fail(error.message);
+  return unexpected(error);
 }
 
 // --- duel anti-spam codes (Extra Phase 2 task 9) --------------------------------
@@ -130,17 +130,17 @@ function asDuelFailure(error: PostgrestError): MutationResult {
     // that said "3" while the constant said 5 would be a lie the type system
     // could not see. The SQL side counts against its own copy of the same
     // number — one more twin to keep in step, flagged in config.ts.
-    return fail(
-      `You already have ${CONFIG.DUEL_MAX_PENDING_PER_CHALLENGER} challenges waiting for an answer. Wait for one of them to be settled first.`,
-    );
+    return fail("duel-pending-cap", {
+      values: { max: CONFIG.DUEL_MAX_PENDING_PER_CHALLENGER },
+    });
   }
   if (
     error.code === DUEL_DUPLICATE_PAIR_SQLSTATE ||
     error.code === UNIQUE_VIOLATION_SQLSTATE
   ) {
-    return fail("You already have a challenge waiting for an answer from them.");
+    return fail("duel-already-pending");
   }
-  return fail(error.message);
+  return unexpected(error);
 }
 
 export interface CreatedBet {

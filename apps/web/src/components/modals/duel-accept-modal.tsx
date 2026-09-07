@@ -13,6 +13,7 @@ import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
 import { useNow } from "@/lib/use-now";
+import { useErrorText } from "@/lib/use-error-text";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { Versus } from "@/components/sl/versus";
 import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
@@ -48,6 +49,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
   const now = useNow();
   const locale = useLocale();
 
+  const { errorText } = useErrorText();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, setPending] = useState<"accept" | "decline" | null>(null);
 
@@ -91,7 +93,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
     const result = await acceptDuel(betId);
     setPending(null);
     if (!result.ok) {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
       return;
     }
     show({ kind: "success", text: "Challenge accepted.", key: "duel-answer" });
@@ -108,7 +110,7 @@ export function DuelAcceptModal({ betId }: { betId: string }) {
     );
     setPending(null);
     if (!result.ok) {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
       return;
     }
     // `destructive`, not `failure`: the act worked, and it destroyed a bet.

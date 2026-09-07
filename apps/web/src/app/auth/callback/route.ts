@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { MutationErrorCode } from "@repo/shared";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/auth-redirect";
 
@@ -26,23 +27,35 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const next = safeNextPath(searchParams.get("next"));
 
-  const fail = (reason: string) => {
+  /**
+   * `auth_error` carries a `MutationErrorCode`, not a sentence (UX-027, D8).
+   *
+   * It used to carry English prose straight into `auth-page.tsx`'s error slot,
+   * which made it the one remaining path by which text written outside
+   * `messages/*.json` reached a screen. The page now translates the code.
+   */
+  const fail = (code: MutationErrorCode) => {
     // Errors go back to the auth screen rather than to a dead-end page: the
     // screen is rendered by AppGate at whatever route the user was heading
     // for, so the destination survives a failed attempt too.
     const url = new URL(next, origin);
-    url.searchParams.set("auth_error", reason);
+    url.searchParams.set("auth_error", code);
     return NextResponse.redirect(url);
   };
 
   // Google can return a refusal instead of a code (consent denied, app not
-  // authorized). Its message is the only useful thing the user can act on.
+  // authorized). It is logged rather than shown, for the same reason D9 logs
+  // a Postgres exception: the text is whatever Google felt like sending, in
+  // whatever language, and `access_denied` was never actionable prose anyway.
   const providerError =
     searchParams.get("error_description") ?? searchParams.get("error");
-  if (providerError) return fail(providerError);
+  if (providerError) {
+    console.error("[auth/callback] provider refused:", providerError);
+    return fail("sign-in-incomplete");
+  }
 
   const code = searchParams.get("code");
-  if (!code) return fail("That sign-in didn't complete. Try again.");
+  if (!code) return fail("sign-in-incomplete");
 
   const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -53,7 +66,7 @@ export async function GET(request: NextRequest) {
     // lines of SSR-framework advice aimed at the developer, not the person
     // staring at the screen. The detail goes to the server log instead.
     console.error("[auth/callback] code exchange failed:", error.message);
-    return fail("That sign-in didn't complete. Try again.");
+    return fail("sign-in-incomplete");
   }
 
   return NextResponse.redirect(new URL(next, origin));

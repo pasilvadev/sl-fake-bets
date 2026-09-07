@@ -3,6 +3,7 @@ export * from "./infra";
 export * from "./config";
 export * from "./pari-mutuel";
 export * from "./validation";
+export * from "./errors";
 export * from "./settlement";
 export * from "./ledger";
 export * from "./permissions";

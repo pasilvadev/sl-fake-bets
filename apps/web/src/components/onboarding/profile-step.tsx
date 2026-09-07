@@ -7,6 +7,7 @@ import { SMark } from "@/components/sl/s-mark";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { ProfileFields } from "@/components/profile/profile-fields";
 import { useOnboardingStep } from "@/components/onboarding/steps";
+import { useErrorText } from "@/lib/use-error-text";
 
 /**
  * The first-run profile step (roadmap Phase 7.5, decision §4.7) — the third of
@@ -52,6 +53,7 @@ export function ProfileStep() {
   // A provider-named account opens on the confirmation; a derived one opens
   // straight into the fields, because that is the case where the pre-filled
   // value is a placeholder rather than an answer.
+  const { errorText, codeText } = useErrorText();
   const [editing, setEditing] = useState(!isProvider);
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: currentUser.displayName,
@@ -75,7 +77,7 @@ export function ProfileStep() {
     // On success the gate unmounts this screen; only a failure needs state.
     if (!result.ok) {
       setPending(null);
-      setError(result.error);
+      setError(errorText(result));
     }
   }
 
@@ -101,7 +103,8 @@ export function ProfileStep() {
               draft={draft}
               onChange={setDraft}
               onBusyChange={setUploading}
-              onUploadError={setError}
+              // A CODE, not a sentence (D8) — `codeText` is what makes it one.
+              onUploadError={(code) => setError(code && codeText(code))}
             />
           ) : (
             <div className="flex items-center gap-3">

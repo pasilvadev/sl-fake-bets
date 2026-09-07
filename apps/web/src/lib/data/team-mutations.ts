@@ -1,10 +1,11 @@
 import {
   generateInviteCode,
+  type MutationErrorCode,
   type TeamAccessMode,
   type ProfileDraft,
 } from "@repo/shared";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { fail, ok, type MutationResult } from "./result";
+import { fail, ok, unexpected, type MutationResult } from "./result";
 
 /**
  * The write half of the Postgres data layer (roadmap Phase 5).
@@ -28,7 +29,7 @@ type Client = SupabaseClient;
 const UNIQUE_VIOLATION = "23505";
 
 function asFailure(error: PostgrestError): MutationResult {
-  return fail(error.message);
+  return unexpected(error);
 }
 
 /**
@@ -51,7 +52,7 @@ export async function createTeam(
     if (!error) return { ok: true, teamId: data as string };
     if (error.code !== UNIQUE_VIOLATION) return asFailure(error);
   }
-  return fail("Could not generate a unique invite code — try again.");
+  return fail("invite-code-failed");
 }
 
 /** UX-005/DOM-005 + A-4, all decided inside the RPC (see its header). */
@@ -274,9 +275,9 @@ export async function uploadAvatar(
   supabase: Client,
   userId: string,
   file: File,
-): Promise<{ url: string | null; error: string | null }> {
+): Promise<{ url: string | null; error: MutationErrorCode | null }> {
   if (file.size > AVATAR_MAX_BYTES) {
-    return { url: null, error: "Image must be 2 MB or smaller." };
+    return { url: null, error: "avatar-too-large" };
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "png";
@@ -285,7 +286,13 @@ export async function uploadAvatar(
   const { error } = await supabase.storage
     .from("avatars")
     .upload(path, file, { contentType: file.type, upsert: true });
-  if (error) return { url: null, error: error.message };
+  // D9 again, in the one shape that is not a `MutationResult`: Storage's own
+  // message is as un-showable as PostgREST's, so it is logged and the reader
+  // gets the generic sentence.
+  if (error) {
+    console.error("[avatar] upload failed:", error.message);
+    return { url: null, error: "unexpected" };
+  }
 
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   return { url: data.publicUrl, error: null };

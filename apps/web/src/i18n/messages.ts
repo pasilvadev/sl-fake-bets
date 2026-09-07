@@ -1,3 +1,4 @@
+import type { MutationErrorCode, ValidationCode } from "@repo/shared";
 import en from "../../messages/en.json";
 import ptBR from "../../messages/pt-BR.json";
 import { DEFAULT_LOCALE, type Locale } from "./config";
@@ -22,6 +23,47 @@ export type Messages = typeof en;
 /** Missing or misspelled keys in pt-BR are a typecheck error, not a runtime surprise. */
 const _ptBRIsComplete: Messages = ptBR;
 void _ptBRIsComplete;
+
+/**
+ * The two error namespaces together are EXHAUSTIVE over `MutationErrorCode`,
+ * and they do not overlap (plan-i18n-ptbr.md D8, Phase 2 task 6).
+ *
+ * This is the half of §4's contract a type can actually enforce: "there is no
+ * second place a user-visible sentence can hide". Add a `MutationErrorCode`
+ * and forget its sentence and one of these lines fails.
+ *
+ * **Why two namespaces and not one.** D8 makes `MutationErrorCode` a superset
+ * of `ValidationCode`, so a single exhaustive `errors` record would have to
+ * repeat all 22 field sentences — and then "Not enough coins." would live in
+ * two places, in two languages, for the owner to edit twice and get wrong
+ * once. So `validation` owns the field half and `errors` owns the REST, with
+ * `Exclude` making that split a compile-time fact rather than a convention.
+ * `errorNamespaceFor()` below is the one place that has to know which is
+ * which, and it is four lines.
+ *
+ * `Record<..., string>` rather than the catalogs' own inferred shapes on
+ * purpose: an inferred shape would happily be a subset, which is exactly the
+ * bug — a missing sentence renders as a raw key like `errors.duel-expired` on
+ * someone's screen, and nothing else would catch it.
+ */
+type MutatorOnlyCode = Exclude<MutationErrorCode, ValidationCode>;
+const _errorsAreExhaustive: Record<MutatorOnlyCode, string> = en.errors;
+const _validationIsExhaustive: Record<ValidationCode, string> = en.validation;
+void _errorsAreExhaustive;
+void _validationIsExhaustive;
+
+/**
+ * Which namespace holds this code's sentence.
+ *
+ * The `in` test is against the ENGLISH catalog, which D4 makes the key
+ * authority: a code present there is present in every locale, because
+ * `_ptBRIsComplete` above says so.
+ */
+export function errorNamespaceFor(
+  code: MutationErrorCode,
+): "errors" | "validation" {
+  return code in en.validation ? "validation" : "errors";
+}
 
 const CATALOGS: Record<Locale, Messages> = {
   en,

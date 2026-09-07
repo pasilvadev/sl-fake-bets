@@ -1,6 +1,6 @@
-import type { ChatMessage } from "@repo/shared";
+import type { ChatMessage, MutationErrorCode } from "@repo/shared";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { fail, type MutationResult } from "./result";
+import { fail, unexpected, type MutationResult } from "./result";
 
 /**
  * Team chat's data module — plan §8 Extra Phase 1, tasks 7 (store + reads) and
@@ -124,15 +124,15 @@ const CHECK_VIOLATION_SQLSTATE = "23514";
  */
 function asChatFailure(error: PostgrestError): MutationResult {
   if (error.code === CHAT_FLOOD_RATE_SQLSTATE) {
-    return fail("You're sending messages faster than the channel allows. Slow down a moment.");
+    return fail("chat-rate-limited");
   }
   if (error.code === CHAT_FLOOD_DUPLICATE_SQLSTATE) {
-    return fail("You already sent that message.");
+    return fail("chat-duplicate");
   }
   if (error.code === CHECK_VIOLATION_SQLSTATE) {
-    return fail("Message can't be empty or over the length limit.");
+    return fail("chat-invalid");
   }
-  return fail(error.message);
+  return unexpected(error);
 }
 
 // --- ids --------------------------------------------------------------------------
@@ -196,7 +196,7 @@ export interface ChatPage {
 export async function fetchChatPage(
   supabase: Client,
   input: { teamId: string; before?: ChatPageCursor | null; limit?: number },
-): Promise<{ page: ChatPage | null; error: string | null }> {
+): Promise<{ page: ChatPage | null; error: MutationErrorCode | null }> {
   const limit = input.limit ?? CHAT_RAIL_PAGE_SIZE;
 
   const { data, error } = await supabase.rpc("chat_page", {
@@ -206,7 +206,13 @@ export async function fetchChatPage(
     p_limit: limit,
   });
 
-  if (error) return { page: null, error: error.message };
+  // D9's read-path twin: the RPC's own text is logged, never rendered.
+  if (error) {
+    console.error(
+      `[chat] page read failed ${error.code ?? "(no SQLSTATE)"}: ${error.message}`,
+    );
+    return { page: null, error: "chat-load-failed" };
+  }
 
   const newestFirst = (data ?? []) as ChatMessageRow[];
   const ascending = [...newestFirst].reverse();

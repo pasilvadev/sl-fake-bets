@@ -7,35 +7,56 @@ import type { BetState, Team, TeamAccessMode } from "./types";
  * must route its gating through these instead of re-deriving the rules.
  */
 
+/**
+ * Why a draft is invalid. The code was ALWAYS the contract here — this union
+ * has been stable since Phase 1 — which is why the localization pass
+ * (plan-i18n-ptbr.md D8) cost this layer a deleted field and nothing else.
+ */
+export type ValidationCode =
+  | "title-required"
+  | "options-min"
+  | "closes-at-required"
+  | "closes-at-past"
+  | "max-wager-invalid"
+  | "amount-invalid"
+  | "over-max-wager"
+  | "over-balance"
+  | "team-name-required"
+  | "display-name-required"
+  | "name-color-invalid"
+  | "avatar-required"
+  | "comment-empty"
+  | "invite-code-required"
+  | "inject-amount-invalid"
+  | "chat-empty"
+  | "chat-too-long"
+  // Extra Phase 2 (1v1 duels). Five codes for a form with four fields,
+  // because "no target" and "yourself" want different sentences and the
+  // resolver rule can fail two different ways.
+  | "duel-target-required"
+  | "duel-target-self"
+  | "duel-mediator-invalid"
+  | "duel-resolver-required"
+  | "duel-stake-invalid";
+
+/**
+ * A rejected field, as a code the UI translates (D8).
+ *
+ * `message` is GONE. It was a convenience the UI should never have been
+ * reading — a sentence produced in `@repo/shared`, which has no idea what
+ * language the reader speaks — and every consumer now renders
+ * `validation.<code>` from the message catalog instead.
+ *
+ * `values` is what survived of it, and only for the three codes whose sentence
+ * quotes a number: the limit is domain knowledge this module already has, and
+ * making each call site re-derive `CONFIG.CHAT_MESSAGE_MAX_CHARS` (or, worse,
+ * the bet's own `maxWagerPerUser`) would put the same fact in two places. It
+ * is a bag of ICU arguments, never a sentence — the distinction the deleted
+ * field failed to make.
+ */
 export interface ValidationIssue {
-  code:
-    | "title-required"
-    | "options-min"
-    | "closes-at-required"
-    | "closes-at-past"
-    | "max-wager-invalid"
-    | "amount-invalid"
-    | "over-max-wager"
-    | "over-balance"
-    | "team-name-required"
-    | "display-name-required"
-    | "name-color-invalid"
-    | "avatar-required"
-    | "comment-empty"
-    | "invite-code-required"
-    | "inject-amount-invalid"
-    | "chat-empty"
-    | "chat-too-long"
-    // Extra Phase 2 (1v1 duels). Five codes for a form with four fields,
-    // because "no target" and "yourself" want different sentences and the
-    // resolver rule can fail two different ways. `create_duel` repeats every
-    // message below verbatim — see validateDuelDraft.
-    | "duel-target-required"
-    | "duel-target-self"
-    | "duel-mediator-invalid"
-    | "duel-resolver-required"
-    | "duel-stake-invalid";
-  message: string;
+  code: ValidationCode;
+  values?: Record<string, string | number>;
 }
 
 /** Options floor is 2, deliberately no maximum (decision §4.5 on DOM-007). */
@@ -56,32 +77,26 @@ export function validateBetDraft(draft: BetDraft, nowMs: number): ValidationIssu
   const issues: ValidationIssue[] = [];
 
   if (draft.title.trim().length === 0) {
-    issues.push({ code: "title-required", message: "Give the bet a title." });
+    issues.push({ code: "title-required" });
   }
 
   const options = draft.options.filter((o) => o.trim().length > 0);
   if (options.length < MIN_BET_OPTIONS) {
     issues.push({
       code: "options-min",
-      message: `A bet needs at least ${MIN_BET_OPTIONS} options.`,
+      values: { min: MIN_BET_OPTIONS },
     });
   }
 
   const closesAtMs = Date.parse(draft.closesAt);
   if (draft.closesAt.trim().length === 0 || Number.isNaN(closesAtMs)) {
-    issues.push({ code: "closes-at-required", message: "Pick a close time." });
+    issues.push({ code: "closes-at-required" });
   } else if (closesAtMs <= nowMs) {
-    issues.push({
-      code: "closes-at-past",
-      message: "Close time must be in the future.",
-    });
+    issues.push({ code: "closes-at-past" });
   }
 
   if (!Number.isInteger(draft.maxWagerPerUser) || draft.maxWagerPerUser < 1) {
-    issues.push({
-      code: "max-wager-invalid",
-      message: "Max wager per user must be at least 1.",
-    });
+    issues.push({ code: "max-wager-invalid" });
   }
 
   return issues;
@@ -105,20 +120,17 @@ export function validateWager(check: WagerCheck): ValidationIssue[] {
   const existingStake = check.existingStake ?? 0;
 
   if (!Number.isInteger(check.amount) || check.amount < 1) {
-    issues.push({
-      code: "amount-invalid",
-      message: "Wager must be a positive whole amount.",
-    });
+    issues.push({ code: "amount-invalid" });
     return issues;
   }
   if (check.amount + existingStake > check.maxWagerPerUser) {
     issues.push({
       code: "over-max-wager",
-      message: `Max ${check.maxWagerPerUser} per user on this bet.`,
+      values: { max: check.maxWagerPerUser },
     });
   }
   if (check.amount > check.balance) {
-    issues.push({ code: "over-balance", message: "Not enough coins." });
+    issues.push({ code: "over-balance" });
   }
   return issues;
 }
@@ -150,11 +162,17 @@ export interface DuelDraft {
 /**
  * Extra Phase 2 task 5 — the duel counterpart of `validateBetDraft`, and the
  * single statement of what a well-formed challenge is. `create_duel` in
- * `20260906130100_duel_rpcs.sql` re-checks every rule below and repeats every
- * message byte-for-byte, per the convention every RPC in this repo follows:
- * the client gates so a person sees the rule before submitting, the database
- * enforces it so the rule survives Studio and PostgREST, and the two produce
- * the same sentence so a server refusal never reads like a different product.
+ * `20260906130100_duel_rpcs.sql` re-checks every rule below, per the
+ * convention every RPC in this repo follows: the client gates so a person sees
+ * the rule before submitting, and the database enforces it so the rule
+ * survives Studio and PostgREST.
+ *
+ * The RPCs still raise English sentences and that is now deliberate rather
+ * than duplicative (plan-i18n-ptbr.md D9): those strings are the last line of
+ * defence against races and tampering, they are LOGGED and never rendered, and
+ * pattern-matching on them to recover a code would break silently the day
+ * someone edits a migration. What a person actually hits is this function,
+ * whose codes the UI translates.
  *
  * `context` is the roster the ids are checked against plus the challenger's
  * own per-team balance (DOM-013 — balances are per-team, so the caller must
@@ -186,10 +204,10 @@ export function validateDuelDraft(
     context.team.members.some((m) => m.userId === userId);
 
   if (draft.title.trim().length === 0) {
-    // Same code and same sentence as validateBetDraft's — a duel IS a bet
-    // (D1), so the title rule is not a duel rule and gets no duel-specific
-    // copy. Diverging here would put two sentences on one requirement.
-    issues.push({ code: "title-required", message: "Give the bet a title." });
+    // Same code as validateBetDraft's — a duel IS a bet (D1), so the title
+    // rule is not a duel rule and gets no duel-specific copy. Diverging here
+    // would put two sentences on one requirement.
+    issues.push({ code: "title-required" });
   }
 
   // Three outcomes, one issue at most, and the ORDER is the whole design:
@@ -198,24 +216,15 @@ export function validateDuelDraft(
   // wave a self-challenge through. And blank is tested first because "pick who
   // you're challenging" is the sentence for an untouched field, whereas an id
   // that is simply not on the roster (a stale picker, a kicked member) is the
-  // same *user-facing* problem — pick someone — so it reuses that code and
-  // that message rather than inventing a third.
+  // same *user-facing* problem — pick someone — so it reuses that code rather
+  // than inventing a third.
   const challengeeId = draft.challengeeId.trim();
   if (challengeeId.length === 0) {
-    issues.push({
-      code: "duel-target-required",
-      message: "Pick who you're challenging.",
-    });
+    issues.push({ code: "duel-target-required" });
   } else if (challengeeId === context.challengerId) {
-    issues.push({
-      code: "duel-target-self",
-      message: "You can't challenge yourself.",
-    });
+    issues.push({ code: "duel-target-self" });
   } else if (!isTeammate(challengeeId)) {
-    issues.push({
-      code: "duel-target-required",
-      message: "Pick who you're challenging.",
-    });
+    issues.push({ code: "duel-target-required" });
   }
 
   // D7: the named mediator is any teammate EXCEPT the two participants, and
@@ -230,20 +239,14 @@ export function validateDuelDraft(
       mediatorId === context.challengerId ||
       mediatorId === challengeeId
     ) {
-      issues.push({
-        code: "duel-mediator-invalid",
-        message: "The mediator has to be a teammate who isn't in the duel.",
-      });
+      issues.push({ code: "duel-mediator-invalid" });
     }
     // Note what does NOT also fire: an invalid mediator with `anyModerator`
     // false is not additionally "resolver-required". They picked someone;
     // telling them to pick a mediator when they just did is noise, and the
     // draft is refused either way until the pick is fixed.
   } else if (!draft.anyModerator) {
-    issues.push({
-      code: "duel-resolver-required",
-      message: "Pick a mediator, or let any moderator resolve it.",
-    });
+    issues.push({ code: "duel-resolver-required" });
   }
 
   // One code and one sentence for what `validateWager` splits into
@@ -258,10 +261,7 @@ export function validateDuelDraft(
     draft.stake < 1 ||
     draft.stake > context.balance
   ) {
-    issues.push({
-      code: "duel-stake-invalid",
-      message: "Stake must be a whole amount you can afford.",
-    });
+    issues.push({ code: "duel-stake-invalid" });
   }
 
   return issues;
@@ -307,7 +307,7 @@ export interface TeamDraft {
 export function validateTeamDraft(draft: TeamDraft): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (draft.name.trim().length === 0) {
-    issues.push({ code: "team-name-required", message: "Give the team a name." });
+    issues.push({ code: "team-name-required" });
   }
   return issues;
 }
@@ -315,7 +315,7 @@ export function validateTeamDraft(draft: TeamDraft): ValidationIssue[] {
 /** UX-005/DOM-005: codes never expire, so joining only needs a non-blank one. */
 export function validateInviteCode(code: string): ValidationIssue[] {
   return code.trim().length === 0
-    ? [{ code: "invite-code-required", message: "Paste an invite code." }]
+    ? [{ code: "invite-code-required" }]
     : [];
 }
 
@@ -337,22 +337,16 @@ export function validateProfileDraft(draft: ProfileDraft): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   if (draft.displayName.trim().length === 0) {
-    issues.push({
-      code: "display-name-required",
-      message: "Pick a display name.",
-    });
+    issues.push({ code: "display-name-required" });
   }
   // Widened to string[]: NAME_COLORS is a literal tuple, so `includes` would
   // otherwise refuse to be asked about an arbitrary string.
   const palette: readonly string[] = NAME_COLORS;
   if (!palette.includes(draft.nameColor)) {
-    issues.push({
-      code: "name-color-invalid",
-      message: "Pick one of the available name colors.",
-    });
+    issues.push({ code: "name-color-invalid" });
   }
   if (draft.avatar.trim().length === 0) {
-    issues.push({ code: "avatar-required", message: "Pick an avatar." });
+    issues.push({ code: "avatar-required" });
   }
 
   return issues;
@@ -364,7 +358,7 @@ export function validateProfileDraft(draft: ProfileDraft): ValidationIssue[] {
  */
 export function validateCommentBody(body: string): ValidationIssue[] {
   return body.trim().length === 0
-    ? [{ code: "comment-empty", message: "Write something first." }]
+    ? [{ code: "comment-empty" }]
     : [];
 }
 
@@ -384,13 +378,13 @@ export function validateChatMessage(body: string): ValidationIssue[] {
   const trimmed = body.trim();
 
   if (trimmed.length === 0) {
-    issues.push({ code: "chat-empty", message: "Write something first." });
+    issues.push({ code: "chat-empty" });
     return issues;
   }
   if (trimmed.length > CONFIG.CHAT_MESSAGE_MAX_CHARS) {
     issues.push({
       code: "chat-too-long",
-      message: `Keep it under ${CONFIG.CHAT_MESSAGE_MAX_CHARS} characters.`,
+      values: { max: CONFIG.CHAT_MESSAGE_MAX_CHARS },
     });
   }
 
@@ -401,10 +395,7 @@ export function validateChatMessage(body: string): ValidationIssue[] {
 export function validateInjection(amount: number): ValidationIssue[] {
   return !Number.isInteger(amount) || amount < 1
     ? [
-        {
-          code: "inject-amount-invalid",
-          message: "Inject a positive whole amount.",
-        },
+        { code: "inject-amount-invalid" },
       ]
     : [];
 }

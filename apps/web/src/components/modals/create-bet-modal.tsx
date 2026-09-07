@@ -11,6 +11,7 @@ import {
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
+import { useErrorText } from "@/lib/use-error-text";
 import { EmojiPicker } from "@/components/sl/emoji-picker";
 import { ModalShell } from "@/components/sl/modal-shell";
 
@@ -29,6 +30,7 @@ export function CreateBetModal() {
   const { close } = useModal();
   const { addBet } = useTeam();
 
+  const { errorText, issueText } = useErrorText();
   const [title, setTitle] = useState("");
   const [emoji, setEmoji] = useState("");
   const [options, setOptions] = useState(["", ""]);
@@ -100,11 +102,12 @@ export function CreateBetModal() {
     if (result.ok) {
       close();
     } else {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
     }
   }
 
-  const footerError = submitError ?? visibleIssue?.message ?? null;
+  const footerError =
+    submitError ?? (visibleIssue ? issueText(visibleIssue) : null);
 
   return (
     <ModalShell

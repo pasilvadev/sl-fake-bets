@@ -5,6 +5,7 @@ import { Maximize2 } from "lucide-react";
 import { useModal } from "@/lib/modal-context";
 import { useTeam, type MutationResult } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
+import { useErrorText } from "@/lib/use-error-text";
 import {
   ChatComposer,
   ChatEmpty,
@@ -76,6 +77,7 @@ export function ChatModule({
   const { open } = useModal();
   const { show } = useToast();
 
+  const { errorText, codeText } = useErrorText();
   const [sendPending, setSendPending] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const loadingEarlierRef = useRef(false);
@@ -172,7 +174,7 @@ export function ChatModule({
     // per-file one: at >=lg the rail and `chat-modal.tsx` are mounted at the
     // same time, so a per-surface key would let one rejection stack two cards
     // in the shared layer. One card per burst, whichever surface sent (D6).
-    if (!result.ok) show({ kind: "failure", text: result.error, key: "chat-send" });
+    if (!result.ok) show({ kind: "failure", text: errorText(result), key: "chat-send" });
     return result;
   }
 
@@ -226,7 +228,7 @@ export function ChatModule({
         <ChatSkeleton rows={4} />
       ) : chat.status === "error" ? (
         <p className="py-4 text-sm text-negative">
-          {chat.error ?? "Could not load chat."}
+          {codeText(chat.error ?? "chat-load-failed")}
         </p>
       ) : chat.messages.length === 0 ? (
         <ChatEmpty />

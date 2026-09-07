@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { useRouter } from "next/navigation";
 import { useTeamSession } from "@/lib/team-context";
 import { useAuth } from "@/lib/auth-context";
@@ -43,6 +44,7 @@ function JoinFlow({
   const { joinTeamByCode, setTeamId, status, teams } = useTeamSession();
   const { user } = useAuth();
 
+  const { errorText } = useErrorText();
   const [preview, setPreview] = useState<TeamPreview | null>(initialPreview);
   const [loading, setLoading] = useState(initialPreview === null);
   const [joining, setJoining] = useState(false);
@@ -92,7 +94,7 @@ function JoinFlow({
     const result = await joinTeamByCode(code);
     setJoining(false);
     if (result.ok) router.replace("/");
-    else setError(result.error);
+    else setError(errorText(result));
   }
 
   return (

@@ -6,6 +6,7 @@ import type {
   Comment,
   Duel,
   Locale,
+  MutationErrorCode,
   Team,
   TeamAccessMode,
   TeamMember,
@@ -429,11 +430,24 @@ export async function fetchBet(
 
 // --- the load -----------------------------------------------------------------
 
-/** Any PostgREST error, turned into the one sentence the UI can show. */
+/**
+ * Any PostgREST error, turned into the one CODE the UI can show (D8/D9).
+ *
+ * It used to hand back `error.message` — a Postgres sentence, in English,
+ * straight onto the load-failed screen. That was the read-path twin of the
+ * `fail(error.message)` D9 closed on the write path, and it gets the same
+ * treatment: the raw text and its SQLSTATE go to the log, where they are
+ * actually useful, and the reader gets one localized sentence.
+ */
 function firstError(
-  ...results: { error: { message: string } | null }[]
-): string | null {
-  return results.find((r) => r.error)?.error?.message ?? null;
+  ...results: { error: { message: string; code?: string } | null }[]
+): MutationErrorCode | null {
+  const hit = results.find((r) => r.error)?.error;
+  if (!hit) return null;
+  console.error(
+    `[team-data] load failed ${hit.code ?? "(no SQLSTATE)"}: ${hit.message}`,
+  );
+  return "team-load-failed";
 }
 
 /**
@@ -454,7 +468,7 @@ function firstError(
  */
 export async function loadTeamData(
   supabase: Client,
-): Promise<{ data: TeamData; error: string | null }> {
+): Promise<{ data: TeamData; error: MutationErrorCode | null }> {
   // D8 half (b): persist any duel nobody accepted before its deadline, BEFORE
   // reading the world. Sequential, on purpose, and the round trip it costs on
   // cold start is not an oversight to fold into the Promise.all below.

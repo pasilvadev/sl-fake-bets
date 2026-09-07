@@ -55,6 +55,7 @@ import {
   type Comment,
   type Duel,
   type DuelDraft,
+  type MutationErrorCode,
   type ProfileDraft,
   type SettlementDelta,
   type Team,
@@ -171,7 +172,8 @@ export interface ChatState {
   /** ASCENDING (oldest first) — the order both the rail and the modal render. */
   messages: ChatMessage[];
   status: "idle" | "loading" | "ready" | "error";
-  error: string | null;
+  /** A code (D8), not a sentence — the consumer translates it. */
+  error: MutationErrorCode | null;
   hasMore: boolean;
   unreadCount: number;
   firstUnreadId: string | null;
@@ -421,7 +423,8 @@ export interface TeamState {
  */
 export interface TeamSession {
   status: "loading" | "ready" | "error";
-  error: string | null;
+  /** A code (D8), not a sentence — the consumer translates it. */
+  error: MutationErrorCode | null;
   /** Teams the signed-in user belongs to — empty for a brand-new account. */
   teams: Team[];
   currentUserId: string | null;
@@ -1052,7 +1055,7 @@ function isAfterMarker(message: ChatMessage, marker: ChatSeenMarker): boolean {
 interface ChatSlice {
   teamId: string | null;
   status: ChatState["status"];
-  error: string | null;
+  error: MutationErrorCode | null;
   /** ASCENDING (oldest first) — the order both the rail and the modal render. */
   messages: ChatMessage[];
   hasMore: boolean;
@@ -1082,7 +1085,7 @@ type ChatAction =
    * across a team switch. */
   | { type: "reset"; teamId: string | null }
   | { type: "loading" }
-  | { type: "error"; error: string }
+  | { type: "error"; error: MutationErrorCode }
   | {
       type: "loaded";
       messages: ChatMessage[];
@@ -1202,7 +1205,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   // than a field folded into `data` above.
   const [chatSlice, dispatchChat] = useReducer(chatReducer, EMPTY_CHAT_SLICE);
   const [status, setStatus] = useState<TeamSession["status"]>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<MutationErrorCode | null>(null);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
 
   const setTeamId = useCallback((id: string) => {
@@ -1649,12 +1652,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const addBet = useCallback(
     async (draft: NewBetDraft): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       if (!permitCreateBet(ctx.team, ctx.userId)) {
-        return fail("Only the leader or moderators can create bets in this team.");
+        return fail("manager-only-create-bet");
       }
       const firstIssue = validateBetDraft(draft, Date.now())[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await betDb.createBet(supabase, {
         teamId: ctx.team.id,
@@ -1665,7 +1668,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         maxWagerPerUser: draft.maxWagerPerUser,
       });
       if (!result.ok || !result.bet) {
-        return result.ok ? fail("Could not create the bet.") : result;
+        return result.ok ? fail("bet-create-failed") : result;
       }
 
       // Labels are trimmed and blank slots dropped the same way create_bet
@@ -1715,10 +1718,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       amount: number,
     ): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
       const member = team?.members.find((m) => m.userId === currentUserId);
-      if (!team || !member) return fail("You are not a member of this team.");
+      if (!team || !member) return fail("not-a-member");
       // Extra Phase 2 task 8's first guard, and it is refused BEFORE the clock
       // and the option check because it is not a wagering problem: a duel has
       // exactly two wagers, one per participant, placed by `create_duel` and
@@ -1730,13 +1733,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // to find out. Keyed on `bet.kind`, exactly as the RPC is — not on
       // `duelFor(betId)`, so the two tests cannot drift apart.
       if (bet.kind === "duel") {
-        return fail("Wagers are placed by accepting the duel, not from the bet page.");
+        return fail("duel-no-direct-wager");
       }
       if (!canAcceptWagers(bet, Date.now())) {
-        return fail("Betting is closed for this bet.");
+        return fail("betting-closed");
       }
       if (!bet.options.some((o) => o.id === optionId)) {
-        return fail("Pick one of the bet's options.");
+        return fail("option-required");
       }
       const existingStake = data.wagers
         .filter((w) => w.betId === bet.id && w.userId === currentUserId)
@@ -1747,7 +1750,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         maxWagerPerUser: bet.maxWagerPerUser,
         existingStake,
       })[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await betDb.placeWager(supabase, {
         betId: bet.id,
@@ -1755,7 +1758,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         amount,
       });
       if (!result.ok || !result.wager) {
-        return result.ok ? fail("Could not place the wager.") : result;
+        return result.ok ? fail("wager-failed") : result;
       }
 
       dispatch({
@@ -1779,11 +1782,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const closeBetEarly = useCallback(
     async (betId: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team || !currentUserId) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("team-not-found");
       if (!permitCloseBetEarly(team, currentUserId, bet)) {
-        return fail("Only the bet creator or a moderator can close betting early.");
+        return fail("creator-or-mod-only-close");
       }
       // Task 8's second guard. A duel's "betting window" is its ACCEPT window,
       // and closing it early is not a thing anyone can want: the challengee
@@ -1792,20 +1795,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // nobody may wager in has no wagering window to close, and `close_bet_early`
       // says exactly this sentence server-side.
       if (bet.kind === "duel") {
-        return fail("A duel has no betting window to close.");
+        return fail("duel-no-betting-window");
       }
       const effectiveState = computeEffectiveState(bet, Date.now());
       if (!canTransitionBetState(effectiveState, "closed")) {
         return fail(
           effectiveState === "resolved"
-            ? "This bet is already resolved."
-            : "Betting is already closed.",
+            ? "bet-already-resolved"
+            : "betting-already-closed",
         );
       }
 
       const result = await betDb.closeBetEarly(supabase, bet.id);
       if (!result.ok || !result.closedAt) {
-        return result.ok ? fail("Could not close the bet.") : result;
+        return result.ok ? fail("bet-close-failed") : result;
       }
 
       // DOM-012: closesAt is exactly when open→closed happened, and the value
@@ -1855,14 +1858,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const resolveBet = useCallback(
     async (betId: string, resolution: BetResolution): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team || !currentUserId) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("team-not-found");
 
       const duel = data.duels.find((d) => d.betId === bet.id);
       if (duel) {
         if (!permitResolveDuel(team, currentUserId, duel)) {
-          return fail("Only the mediator or a moderator can resolve this duel.");
+          return fail("duel-resolver-only");
         }
         // D8 half (a) decides the sentence here, not just the gate. An expired
         // unaccepted duel already READS as void on every surface before
@@ -1874,21 +1877,21 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         // can no longer arrive.
         const phase = computeDuelPhase(bet, duel, Date.now());
         if (phase === "settled" || phase === "expired") {
-          return fail("This bet is already resolved.");
+          return fail("bet-already-resolved");
         }
         if (phase !== "accepted") {
-          return fail("This duel hasn't been accepted yet.");
+          return fail("duel-not-accepted");
         }
       } else {
         if (!permitResolveBet(team, currentUserId, bet)) {
-          return fail("Only the bet creator or a moderator can resolve this bet.");
+          return fail("creator-or-mod-only-resolve");
         }
         const effectiveState = computeEffectiveState(bet, Date.now());
         if (!canTransitionBetState(effectiveState, "resolved")) {
           return fail(
             effectiveState === "open"
-              ? "Close betting before resolving."
-              : "This bet is already resolved.",
+              ? "close-before-resolve"
+              : "bet-already-resolved",
           );
         }
       }
@@ -1896,7 +1899,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         resolution.kind === "winner" &&
         !bet.options.some((o) => o.id === resolution.winningOptionId)
       ) {
-        return fail("Pick one of the bet's options as the winner.");
+        return fail("winning-option-required");
       }
 
       const result = await betDb.resolveBet(supabase, { betId: bet.id, resolution });
@@ -1939,11 +1942,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const deleteBet = useCallback(
     async (betId: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team || !currentUserId) return fail("Team not found.");
+      if (!team || !currentUserId) return fail("team-not-found");
       if (!permitDeleteBet(team, currentUserId, bet)) {
-        return fail("Only the bet creator or a moderator can delete this bet.");
+        return fail("creator-or-mod-only-delete");
       }
       // D6, task 8's third guard: a duel may be deleted only BEFORE it is
       // accepted. Once both stakes are down, deleting is the challenger's
@@ -1961,7 +1964,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // coins to the same person.
       const duel = data.duels.find((d) => d.betId === bet.id);
       if (duel && !permitDeleteDuel(team, currentUserId, bet, duel)) {
-        return fail("A duel can only be deleted before it's accepted.");
+        return fail("duel-delete-after-accept");
       }
 
       const result = await betDb.deleteBet(supabase, bet.id);
@@ -1988,13 +1991,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const addComment = useCallback(
     async (betId: string, body: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
       if (!team || !currentUserId || !permitComment(team, currentUserId)) {
-        return fail("Only team members can comment on this bet.");
+        return fail("member-only-comment");
       }
       const firstIssue = validateCommentBody(body)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await betDb.addComment(supabase, {
         betId: bet.id,
@@ -2002,7 +2005,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         body: body.trim(),
       });
       if (!result.ok || !result.comment) {
-        return result.ok ? fail("Could not post the comment.") : result;
+        return result.ok ? fail("comment-failed") : result;
       }
 
       dispatch({
@@ -2082,9 +2085,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const startDuel = useCallback(
     async (draft: NewDuelDraft): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       if (!permitStartDuel(ctx.team, ctx.userId)) {
-        return fail("You are not a member of this team.");
+        return fail("not-a-member");
       }
       const balance =
         ctx.team.members.find((m) => m.userId === ctx.userId)?.coinBalance ?? 0;
@@ -2093,7 +2096,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         challengerId: ctx.userId,
         balance,
       })[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       // Normalised once, here, so the same value is validated, sent and stored
       // locally. `validateDuelDraft` trims before it compares and treats an
@@ -2113,7 +2116,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         stake: draft.stake,
       });
       if (!result.ok || !result.duel) {
-        return result.ok ? fail("Could not send the challenge.") : result;
+        return result.ok ? fail("duel-create-failed") : result;
       }
 
       const started = result.duel;
@@ -2200,11 +2203,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const acceptDuel = useCallback(
     async (betId: string): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
       const member = team?.members.find((m) => m.userId === currentUserId);
       if (!team || !member || !currentUserId) {
-        return fail("You are not a member of this team.");
+        return fail("not-a-member");
       }
       // The duel row and the challengee's side of it, together: position 1 is
       // theirs by the convention `create_duel` fixed, and `toBet` sorts options
@@ -2215,7 +2218,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // cannot produce.
       const duel = data.duels.find((d) => d.betId === bet.id);
       const challengeeSide = bet.options[1];
-      if (!duel || !challengeeSide) return fail("This bet is not a duel.");
+      if (!duel || !challengeeSide) return fail("not-a-duel");
 
       // ONE call to the shared predicate, then the sentence chosen by asking
       // which of its clauses failed — the same shape `closeBetEarly` above uses
@@ -2227,8 +2230,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitAcceptDuel(team, currentUserId, duel)) {
         return fail(
           currentUserId !== duel.challengeeId
-            ? "Only the person challenged can accept this duel."
-            : "This duel has already been accepted.",
+            ? "duel-not-challengee-accept"
+            : "duel-already-accepted",
         );
       }
       const phase = computeDuelPhase(bet, duel, Date.now());
@@ -2241,17 +2244,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         // duel settled yesterday does not read as expired today — and lands
         // here on "no longer open". Both are true, both refuse, and the phase's
         // ordering is the one the whole feature is built on.
-        return fail(
-          phase === "expired"
-            ? "This challenge has expired."
-            : "This challenge is no longer open.",
-        );
+        return fail(phase === "expired" ? "duel-expired" : "duel-not-open");
       }
-      if (duel.stake > member.coinBalance) return fail("Not enough coins.");
+      if (duel.stake > member.coinBalance) return fail("over-balance");
 
       const result = await betDb.acceptDuel(supabase, bet.id);
       if (!result.ok || !result.accepted) {
-        return result.ok ? fail("Could not accept the challenge.") : result;
+        return result.ok ? fail("duel-accept-failed") : result;
       }
 
       dispatch({
@@ -2306,11 +2305,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       reason: betDb.DuelDeclineReason = "declined",
     ): Promise<MutationResult> => {
       const bet = data.bets.find((b) => b.id === betId);
-      if (!bet) return fail("This bet no longer exists.");
+      if (!bet) return fail("bet-not-found");
       const team = data.teams.find((t) => t.id === bet.teamId);
-      if (!team || !currentUserId) return fail("You are not a member of this team.");
+      if (!team || !currentUserId) return fail("not-a-member");
       const duel = data.duels.find((d) => d.betId === bet.id);
-      if (!duel) return fail("This bet is not a duel.");
+      if (!duel) return fail("not-a-duel");
 
       // `canDeclineDuel` answers false for BOTH "not the challengee" and
       // "already accepted", so the sentence is chosen by asking which clause
@@ -2318,8 +2317,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitDeclineDuel(team, currentUserId, duel)) {
         return fail(
           currentUserId !== duel.challengeeId
-            ? "Only the person challenged can decline this duel."
-            : "This duel has already been accepted.",
+            ? "duel-not-challengee-decline"
+            : "duel-already-accepted",
         );
       }
       // `bet.state`, not `computeDuelPhase` — this is the one duel guard that
@@ -2327,7 +2326,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // resolved challenge is gone; an expired-but-unswept one is still
       // declinable, and declining it lands in the same place the sweep would.
       if (bet.state === "resolved") {
-        return fail("This challenge is no longer open.");
+        return fail("duel-not-open");
       }
 
       const result = await betDb.declineDuel(supabase, bet.id, reason);
@@ -2402,7 +2401,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (teamIdRef.current !== forTeamId) return;
 
     if (error || !page) {
-      dispatchChat({ type: "error", error: error ?? "Could not load chat." });
+      dispatchChat({ type: "error", error: error ?? "chat-load-failed" });
       return;
     }
 
@@ -2487,12 +2486,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const sendChatMessage = useCallback(
     async (body: string): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       if (!permitComment(ctx.team, ctx.userId)) {
-        return fail("Only team members can send messages in this team.");
+        return fail("member-only-chat");
       }
       const firstIssue = validateChatMessage(body)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const id = chatDb.newChatMessageId();
       const trimmed = body.trim();
@@ -2565,9 +2564,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   /** DOM-001/002 + DOM-021: creator becomes the leader and gets the grant. */
   const createTeam = useCallback(
     async (draft: TeamDraft): Promise<MutationResult> => {
-      if (!currentUserId) return fail("You must be signed in.");
+      if (!currentUserId) return fail("not-signed-in");
       const firstIssue = validateTeamDraft(draft)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await db.createTeam(supabase, draft);
       if (!result.ok) return result;
@@ -2583,9 +2582,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   /** UX-005/DOM-005/006 + A-4: codes never expire, bans still keep you out. */
   const joinTeamByCode = useCallback(
     async (code: string): Promise<MutationResult> => {
-      if (!currentUserId) return fail("You must be signed in.");
+      if (!currentUserId) return fail("not-signed-in");
       const firstIssue = validateInviteCode(code)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       // The client's own copy of canJoinTeam only answers for teams it can
       // already see; the authoritative check is inside join_team_with_code.
@@ -2593,7 +2592,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         (t) => t.inviteCode.toLowerCase() === code.trim().toLowerCase(),
       );
       if (known && !permitJoinTeam(known, currentUserId)) {
-        return fail(`You are already in ${known.name}.`);
+        return fail("already-in-team", { values: { team: known.name } });
       }
 
       const result = await db.joinTeamByCode(supabase, code);
@@ -2626,19 +2625,19 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const removeMember = useCallback(
     async (userId: string, ban: boolean): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       const permitted = ban ? permitBan : permitKick;
       if (!permitted(ctx.team, ctx.userId)) {
-        return fail("Only the leader or moderators can remove members.");
+        return fail("manager-only-remove-member");
       }
       if (userId === ctx.userId) {
-        return fail("Use Leave team to remove yourself.");
+        return fail("cannot-remove-self");
       }
       if (userId === ctx.team.leaderId) {
-        return fail("The team leader can't be removed.");
+        return fail("cannot-remove-leader");
       }
       if (!ctx.team.members.some((m) => m.userId === userId)) {
-        return fail("That member is not on this team.");
+        return fail("member-not-on-team");
       }
 
       const cascade = departureCascade(data, ctx.team.id, userId);
@@ -2677,9 +2676,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const updateTeamSettings = useCallback(
     async (settings: { accessMode: TeamAccessMode }): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       if (!permitManageTeam(ctx.team, ctx.userId)) {
-        return fail("Only the leader or moderators can change team settings.");
+        return fail("manager-only-team-settings");
       }
       if (ctx.team.accessMode === settings.accessMode) return ok;
 
@@ -2707,9 +2706,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    */
   const deleteTeam = useCallback(async (): Promise<MutationResult> => {
     const ctx = requireContext();
-    if (!ctx) return fail("Team not found.");
+    if (!ctx) return fail("team-not-found");
     if (!permitDeleteTeam(ctx.team, ctx.userId)) {
-      return fail("Only the team leader can delete the team.");
+      return fail("leader-only-delete-team");
     }
 
     const result = await db.deleteTeam(supabase, ctx.team.id);
@@ -2729,12 +2728,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    */
   const leaveTeam = useCallback(async (): Promise<MutationResult> => {
     const ctx = requireContext();
-    if (!ctx) return fail("Team not found.");
+    if (!ctx) return fail("team-not-found");
     if (!permitLeaveTeam(ctx.team, ctx.userId)) {
       return fail(
-        ctx.team.leaderId === ctx.userId
-          ? "The leader can't leave — delete the team instead."
-          : "You are not a member of this team.",
+        ctx.team.leaderId === ctx.userId ? "leader-cannot-leave" : "not-a-member",
       );
     }
 
@@ -2763,11 +2760,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   /** UX-022: name, curated name color, avatar — applied everywhere at once. */
   const updateProfile = useCallback(
     async (draft: ProfileDraft): Promise<MutationResult> => {
-      if (!currentUserId) return fail("You must be signed in.");
+      if (!currentUserId) return fail("not-signed-in");
       const user = data.users.find((u) => u.id === currentUserId);
-      if (!user) return fail("Profile not found.");
+      if (!user) return fail("profile-not-found");
       const firstIssue = validateProfileDraft(draft)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await db.updateProfile(supabase, currentUserId, draft);
       if (!result.ok) return result;
@@ -2799,15 +2796,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    */
   const completeOnboarding = useCallback(
     async (draft: ProfileDraft | null): Promise<MutationResult> => {
-      if (!currentUserId) return fail("You must be signed in.");
+      if (!currentUserId) return fail("not-signed-in");
       const user = data.users.find((u) => u.id === currentUserId);
-      if (!user) return fail("Profile not found.");
+      if (!user) return fail("profile-not-found");
 
       const onboardedAt = new Date().toISOString();
 
       if (draft) {
         const firstIssue = validateProfileDraft(draft)[0];
-        if (firstIssue) return fail(firstIssue.message);
+        if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
         const result = await db.updateProfile(supabase, currentUserId, draft, {
           onboardedAt,
@@ -2838,15 +2835,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const injectCoins = useCallback(
     async (userId: string, amount: number): Promise<MutationResult> => {
       const ctx = requireContext();
-      if (!ctx) return fail("Team not found.");
+      if (!ctx) return fail("team-not-found");
       if (!permitInjectCoins(ctx.team, ctx.userId)) {
-        return fail("Only the team leader can inject coins.");
+        return fail("leader-only-inject");
       }
       if (!ctx.team.members.some((m) => m.userId === userId)) {
-        return fail("That member is not on this team.");
+        return fail("member-not-on-team");
       }
       const firstIssue = validateInjection(amount)[0];
-      if (firstIssue) return fail(firstIssue.message);
+      if (firstIssue) return fail(firstIssue.code, { values: firstIssue.values });
 
       const result = await db.injectCoins(supabase, {
         teamId: ctx.team.id,

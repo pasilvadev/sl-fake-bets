@@ -6,6 +6,7 @@ import { CONFIG, mustForceAnyModerator, validateDuelDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
+import { useErrorText } from "@/lib/use-error-text";
 import { ModalShell } from "@/components/sl/modal-shell";
 import { PlayerSearch } from "@/components/sl/player-search";
 import { CoinAmount } from "@/components/sl/coin-amount";
@@ -126,6 +127,7 @@ export function StartDuelModal() {
   const { team, currentUser, balance, startDuel } = useTeam();
   const { show } = useToast();
 
+  const { errorText, issueText } = useErrorText();
   const [title, setTitle] = useState("");
   const [challengeeId, setChallengeeId] = useState<string | null>(null);
   const [mediatorId, setMediatorId] = useState<string | null>(null);
@@ -204,7 +206,7 @@ export function StartDuelModal() {
     });
     setPending(false);
     if (!result.ok) {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
       return;
     }
     // Synchronous, in the handler of the action this person took — the only
@@ -214,7 +216,8 @@ export function StartDuelModal() {
     close();
   }
 
-  const footerError = submitError ?? visibleIssue?.message ?? null;
+  const footerError =
+    submitError ?? (visibleIssue ? issueText(visibleIssue) : null);
 
   return (
     <ModalShell

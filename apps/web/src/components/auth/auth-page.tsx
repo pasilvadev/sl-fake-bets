@@ -5,7 +5,9 @@ import { AlertTriangle } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
+import type { MutationErrorCode } from "@repo/shared";
 import { createClient } from "@/lib/supabase/client";
+import { useErrorText } from "@/lib/use-error-text";
 import { LocaleTextSwitcher } from "@/components/shell/locale-switcher";
 import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
 import { useOnboardingStep } from "@/components/onboarding/steps";
@@ -44,6 +46,7 @@ export function AuthPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  const { codeText } = useErrorText();
 
   const destination = useMemo(() => {
     const explicit = searchParams.get("next");
@@ -57,9 +60,15 @@ export function AuthPage() {
   const [notice, setNotice] = useState<string | null>(null);
   // Seeded once from the callback route's `?auth_error=` (a failed OAuth round
   // trip lands back here); every later value comes from an action below.
-  const [error, setError] = useState<string | null>(() =>
-    searchParams.get("auth_error"),
-  );
+  //
+  // The param carries a `MutationErrorCode` since UX-027 (D8), so it is
+  // translated here rather than rendered as-is. `codeText` falls back to the
+  // key for a value that is not a code, which is the right behaviour for a
+  // query string anyone can type: visible, harmless, and obviously wrong.
+  const [error, setError] = useState<string | null>(() => {
+    const code = searchParams.get("auth_error");
+    return code ? codeText(code as MutationErrorCode) : null;
+  });
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {

@@ -10,7 +10,11 @@ import {
   canStartDuel,
   mustForceAnyModerator,
 } from "./permissions";
-import { validateDuelDraft, type DuelDraft } from "./validation";
+import {
+  validateDuelDraft,
+  type DuelDraft,
+  type ValidationCode,
+} from "./validation";
 import {
   settleBet,
   voidDuelsForDepartingMember,
@@ -1210,51 +1214,28 @@ describe("validateDuelDraft — the compose form's gate, and the rule it must NO
     expect(validateDuelDraft(goodDraft, context)).toEqual([]);
   });
 
-  it("reports one issue per broken rule, with the RPC's own sentence", () => {
-    const cases: [Partial<DuelDraft>, string, string][] = [
-      [{ title: "   " }, "title-required", "Give the bet a title."],
-      [{ challengeeId: "" }, "duel-target-required", "Pick who you're challenging."],
-      [
-        { challengeeId: CHALLENGER },
-        "duel-target-self",
-        "You can't challenge yourself.",
-      ],
-      [
-        { challengeeId: STRANGER },
-        "duel-target-required",
-        "Pick who you're challenging.",
-      ],
-      [
-        { mediatorId: CHALLENGEE },
-        "duel-mediator-invalid",
-        "The mediator has to be a teammate who isn't in the duel.",
-      ],
-      [
-        { mediatorId: null, anyModerator: false },
-        "duel-resolver-required",
-        "Pick a mediator, or let any moderator resolve it.",
-      ],
-      [
-        { stake: 0 },
-        "duel-stake-invalid",
-        "Stake must be a whole amount you can afford.",
-      ],
-      [
-        { stake: 536 },
-        "duel-stake-invalid",
-        "Stake must be a whole amount you can afford.",
-      ],
-      [
-        { stake: 2.5 },
-        "duel-stake-invalid",
-        "Stake must be a whole amount you can afford.",
-      ],
+  // Codes, not sentences (plan-i18n-ptbr.md D8): `ValidationIssue.message` is
+  // gone, so what this pins is the mapping from a broken rule to the key the
+  // UI looks up in `messages/*.json`. That is the mapping worth pinning — the
+  // sentence is now free to change in either language without touching a test,
+  // which is exactly the property the owner asked for.
+  it("reports one issue per broken rule, as a code", () => {
+    const cases: [Partial<DuelDraft>, ValidationCode][] = [
+      [{ title: "   " }, "title-required"],
+      [{ challengeeId: "" }, "duel-target-required"],
+      [{ challengeeId: CHALLENGER }, "duel-target-self"],
+      [{ challengeeId: STRANGER }, "duel-target-required"],
+      [{ mediatorId: CHALLENGEE }, "duel-mediator-invalid"],
+      [{ mediatorId: null, anyModerator: false }, "duel-resolver-required"],
+      [{ stake: 0 }, "duel-stake-invalid"],
+      [{ stake: 536 }, "duel-stake-invalid"],
+      [{ stake: 2.5 }, "duel-stake-invalid"],
     ];
 
-    for (const [override, code, message] of cases) {
+    for (const [override, code] of cases) {
       const issues = validateDuelDraft({ ...goodDraft, ...override }, context);
       expect(issues, `${code} for ${JSON.stringify(override)}`).toEqual([
-        { code, message },
+        { code },
       ]);
     }
   });
@@ -1299,12 +1280,7 @@ describe("validateDuelDraft — the compose form's gate, and the rule it must NO
         { ...goodDraft, mediatorId: null, anyModerator: false },
         { ...context, team: restricted },
       ),
-    ).toEqual([
-      {
-        code: "duel-resolver-required",
-        message: "Pick a mediator, or let any moderator resolve it.",
-      },
-    ]);
+    ).toEqual([{ code: "duel-resolver-required" }]);
 
     // The gap is unreachable from the UI and that is `mustForceAnyModerator`'s
     // entire job: the compose form renders the control ticked and disabled in

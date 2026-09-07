@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { useToast } from "@/lib/toast-context";
@@ -17,6 +18,7 @@ export function LeaveTeamModal() {
   const { close } = useModal();
   const { team, balance, canLeave, leaveTeam } = useTeam();
   const { show } = useToast();
+  const { errorText } = useErrorText();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -34,7 +36,7 @@ export function LeaveTeamModal() {
       // ember rail. The store is above ModalRoot and above the TeamGate this
       // tears down, which is why the toast survives both (D1).
       show({ kind: "destructive", text: `You left "${name}".` });
-    } else setError(result.error);
+    } else setError(errorText(result));
   }
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { cn } from "cn";
 import { CONFIG, type TeamAccessMode } from "@repo/shared";
 import { useTeamSession } from "@/lib/team-context";
@@ -64,6 +65,7 @@ export function NoTeamsScreen() {
   const { createTeam, joinTeamByCode } = useTeamSession();
   const { signOut } = useAuth();
 
+  const { errorText } = useErrorText();
   const [name, setName] = useState("");
   const [accessMode, setAccessMode] = useState<TeamAccessMode>("free-for-all");
   const [code, setCode] = useState("");
@@ -76,7 +78,7 @@ export function NoTeamsScreen() {
     setError(null);
     const result = await createTeam({ name, accessMode });
     setPending(null);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) setError(errorText(result));
   }
 
   async function submitJoin(e: React.FormEvent) {
@@ -85,7 +87,7 @@ export function NoTeamsScreen() {
     setError(null);
     const result = await joinTeamByCode(code);
     setPending(null);
-    if (!result.ok) setError(result.error);
+    if (!result.ok) setError(errorText(result));
   }
 
   return (
@@ -182,10 +184,16 @@ export function NoTeamsScreen() {
 /** Renders `children` only once a current team exists. */
 export function TeamGate({ children }: { children: ReactNode }) {
   const { status, error, teams, reload } = useTeamSession();
+  const { codeText } = useErrorText();
 
   if (status === "loading") return <Splash />;
   if (status === "error") {
-    return <LoadFailed error={error ?? "Unknown error."} onRetry={() => void reload()} />;
+    return (
+      <LoadFailed
+        error={codeText(error ?? "team-load-failed")}
+        onRetry={() => void reload()}
+      />
+    );
   }
   if (teams.length === 0) return <NoTeamsScreen />;
 

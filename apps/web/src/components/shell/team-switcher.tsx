@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { ChevronDown } from "lucide-react";
 import { Popover } from "radix-ui";
 import { type Team } from "@repo/shared";
@@ -45,6 +46,7 @@ function TeamRow({
 export function TeamSwitcher() {
   const { team, teams, setTeamId, openBetCountFor, joinTeamByCode } = useTeam();
   const { open } = useModal();
+  const { errorText } = useErrorText();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function TeamSwitcher() {
       setJoinError(null);
       setPopoverOpen(false);
     } else {
-      setJoinError(result.error);
+      setJoinError(errorText(result));
     }
   }
 

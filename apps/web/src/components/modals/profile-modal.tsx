@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { validateProfileDraft, type ProfileDraft } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
@@ -28,6 +29,7 @@ export function ProfileModal() {
   const { close } = useModal();
   const { currentUser, updateProfile } = useTeam();
 
+  const { errorText, codeText } = useErrorText();
   const [draft, setDraft] = useState<ProfileDraft>({
     displayName: currentUser.displayName,
     nameColor: currentUser.nameColor,
@@ -49,7 +51,7 @@ export function ProfileModal() {
     if (result.ok) {
       close();
     } else {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
     }
   }
 
@@ -77,7 +79,8 @@ export function ProfileModal() {
         draft={draft}
         onChange={setDraft}
         onBusyChange={setUploading}
-        onUploadError={setSubmitError}
+        // A CODE, not a sentence (D8) — `codeText` is what makes it one.
+        onUploadError={(code) => setSubmitError(code && codeText(code))}
       />
     </ModalShell>
   );

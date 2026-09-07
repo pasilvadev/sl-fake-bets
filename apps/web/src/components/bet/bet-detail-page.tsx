@@ -34,6 +34,7 @@ import { useModal } from "@/lib/modal-context";
 import { useToast } from "@/lib/toast-context";
 import { useFeatureFlag } from "@/lib/feature-flags";
 import { useNow } from "@/lib/use-now";
+import { useErrorText } from "@/lib/use-error-text";
 import {
   formatRelativePast,
   formatShortDate,
@@ -560,6 +561,7 @@ function DuelPanel({
 function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }) {
   const { comments, userById, addComment } = useTeam();
   const now = useNow();
+  const { errorText } = useErrorText();
   const locale = useLocale();
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -583,7 +585,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
       setBody("");
       setError(null);
     } else {
-      setError(result.error);
+      setError(errorText(result));
     }
   }
 
@@ -652,6 +654,7 @@ function CommentsSection({ betId, canPost }: { betId: string; canPost: boolean }
 function DeleteBetPanel({ bet }: { bet: Bet }) {
   const { deleteBet } = useTeam();
   const { show } = useToast();
+  const { errorText } = useErrorText();
   const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -686,7 +689,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
       return;
     }
     setPending(false);
-    setError(result.error);
+    setError(errorText(result));
   }
 
   return (
@@ -728,6 +731,7 @@ function DeleteBetPanel({ bet }: { bet: Bet }) {
 /** DOM-011: two-step inline confirm — closing early is not undoable. */
 function CloseEarlyControl({ betId }: { betId: string }) {
   const { closeBetEarly } = useTeam();
+  const { errorText } = useErrorText();
   const { show } = useToast();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -741,7 +745,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
     const result = await closeBetEarly(betId);
     setPending(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorText(result));
       return;
     }
     // D3, the other way round: closing early is DOM-011 lifecycle, not
@@ -796,6 +800,7 @@ function CloseEarlyControl({ betId }: { betId: string }) {
 
 /** DOM-018/019: declare the winning option, or void to refund everyone. */
 function ResolvePanel({ bet }: { bet: Bet }) {
+  const { errorText } = useErrorText();
   const { resolveBet } = useTeam();
   const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
   const [error, setError] = useState<string | null>(null);
@@ -815,7 +820,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
     const result = await resolveBet(bet.id, resolution);
     if (!result.ok) {
       setPending(false);
-      setError(result.error);
+      setError(errorText(result));
     }
     // On success the bet leaves "closed" and this panel unmounts.
   }
@@ -893,6 +898,7 @@ function ResolvePanel({ bet }: { bet: Bet }) {
  * asserting something it cannot know.
  */
 function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
+  const { errorText } = useErrorText();
   const { resolveBet, userById } = useTeam();
   const [choice, setChoice] = useState<string | null>(null); // optionId | "void"
   const [error, setError] = useState<string | null>(null);
@@ -914,7 +920,7 @@ function DuelResolvePanel({ bet, duel }: { bet: Bet; duel: Duel }) {
     const result = await resolveBet(bet.id, resolution);
     if (!result.ok) {
       setPending(false);
-      setError(result.error);
+      setError(errorText(result));
     }
     // On success the bet becomes resolved and this panel unmounts.
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useErrorText } from "@/lib/use-error-text";
 import { cn } from "cn";
 import { CONFIG, validateTeamDraft, type TeamAccessMode } from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
@@ -17,6 +18,7 @@ export function CreateTeamModal() {
   const { close } = useModal();
   const { createTeam } = useTeam();
 
+  const { errorText } = useErrorText();
   const [name, setName] = useState("");
   const [accessMode, setAccessMode] = useState<TeamAccessMode>("free-for-all");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function CreateTeamModal() {
     if (result.ok) {
       close();
     } else {
-      setSubmitError(result.error);
+      setSubmitError(errorText(result));
     }
   }
 
