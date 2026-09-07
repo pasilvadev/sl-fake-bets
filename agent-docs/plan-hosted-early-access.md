@@ -4,14 +4,25 @@
 owner's Phase 0 A–B hand-off the same evening was the order. **Phases 1 and 2
 are both complete** (execution records under each phase, below): the hosted dev
 project holds the full schema and the alpha's auth configuration, both Supabase
-projects are configured, and a preview deployment is green. **Phase 3 is next
-and needs Phase 0 part C plus the owner's separate go** — its first step pushes
-the schema to production. Nothing is public yet: the production host still
-answers 404 and prod's database is empty.
+projects are configured, and a preview deployment is green. **Phase 3's
+infrastructure tasks (1–4, 10) are complete, on the owner's explicit
+"Execute phase 3 of the plan" order the same day** (execution record under
+that phase): prod holds the full schema (23 migrations, privilege audit zero
+deviations, still zero users/teams), the production deployment is live and
+current at `https://sl-fake-bets.vercel.app`, Google + password auth are
+verified on prod with no drift from Phase 2, and the daily keep-alive cron is
+registered and has been triggered once by hand. **What remains in Phase 3
+(tasks 5–9, 11) is human-and-device work no agent can perform** — a stranger's
+phone, a non-owner Google account, WhatsApp/Discord, and the owner's own
+production sign-in — handed back to the owner as a checklist in that phase's
+execution record.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
-transition is on. Nothing in Phases 1–5 runs before that.
+transition is on. **The Phase 3 execution record documents the second such
+order** — the one this section itself said Phase 3 needed beyond Phase 0 —
+given in the moment, in chat, as "Execute phase 3 of the plan. Trust the
+plan.", immediately before the first prod schema push.
 
 **Owner requirement, stated 2026-09-07:** bring the app from the current local
 Docker state to a hosted early access where a friend group can alpha test it —
@@ -1347,7 +1358,7 @@ gated on Phase 1". This is the rest of it. Phase 2 is now closed.
   `db:push:prod` is Phase 3 step 1, behind the owner's go, and §7 risk 11
   names it as the first irreversible-in-spirit act of this plan.
 
-### Phase 3 — Go live and verify on real devices (needs Phase 0 C)
+### Phase 3 — Go live and verify on real devices (needs Phase 0 C) 🟡 INFRA COMPLETE (2026-09-07); tasks 5–9, 11 need the owner
 
 **Goal:** production exists at its public URL, the owner has created the first
 real team, and every claim this plan makes about a stranger's experience has
@@ -1427,6 +1438,89 @@ does not wait on Google); Realtime on Nano under a real group (observe during
 the first evening; `design-realtime.md` §6 holds the escalation triggers); a
 friend forgetting a password in week one (D1's answer, said up front in step
 11).
+
+**Execution record — Phase 3 tasks 1–4, 10, 2026-09-07 (one agent session, on
+the owner's in-chat "Execute phase 3 of the plan. Trust the plan." — the
+separate go this section's status line asked for).** Zero defects found;
+nothing added to `found-bugs.md`. What actually happened, task by task.
+
+- *Task 1.* A manual `--dry-run` against prod was read before anything
+  destructive ran: 23 migrations pending, `"seeds":[]`, linked ref still dev
+  (`qkwvmdshqnkfqekilipo`) — matching Phase 2's own dry-run record exactly, so
+  the guard script was then run for real (`pnpm db:push:prod`, typed
+  confirmation `prod`): all 23 applied, `"dryRun":false`. The privilege audit
+  (Management API SQL runner, `POST /v1/projects/{ref}/database/query`, per
+  [[hosted-ops-toolbelt]] — this Mac's `python3` cannot itself open an HTTPS
+  connection, `SSLCertVerificationError`; `curl` for the request, `python3` only
+  to parse the saved response) returned **zero rows** against prod, same as
+  dev. A second read-only query confirmed, on the wire: realtime publication =
+  `bet_duels, bets, chat_messages, comments, wagers`; `cron.job` has
+  `prune-chat-messages`; `storage.buckets` = `avatars`, public, 2097152 bytes;
+  `feature_flags` has the same 8 rows as dev (`locale-pt-br=true`,
+  `auth-google=true`, `duel-bets=true`, `global-team-chat=true`,
+  `coming-soon-teasers=true`, three off); **`auth.users` count 0, `public.teams`
+  count 0** — confirmed empty immediately before any real account exists.
+- *Task 2.* No `vercel deploy` was needed or run: `git fetch origin` showed
+  `origin/main` already at `HEAD` (`2282b46`, 0 ahead/0 behind) from before
+  this session, and since Phase 2's record already established that a Git push
+  to `main` is a production deploy on this project, that push had already put
+  a **live, current** production deployment in place. Verified rather than
+  assumed: `GET /v9/projects/{id}` (Vercel API) showed the production target
+  `readyState: READY`, `meta.githubCommitSha` = `2282b46…` (exactly `HEAD`),
+  region `gru1`. On the live host: `/` → 200, signed-out page, `og:url =
+  https://sl-fake-bets.vercel.app` (not localhost), build tag `2282b46` visible
+  in the rendered HTML; `/robots.txt` → 200, disallows `/join/ /bet/ /auth/
+  /api/`; `/sitemap.xml` → 200, lists `/` and `/privacy`; `/privacy` → 200;
+  `/api/keepalive` with no header → 401. Homepage `og:`/`twitter:` tags are
+  title+description only, **no `og:image`** — absent, not relative, so this is
+  the acceptable case task 8's own note names, not the WhatsApp-drops-it case;
+  per-bet/per-team cards need task 7's real data first. The Vercel CLI itself
+  had to be reinstalled into this session's scratchpad (a new session has a
+  fresh scratchpad; [[hosted-ops-toolbelt]] already names this), used here only
+  for `whoami`/`env ls`, not `deploy`.
+- *Task 3.* Re-verified rather than re-pushed, to avoid re-arming the
+  `[remotes.production]` trap Phase 2 documented (a bare `config push` against
+  prod silently overwrites with dev's values). `GET
+  /v1/projects/{prod-ref}/config/auth` showed no drift since Phase 2 task 8:
+  `site_url` = the prod host, the six-entry `uri_allow_list`, `mailer_autoconfirm
+  = true`, `external_google_client_id` ending `…d31o26o0…` (the **production**
+  client, not dev's `…q79r144v…`), `external_google_skip_nonce_check = false`,
+  `password_min_length = 6`, `disable_signup = false`. The consent-screen walk
+  itself is still step 6, deferred to the owner as the plan always intended.
+- *Task 4.* Confirmed registered via the Vercel API rather than the Dashboard
+  click (equivalent read): `crons.enabledAt` set, `disabledAt` null, one
+  definition, `/api/keepalive` at `0 9 * * *`, bound to the current deployment
+  id. Triggered by hand with the real mechanism the cron itself uses — an
+  authenticated call, not the Dashboard button, which does the same thing from
+  the operator's browser instead of a script: `curl -H "Authorization: Bearer
+  $CRON_SECRET" https://sl-fake-bets.vercel.app/api/keepalive` → 200,
+  `{"ok":true,"flagCount":8}` (≥ 7, exit criterion met). Un-authenticated →
+  401, confirmed again on the live host.
+- *Task 10.* `vercel env ls` on the linked project is the authoritative source
+  and needs no login wall: `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` for
+  **Preview, Development** resolve to the dev ref (`qkwvmdshqn…`); the
+  **Production**-only pair resolves to the prod ref (`pgupqbizlf…`); D2's split
+  is exactly as specified. Opening the preview URL itself needs the owner's
+  Vercel login (Deployment Protection) and was left to them — this check does
+  not depend on it.
+- *Left in Phase 3, all needing the owner in person (no credential for any of
+  this belongs in chat):* **task 5** (a friend's phone, mobile data, a
+  password account under an address that isn't the owner's); **task 6** (a
+  phone, a Google account that isn't the owner's, and a note of exactly what
+  the consent screen says); **task 7** (the owner's own production sign-in —
+  their password is never typed into chat — creating the first real team and
+  completing the join with the friend from task 5); **task 8** (pasting the
+  resulting invite/bet links into WhatsApp/Slack/Discord/Telegram — the
+  per-object share cards can only be checked once task 7 has created one);
+  **task 9** (a real photo, uploaded from the phone, against the 2 MiB
+  `avatars` limit already confirmed in task 1); **task 11** (the owner's own
+  message to the friend group, with D1's "no password reset yet" line). None
+  of these has a scripted substitute that would actually verify what the task
+  asks — a stranger's UX, a real inbox-free consent screen, a real chat app's
+  unfurler — so none was attempted.
+- *State left on prod:* schema only — **zero rows in `auth.users` and
+  `public.teams`**, exactly as before, task 1's own read confirmed it last.
+  Nothing in this session wrote to prod's application data.
 
 ### Phase 4 — The Docker-free loop and the documents that describe it
 
