@@ -29,6 +29,20 @@ Phase 0 so agents can build the rest.
   provider-supplied name. This is a deliberate carve-out from UX-002's
   "every input pre-filled" rule, for one field, on one path.
 
+**Phase 0 part A answered by the owner, 2026-09-07 (D9, D2, D12):**
+
+- **D9 — `locale-pt-br` ships ON** for the alpha; the Phase 1 flags migration
+  flips it.
+- **D2 — names confirmed as written:** Supabase `sl-fake-bets-dev` and
+  `sl-fake-bets`, Vercel `sl-fake-bets`.
+- **D12 — acknowledged:** this plan is the ARC-013 order for the vision 2→3
+  move and the step past ARC-012's "still dev/staging" wording.
+
+The answers are also recorded as comments at the top of the owner's `.env.ops`
+(gitignored), which now exists with empty `SUPABASE_ACCESS_TOKEN=` and
+`VERCEL_TOKEN=` slots for Phase 0 part B. Part B is the owner's next step;
+Phase 1 needs nothing from Phase 0 and may run alongside it.
+
 ---
 
 ## 0. Scope, in one paragraph
@@ -397,8 +411,9 @@ Verified by reading and by running, with Docker off:
   pt-BR pass is complete and browser-verified (`plan-i18n-ptbr.md` §8) and the
   friend group is Brazilian, so **the recommendation is ON in a migration**
   (`update … where key = 'locale-pt-br'`, the same shape `team_chat.sql:433`
-  used) so dev and prod agree and the decision is in git. Owner confirms in
-  Phase 0. The new `auth-google` flag (D7) ships ON. Everything else stays OFF.
+  used) so dev and prod agree and the decision is in git. **Owner confirmed ON,
+  2026-09-07.** The new `auth-google` flag (D7) ships ON. Everything else stays
+  OFF.
 
 - **D10 — Where every secret lives, by name.** Two gitignored files and the
   Vercel env store; nothing else. `supabase/.env` (already exists, consumed by
@@ -461,10 +476,13 @@ needs a card.
 the agent):**
 
 1. **D9** — `locale-pt-br` ON for the alpha (recommended) or OFF.
+   **Done 2026-09-07: ON.**
 2. **D2** — confirm the two Supabase project names and the Vercel project name
    (`sl-fake-bets-dev` / `sl-fake-bets` / `sl-fake-bets`), or pick others.
+   **Done 2026-09-07: names confirmed as written.**
 3. **D12** — acknowledge that this plan is the ARC-013 order for the 2→3 move
    *and* the step past ARC-012's "still dev/staging" wording.
+   **Done 2026-09-07: acknowledged.**
 
 **B. Accounts and tokens:**
 
