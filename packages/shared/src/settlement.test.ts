@@ -79,6 +79,20 @@ describe("settleBet — winner nobody backed", () => {
       state: "closed",
       closesAt: "2026-09-01T00:00:00Z",
       maxWagerPerUser: 100,
+      /**
+       * `kind` is spelled out because `Bet.kind` is REQUIRED (D1, Extra Phase
+       * 2) — the `not null default 'pool'` on `bets.kind` is what let that
+       * migration skip a backfill, but a TypeScript object literal has no
+       * default to inherit, so the compiler asks every synthetic `Bet` in the
+       * suite to say which kind it is. Here the answer is `"pool"` and it is
+       * load-bearing for what this test claims: the "winner nobody backed"
+       * case is a pari-mutuel edge (an empty winning side with a losing side
+       * to refund) that a duel cannot reach, because `create_duel` writes both
+       * options from the two participants and `max_wager_per_user = stake`
+       * makes a third wager structurally impossible. Flipping this to `"duel"`
+       * to silence a future error would assert something untrue.
+       */
+      kind: "pool",
       createdAt: "2026-08-31T00:00:00Z",
     };
     const wagers = [

@@ -11,10 +11,19 @@ import { fail, type MutationResult } from "./result";
  *
  * HARD REQUIREMENT, not a preference: nothing in this module is called from
  * `loadTeamData` (team-data.ts), and this file must never be imported there.
- * That function is already nine unbounded queries and the named egress
- * weakness (design-scale-and-free-tier.md §2.2/§4.1) — a tenth query, on a
+ * That function is already ten unbounded queries and the named egress
+ * weakness (design-scale-and-free-tier.md §2.2/§4.1) — one more, on a
  * table with no natural row ceiling of its own (30-day retention aside), is
- * exactly the kind of addition that document was written to head off. Chat
+ * exactly the kind of addition that document was written to head off.
+ *
+ * (It said "nine" until Extra Phase 2 added `bet_duels` as the tenth. That
+ * addition strengthens this rule rather than weakening it: the scale doc's
+ * new "**The tenth query, and why it was allowed**" paragraph admits a table
+ * only when it is bounded by something `loadTeamData` already loads — a duel
+ * row is 1:1 with a `bets` row and cannot outgrow it — whereas
+ * `chat_messages` is bounded by a *message rate*, which is the case that
+ * paragraph explicitly refuses. The count moved; the reason chat stays out
+ * did not.) Chat
  * instead loads lazily, on demand, the moment its surface (rail or modal)
  * first mounts — see `loadChat` in team-context.tsx, which calls the
  * functions below directly and is the only caller of this file.

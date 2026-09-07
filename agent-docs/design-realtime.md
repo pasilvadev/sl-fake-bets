@@ -115,8 +115,9 @@ cost ARC-003 ranks above whatever throughput it would buy.
    §2 shows why: signal-only Realtime costs more than the polling it replaced.
    A full reload stays legal as a recovery path — on resubscribe after a dropped
    connection, or on a payload the client cannot reconcile — not as the design.
-3. **Subscribe to `bets`, `wagers`, `comments` and `chat_messages`. Do not
-   subscribe to `team_members` or `transactions`.** One `resolve_bet` updates
+3. **Subscribe to `bets`, `wagers`, `comments`, `chat_messages` and
+   `bet_duels`. Do not subscribe to `team_members` or `transactions`.** One
+   `resolve_bet` updates
    ~30 balance rows at once: 30 changes × 15 subscribers = **450 messages from a
    single resolution**, more than a normal day of everything else. Balances
    propagate by deriving them from the bet's resolution event, or by one scoped
@@ -130,6 +131,39 @@ cost ARC-003 ranks above whatever throughput it would buy.
    broadcast that prune to every subscriber as a burst of dead ids the client
    has no use for: the same waste rule 2 already forbids for a whole-world
    reload, here scoped to one table's one event type instead.
+
+   **`bet_duels` (Extra Phase 2) is the team channel's fifth binding, and the
+   first unfiltered one to be added deliberately rather than inherited.** It
+   binds **INSERT and UPDATE**, on the *existing* `subscribeTeamChannel` — rule
+   1, not a channel of its own. Four facts about it, each of which someone will
+   otherwise try to "fix":
+
+   - **It carries no `team_id`, so it cannot be filtered server-side.** A duel
+     reaches its team through its bet (`bet_id` is simultaneously the primary
+     key and the foreign key), the way `comments` does and unlike
+     `chat_messages`, which denormalizes a `team_id` precisely so its INSERT
+     binding *can* be filtered. Adding `filter: "team_id=eq.<id>"` here would
+     match nothing and the binding would go **silently** inert — §4 fact 1's
+     class of failure, arriving through a different door. The `wagers` binding
+     above has had exactly this shape since Phase 8 and is the precedent.
+   - **RLS is what scopes it, and the receiver still checks.** The row reaches
+     only clients whose `app.is_bet_team_member(bet_id)` passes, and the
+     handler then ignores any duel whose *bet* this client does not already
+     hold — the same "ignore any id the client does not already hold" rule §4
+     fact 3 makes mandatory for DELETEs, applied here as ordinary hygiene.
+   - **Two events, one `RemoteEvent` variant (`duel-upsert`).** A `bet_duels`
+     payload is complete on both INSERT and UPDATE, the receiver's rule is
+     identical for both, and the only UPDATE a duel ever takes is `accepted_at`
+     going non-null. Both are needed: INSERT is the challenge appearing, UPDATE
+     is the acceptance — and without the second, a client would hold a bet that
+     has flipped to `closed` (via the paired `bets` UPDATE) beside a duel row
+     still reading unaccepted, which every surface would render as pending.
+   - **No DELETE binding.** A `bet_duels` row only ever dies *with* its bet, by
+     `on delete cascade`, and the `bets` DELETE binding already carries that id.
+     Note this is delete-the-row, not void-the-duel: decline, expiry and the
+     departure cascade all *resolve* the bet and leave both rows in place, so
+     they arrive as a `bets` UPDATE, which rule 2 says to apply rather than
+     refetch behind.
 4. **`transactions` is a growth vector independent of Phase 8.** It is loaded in
    full on every cold start and grows without bound, and it is only needed by the
    ledger view. Not Phase 8's job to fix; Phase 8 must not make it worse by

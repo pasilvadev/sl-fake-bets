@@ -1,4 +1,4 @@
-import type { Bet, BetResolution, Wager } from "./types";
+import type { Bet, BetResolution, Duel, Wager } from "./types";
 
 /**
  * Pari-mutuel settlement (DOM-016/018/019) — the single module the Phase-2
@@ -108,6 +108,73 @@ export function removeMemberWagersInTeam(
   );
   // Filtering the original list (rather than concatenating) keeps order stable.
   return wagers.filter((w) => !teamBetIds.has(w.betId) || keptIds.has(w.id));
+}
+
+/**
+ * The duel-shaped cascade (Extra Phase 2, task 11): which duels must be VOIDED
+ * because one of their two participants is leaving the team — kicked, banned,
+ * or walking out — returned as bet ids in `bets` order.
+ *
+ * Why this exists at all, rather than letting `removeMemberWagersInTeam` handle
+ * it: that function is pool-shaped, and correctly so. Dropping one bettor from
+ * a many-bettor pool leaves a valid pool that simply pays out differently, and
+ * DOM-032 says the departing member's stake evaporates with their per-team
+ * balance. Drop one of EXACTLY TWO and what is left is not a smaller duel —
+ * it is one person's stake with nothing on the other side to settle against, a
+ * bet that can never legally resolve and whose surviving participant is out
+ * real coins forever. So the duel is voided (`void_reason='participant-left'`)
+ * and the survivor refunded, which is `settleBet`'s ordinary void branch doing
+ * ordinary work — no new money path (risk 3).
+ *
+ * A departing MEDIATOR returns nothing, deliberately (D7). Their leaving
+ * strands no duel: `app.can_resolve_duel` falls back to the any-moderator pool
+ * at READ time, and `bet_duels.mediator_id` going null takes nothing with it,
+ * so the duel stays resolvable by any moderator the moment the named one is
+ * gone. A runtime fallback, never a stored reassignment — nothing here to fix
+ * and nothing to void.
+ *
+ * **DOCUMENTED DEPARTURE FROM ITS NEIGHBOURS ABOVE, and the reason it takes a
+ * whole paragraph: this list is NOT sent to the RPC.** `removeMemberWagersInTeam`
+ * hands `remove_membership` a `p_wager_ids` array, and that is safe for the
+ * exact reason its header states — the DELETE re-scopes the list to this team
+ * and this user, "so the argument can only ever narrow what the cascade already
+ * permits." Voiding a duel does not narrow anything: it MOVES MONEY to the
+ * surviving participant, and `20260905150000_bet_rpcs.sql`'s header already
+ * settles what that means — "a list of BALANCE DELTAS has no such property —
+ * narrowing is meaningless and a forged delta is free coins." So the server
+ * derives this set itself, in `app.void_duels_for_departing_member`, called
+ * from inside `remove_membership` before the wager delete and the membership
+ * delete. This function is the client-side twin that patches the local copy
+ * after the RPC returns — and the single written statement of the rule, which
+ * is why it is spelled out here rather than assumed.
+ *
+ * Non-resolved only, matching `removeMemberActiveWagers`'s own "wagers on
+ * resolved bets stay untouched": a duel that already paid out is history, and
+ * refunding it now would both invent coins and break `deriveProfitLoss`, which
+ * replays every resolved bet the consistency guard can still see.
+ */
+export function voidDuelsForDepartingMember(
+  userId: string,
+  teamId: string,
+  bets: readonly Bet[],
+  duels: readonly Duel[],
+): string[] {
+  const duelByBetId = new Map(duels.map((d) => [d.betId, d]));
+
+  // Iterating `bets` rather than `duels` is what fixes the output order to
+  // `bets` order — the callers diff this against a local list, and a stable
+  // order keeps that diff readable. `bet_duels` is 1:1 with its bet by primary
+  // key, so the presence of a duel row IS the "this is a duel" test; `bet.kind`
+  // is not consulted, because a bet carrying a duel row and `kind='pool'` is a
+  // state the schema cannot produce.
+  return bets
+    .filter((bet) => {
+      if (bet.teamId !== teamId || bet.state === "resolved") return false;
+      const duel = duelByBetId.get(bet.id);
+      if (duel === undefined) return false;
+      return duel.challengerId === userId || duel.challengeeId === userId;
+    })
+    .map((bet) => bet.id);
 }
 
 /**

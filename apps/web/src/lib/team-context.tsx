@@ -12,12 +12,15 @@ import {
   type ReactNode,
 } from "react";
 import {
+  canAcceptDuel as permitAcceptDuel,
   canAcceptWagers,
   canBan as permitBan,
   canCloseBetEarly as permitCloseBetEarly,
   canComment as permitComment,
   canCreateBet as permitCreateBet,
+  canDeclineDuel as permitDeclineDuel,
   canDeleteBet as permitDeleteBet,
+  canDeleteDuel as permitDeleteDuel,
   canDeleteTeam as permitDeleteTeam,
   canInjectCoins as permitInjectCoins,
   canInvite as permitInvite,
@@ -26,7 +29,10 @@ import {
   canLeaveTeam as permitLeaveTeam,
   canManageTeam as permitManageTeam,
   canResolveBet as permitResolveBet,
+  canResolveDuel as permitResolveDuel,
+  canStartDuel as permitStartDuel,
   canTransitionBetState,
+  computeDuelPhase,
   computeEffectiveState,
   generateId,
   removeMemberWagersInTeam,
@@ -35,15 +41,20 @@ import {
   validateBetDraft,
   validateChatMessage,
   validateCommentBody,
+  validateDuelDraft,
   validateInjection,
   validateInviteCode,
   validateProfileDraft,
   validateTeamDraft,
   validateWager,
+  voidDuelsForDepartingMember,
   type Bet,
   type BetResolution,
+  type BetVoidReason,
   type ChatMessage,
   type Comment,
+  type Duel,
+  type DuelDraft,
   type ProfileDraft,
   type SettlementDelta,
   type Team,
@@ -62,6 +73,7 @@ import {
   fetchBet,
   loadTeamData,
   toComment,
+  toDuel,
   toResolution,
   toWager,
   type OnboardingInfo,
@@ -85,6 +97,15 @@ import { fail, ok, type MutationResult } from "@/lib/data/result";
 
 export type { MutationResult } from "@/lib/data/result";
 export type { OnboardingInfo, ProfilePrefill } from "@/lib/data/team-data";
+/**
+ * Re-exported so a duel surface never has to import from `lib/data/*` to name
+ * the argument of a context mutator (Extra Phase 2). `declineDuel`'s second
+ * parameter is deliberately NOT the full `BetVoidReason`: `'mediator'`,
+ * `'expired'` and `'participant-left'` are written by the resolver, the sweep
+ * and the kick/ban cascade respectively, and none of the three is the
+ * challengee's to claim — see `bet-mutations.ts` for the whole argument.
+ */
+export type { DuelDeclineReason } from "@/lib/data/bet-mutations";
 
 /** Inline rank-badge kinds (design-visual-identity.md §5.6). */
 export type RankBadgeKind = "1" | "2" | "3" | "top5" | "bottom5";
@@ -96,6 +117,29 @@ export interface NewBetDraft {
   options: string[];
   closesAt: string;
   maxWagerPerUser: number;
+}
+
+/**
+ * Payload for `startDuel` (Extra Phase 2, D1/D5/D9) — the shared `DuelDraft`
+ * plus the one field the compose form has that the domain draft does not.
+ *
+ * `iconEmoji` lives here rather than in `DuelDraft` for the same reason it is
+ * optional on `Bet`: DOM-009 makes it decoration on the BET, and a duel is a
+ * bet (D1), so `create_duel` takes `p_icon_emoji` exactly as `create_bet` does
+ * — but it is not part of what makes a challenge well-formed, which is all
+ * `validateDuelDraft` answers. Passing one of these where a `DuelDraft` is
+ * expected is fine and intended; the extra property is ignored by the
+ * validator.
+ *
+ * Everything else this type does NOT carry is a decision recorded in
+ * `validation.ts`'s `DuelDraft`: no `options` (the RPC generates exactly two
+ * from the participants' display names, position 0 = challenger), no
+ * `closesAt` (the accept window is `CONFIG.DUEL_ACCEPT_WINDOW_HOURS`' SQL twin
+ * and the server owns the clock), and no `maxWagerPerUser` (it IS the stake,
+ * which is what makes a third wager structurally impossible — task 6).
+ */
+export interface NewDuelDraft extends DuelDraft {
+  iconEmoji?: string;
 }
 
 /**
@@ -159,6 +203,44 @@ export interface TeamState {
   transactions: Transaction[];
   /** Comments on this team's bets (UX-018). */
   comments: Comment[];
+  /**
+   * This team's `bet_duels` side rows (Extra Phase 2, D1) — the kind-specific
+   * half of every bet above whose `kind` is `"duel"`.
+   *
+   * A sibling array rather than six optional fields on `Bet`, because 99% of
+   * bets are pool bets that would carry six `undefined`s each and the next
+   * bet kind after this one would add six more. Scoped to the current team the
+   * same way `wagers` and `comments` are — through the bet ids, since
+   * `bet_duels` has no `team_id` column at all (the bet owns the team, which
+   * is also how RLS reaches the table).
+   *
+   * What is NOT here, deliberately: a `canStartDuel` boolean beside
+   * `canCreateBet`. D9 makes starting a duel PLAIN MEMBERSHIP — not
+   * `canCreateBet`, and explicitly not gated by `accessMode` — so for anyone
+   * who can see this object at all it would be a constant `true`, and a
+   * permission field that is always true reads as a gate where there is none.
+   * A restricted team rations bets POSTED FOR THE TEAM TO WAGER INTO; a duel
+   * is a private arrangement between two people who have already agreed to it.
+   * What the leader keeps instead is `mustForceAnyModerator(team)`, a pure
+   * function any surface can call with the `team` it already has.
+   */
+  duels: Duel[];
+  /**
+   * The duel for a bet, or `undefined` if that bet is a pool bet.
+   *
+   * Exposed as a lookup rather than leaving every surface to `.find()` its way
+   * through `duels`, so the indexing decision lives in exactly one place (it is
+   * a Map, built once per render of the memo below). Ask it whenever
+   * `bet.kind === "duel"`; the two answers cannot disagree, because a `bets`
+   * row with `kind='duel'` and no `bet_duels` row is a state `create_duel`'s
+   * single transaction cannot produce.
+   *
+   * The result is roster+id state and nothing else. It does not say what the
+   * duel is currently DOING — `computeDuelPhase(bet, duel, nowMs)` owns that,
+   * and needs the bet as well, because an unaccepted duel past its deadline is
+   * expired before anything has persisted the void (D8 half (a)).
+   */
+  duelFor: (betId: string) => Duel | undefined;
   /** Live user lookup — profile edits must show up everywhere a name renders. */
   userById: (userId: string) => User | undefined;
   /** Members sorted coinBalance desc. */
@@ -188,8 +270,67 @@ export interface TeamState {
   ) => Promise<MutationResult>;
   closeBetEarly: (betId: string) => Promise<MutationResult>;
   deleteBet: (betId: string) => Promise<MutationResult>;
+  /**
+   * DOM-016/018/019 for pool bets, D6/D7 for duels — one mutator, because
+   * `resolve_bet` is one RPC (task 8). The resolution's void arm carries an
+   * optional `reason` (D3) which only a duel ever stores; a pool bet's void
+   * writes `NULL` no matter what is passed, which is why D3 needed no backfill.
+   */
   resolveBet: (betId: string, resolution: BetResolution) => Promise<MutationResult>;
   addComment: (betId: string, body: string) => Promise<MutationResult>;
+  // --- 1v1 duels (Extra Phase 2, D1-D9) ---
+  //
+  // Three write paths, and between them money moves twice and never on credit
+  // (D5): the challenger's stake leaves at `startDuel`, the challengee's at
+  // `acceptDuel`, and any void — declined, expired, participant-left,
+  // pre-acceptance delete — hands both back through the refund machinery that
+  // already existed. There is no escrow field and no held-balance column.
+  //
+  // ARC-014/DOM-030 boundary, stated once for this whole group exactly as the
+  // chat group below states its own: NOTHING HERE NOTIFIES ANYONE. No push, no
+  // email, no bell, no `document.title` count, not even a badge — and that is
+  // the constraint a duel strains hardest, because a challenge that lapses in
+  // 24 hours is the most tempting thing in this product to tap someone on the
+  // shoulder about. D4's answer is a FEED RE-ORDER: a duel awaiting *your*
+  // acceptance (or *your* ruling, as the mediator) sorts to the top of its
+  // group for you and carries a distinct row treatment. That is Extra Phase
+  // 3's work, on the surfaces, and it needs nothing from this file beyond
+  // `duels`/`duelFor` and `computeDuelPhase` — no ordering, no unread state
+  // and no "seen" marker of the kind chat needs, because nothing here is a
+  // message. DOM-030 is untouched for a different reason worth writing down:
+  // the only rate control in this feature (`CONFIG.DUEL_MAX_PENDING_PER_CHALLENGER`
+  // and the one-pending-per-pair rule) bounds how many challenges one person
+  // may have in flight and says nothing about who they are or what they wrote.
+  /**
+   * Send a challenge (D1/D5/D9). Validates with `validateDuelDraft`, then one
+   * RPC writes six rows in one transaction — the bet, its two auto-generated
+   * options, the duel row, and the challenger's own wager, which is what
+   * debits their balance immediately.
+   *
+   * `anyModerator` in the draft is the challenger's INTENT; what gets stored
+   * may differ, and the local copy takes the server's answer (D9: a
+   * `restricted` team coerces it to `true`, silently and only at creation).
+   */
+  startDuel: (draft: NewDuelDraft) => Promise<MutationResult>;
+  /**
+   * Accept a challenge (D2/D5). Only the challengee, only while it is
+   * unaccepted and unexpired, and only if they can cover the stake right now —
+   * DOM-014 is absolute and nothing is ever accepted on credit. On success the
+   * bet does exactly what an early close does (`closed`, `closesAt = now`) and
+   * lands in AWAITING RESULT.
+   */
+  acceptDuel: (betId: string) => Promise<MutationResult>;
+  /**
+   * Refuse a challenge (D3/D5). Voids the bet and refunds the challenger
+   * through the same settlement path every other void uses. `reason` defaults
+   * to `"declined"`; the surface passes `"insufficient-funds"` from the path
+   * `acceptDuel` refused for money, because the owner requires the history row
+   * to say the challengee COULDN'T afford it rather than wouldn't.
+   */
+  declineDuel: (
+    betId: string,
+    reason?: betDb.DuelDeclineReason,
+  ) => Promise<MutationResult>;
   // --- team chat (UX-019, Extra Phase 1) ---
   //
   // A team-wide channel, distinct from the per-bet comments just above: chat
@@ -304,12 +445,62 @@ type TeamDataAction =
       deltas: SettlementDelta[];
     }
   | { type: "delete-bet"; teamId: string; betId: string; deltas: SettlementDelta[] }
+  // --- duels (Extra Phase 2) ---
+  // Four actions for three mutators and one remote event. Each of the three
+  // writes is COMPOUND — a duel is never one row — so each gets one action
+  // rather than a burst of `add-bet` + `place-wager` + something: the reducer
+  // must never be able to commit a duel bet without its `bet_duels` row, or a
+  // surface rendering between the two dispatches would ask `duelFor` for a
+  // duel that is a millisecond away from existing and be told there is none.
+  | { type: "start-duel"; teamId: string; bet: Bet; duel: Duel; wager: Wager }
+  | {
+      type: "accept-duel";
+      teamId: string;
+      betId: string;
+      /** The server's clock, written to `bet_duels.accepted_at`. */
+      acceptedAt: string;
+      /** The bet's NEW closesAt — the same instant (D2). */
+      closesAt: string;
+      /** The challengee's stake on position 1, which is what debits them. */
+      wager: Wager;
+    }
+  /**
+   * A duel voided with a reason (D3) — decline today, and shaped for the rest
+   * tomorrow. Deliberately not named `decline-duel`: a decline IS a void with a
+   * suffix, and modelling it as its own kind of resolution is how a second
+   * settlement path gets written. The expiry sweep and the kick/ban cascade
+   * reach this client by other routes (a `bets` UPDATE over realtime, and
+   * `remove-membership` below, which must void duels and drop a membership in
+   * ONE commit) — but all four are the same void, refunding through the same
+   * `app.settle_bet`.
+   */
+  | {
+      type: "void-duel";
+      teamId: string;
+      betId: string;
+      reason: BetVoidReason;
+      deltas: SettlementDelta[];
+    }
+  /** A `bet_duels` INSERT or UPDATE off the team channel — see realtime.ts for
+   * why one variant covers both, and `applyRemote` for the receive rule. */
+  | { type: "duel-upsert"; duel: Duel }
   | {
       type: "remove-membership";
       teamId: string;
       userId: string;
       ban: boolean;
       wagers: Wager[];
+      /**
+       * The duels this departure voids, with the refund each one applies
+       * (Extra Phase 2, task 11) — computed by `departureCascade` below from
+       * `voidDuelsForDepartingMember`, and carried on THIS action rather than
+       * dispatched as a burst of `void-duel`s because the voids, the wager
+       * cascade and the membership deletion are one server transaction and
+       * must be one local commit too. Empty for the overwhelmingly common
+       * departure of somebody who was in no duel — and empty, by D7, for a
+       * departing MEDIATOR, who strands nothing.
+       */
+      voidedDuels: { betId: string; deltas: SettlementDelta[] }[];
     }
   | { type: "update-team-access"; teamId: string; accessMode: TeamAccessMode }
   | { type: "delete-team"; teamId: string }
@@ -345,6 +536,111 @@ function applyDeltas(
         }
       : m;
   });
+}
+
+/**
+ * The resolution a duel takes when one of its two participants leaves the team
+ * — kicked, banned, or walking out (Extra Phase 2, task 11, D3). A module
+ * constant so the two mutators that can cause a departure, the reducer case
+ * that applies it, and the deltas computed from it are provably the same
+ * object shape; `void_reason='participant-left'` is what `app.void_duel`
+ * stores for the same event server-side.
+ */
+const DEPARTURE_VOID: BetResolution = { kind: "void", reason: "participant-left" };
+
+/**
+ * Everything a departure does to this team's bets, wagers and balances, worked
+ * out BEFORE the RPC so the same numbers can be sent, applied and reasoned
+ * about (Extra Phase 2, task 11 — the client-side half of the cascade that
+ * `remove_membership` runs in Postgres).
+ *
+ * **Why this exists at all, when `removeMemberWagersInTeam` already handled
+ * departures perfectly well for two phases.** That function is pool-shaped and
+ * correctly so: dropping one bettor from a many-bettor pool leaves a valid pool
+ * that simply pays out differently, and DOM-032 says the leaver's stake
+ * evaporates with their per-team balance. Drop one of EXACTLY TWO and what is
+ * left is not a smaller duel — it is one person's stake with nothing on the
+ * other side to settle against, a bet that can never legally resolve and whose
+ * surviving participant is out real coins forever. So the duel is voided and
+ * the survivor refunded, which is `settleBet`'s ordinary void branch doing
+ * ordinary work. No new money path (this phase's named risk 3).
+ *
+ * **The ORDER below is a mirror, not a preference, and getting it backwards
+ * silently strands a wager.** `remove_membership` voids the duels FIRST and
+ * only then deletes the departing member's wagers, narrowed by
+ * `and b.state <> 'resolved'` — which is `removeMemberActiveWagers`'s own rule
+ * ("wagers on resolved bets stay untouched") enforced server-side. By the time
+ * that DELETE runs, the duels this departure voided ARE resolved, so both
+ * stakes survive on them. Computing the local wager cascade against
+ * `data.bets` as loaded would instead drop the leaver's duel wager here while
+ * Postgres keeps it, and the local world would then replay a resolved duel
+ * with one stake missing — which is exactly the drift the Phase 7 consistency
+ * guard reports and cannot attribute. Hence `betsAfterVoid`.
+ *
+ * `removedWagerIds` is what goes over the wire, and it is now a NARROWER list
+ * than it used to be for a departing duellist. That is belt and braces rather
+ * than the guarantee: the server's `state <> 'resolved'` narrowing already
+ * refuses to delete those rows even if this list still named them, precisely
+ * because `20260905150000_bet_rpcs.sql`'s header only ever promised that a
+ * client-supplied id list "can only narrow what the cascade already permits".
+ *
+ * A departing MEDIATOR produces an empty result and must (D7):
+ * `app.can_resolve_duel` falls back to the any-moderator pool at READ time, so
+ * a duel whose named mediator has gone is resolvable by any moderator the
+ * moment they leave. A runtime fallback, never a stored reassignment — nothing
+ * to void and nothing to fix. `voidDuelsForDepartingMember` is where that rule
+ * is written down; this function only asks it.
+ */
+function departureCascade(
+  data: TeamData,
+  teamId: string,
+  userId: string,
+): {
+  voidedDuels: { betId: string; deltas: SettlementDelta[] }[];
+  keptWagers: Wager[];
+  removedWagerIds: string[];
+} {
+  const voidedBetIds = voidDuelsForDepartingMember(
+    userId,
+    teamId,
+    data.bets,
+    data.duels,
+  );
+  const voided = new Set(voidedBetIds);
+
+  const betsAfterVoid =
+    voided.size === 0
+      ? data.bets
+      : data.bets.map((b) =>
+          voided.has(b.id)
+            ? { ...b, state: "resolved" as const, resolution: DEPARTURE_VOID }
+            : b,
+        );
+
+  const keptWagers = removeMemberWagersInTeam(
+    userId,
+    teamId,
+    betsAfterVoid,
+    data.wagers,
+  );
+  const kept = new Set(keptWagers.map((w) => w.id));
+
+  return {
+    // Deltas are computed per bet rather than flattened, so the reducer can
+    // skip one duel whose realtime echo already landed without having to guess
+    // which entries in a flat list belonged to it. Filtering `data.bets` (over
+    // mapping `voidedBetIds`) keeps the output in the same `bets` order
+    // `voidDuelsForDepartingMember` promises and needs no lookup that could
+    // miss — the ids came out of this very list.
+    voidedDuels: data.bets
+      .filter((bet) => voided.has(bet.id))
+      .map((bet) => ({
+        betId: bet.id,
+        deltas: settleBet(bet, data.wagers, DEPARTURE_VOID),
+      })),
+    keptWagers,
+    removedWagerIds: data.wagers.filter((w) => !kept.has(w.id)).map((w) => w.id),
+  };
 }
 
 /**
@@ -411,16 +707,185 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         bets: data.bets.filter((b) => b.id !== action.betId),
         wagers: data.wagers.filter((w) => w.betId !== action.betId),
         comments: data.comments.filter((c) => c.betId !== action.betId),
+        // `bet_duels.bet_id references bets on delete cascade`, so the duel row
+        // goes with the bet in Postgres and must go with it here. Unconditional
+        // rather than guarded on `bet.kind`: filtering a list that holds no
+        // matching row costs one pass and cannot be forgotten later, whereas a
+        // guard has to stay in step with what `kind` means.
+        duels: data.duels.filter((d) => d.betId !== action.betId),
         teams: applyDeltas(data.teams, action.teamId, action.deltas),
       };
-    case "remove-membership":
+    case "start-duel": {
+      // Idempotent in THREE places rather than one, and the split matters.
+      // This action's rows also arrive independently over the team channel —
+      // `bet-insert` (answered by `fetchBet`), `duel-upsert` and
+      // `wager-insert` — so the creating client can hold any subset of them by
+      // the time its own RPC returns. A single "do I already have the bet?"
+      // guard would then drop the duel row and the wager on the floor and
+      // leave `duelFor` answering `undefined` for a bet whose whole point is
+      // that it has a duel. Each part carries its own id check instead.
+      const { bet, duel, wager } = action;
+      const hasBet = data.bets.some((b) => b.id === bet.id);
+      const hasDuel = data.duels.some((d) => d.betId === duel.betId);
+      const hasWager = data.wagers.some((w) => w.id === wager.id);
+      if (hasBet && hasDuel && hasWager) return data;
+      return {
+        ...data,
+        bets: hasBet ? data.bets : [...data.bets, bet],
+        duels: hasDuel ? data.duels : [...data.duels, duel],
+        wagers: hasWager ? data.wagers : [...data.wagers, wager],
+        // The debit rides the WAGER's idempotency, exactly as `place-wager`
+        // does: the challenger's stake left their balance at placement
+        // (decision §4.6 money model) and this is that placement, not a
+        // separate duel-shaped movement of coins. D5 in one line — there is no
+        // escrow here and there must not be one.
+        teams: hasWager
+          ? data.teams
+          : patchMembers(data.teams, action.teamId, (m) =>
+              m.userId === wager.userId
+                ? { ...m, coinBalance: m.coinBalance - wager.amount }
+                : m,
+            ),
+      };
+    }
+    case "accept-duel": {
+      // D2: accepting does exactly what an early close does — `state='closed'`
+      // and `closesAt` moved to the instant it happened — plus the challengee's
+      // stake. No fourth `BetState` is invented and
+      // `enforce_bet_state_transition` stays byte-for-byte unchanged (D1).
+      // `Duel.expiresAt` is untouched on purpose: after this the bet no longer
+      // remembers when the challenge would have lapsed, and that column is the
+      // only surviving record of it.
+      const { wager } = action;
+      const hasWager = data.wagers.some((w) => w.id === wager.id);
+      return {
+        ...data,
+        bets: data.bets.map((b) =>
+          b.id === action.betId
+            ? { ...b, state: "closed" as const, closesAt: action.closesAt }
+            : b,
+        ),
+        duels: data.duels.map((d) =>
+          d.betId === action.betId ? { ...d, acceptedAt: action.acceptedAt } : d,
+        ),
+        wagers: hasWager ? data.wagers : [...data.wagers, wager],
+        teams: hasWager
+          ? data.teams
+          : patchMembers(data.teams, action.teamId, (m) =>
+              m.userId === wager.userId
+                ? { ...m, coinBalance: m.coinBalance - wager.amount }
+                : m,
+            ),
+      };
+    }
+    case "void-duel": {
+      // The one guard in this reducer that exists to stop MONEY moving twice,
+      // rather than to stop a row appearing twice. `resolve-bet` above has no
+      // such check because it predates realtime and Postgres is authoritative
+      // anyway; here the race is easy to hit and cheap to close — a client that
+      // declines a duel receives its own `bets` UPDATE echo on the team
+      // channel, and if that echo wins the race against the RPC's return, the
+      // refund has already been applied by `applyRemote`'s `bet-update` case.
+      // Re-applying these deltas would credit the challenger their stake twice
+      // on screen until the next load. `bet-update` holds the mirror image of
+      // this guard (`bet.state !== "resolved"`), so exactly one of the two
+      // paths ever applies the money, whichever arrives first.
+      const bet = data.bets.find((b) => b.id === action.betId);
+      if (!bet || bet.state === "resolved") return data;
+      return {
+        ...data,
+        bets: data.bets.map((b) =>
+          b.id === action.betId
+            ? {
+                ...b,
+                state: "resolved" as const,
+                resolution: { kind: "void", reason: action.reason },
+                // `closesAt` is deliberately NOT pulled back to now, even
+                // though `app.void_duel` writes `least(closes_at, now())`.
+                // The browser clock never writes a stored timestamp in this
+                // file (DOM-012: `closesAt` is the moment open→closed actually
+                // happened, and only the server knows it), and nothing reads it
+                // once the bet is resolved — `computeEffectiveState` returns
+                // `"resolved"` and `computeDuelPhase` returns `"settled"`, both
+                // before they look at a date. The next load replaces the value
+                // with the server's.
+              }
+            : b,
+        ),
+        teams: applyDeltas(data.teams, action.teamId, action.deltas),
+      };
+    }
+    case "duel-upsert": {
+      // The universal receive rule, one level of indirection deeper: this
+      // client must hold the duel's BET, not the duel, because for an INSERT
+      // it obviously holds no duel yet. Together with RLS
+      // (`bet_duels_select_bet_team_member`) that is what drops rows for teams
+      // this client cannot read — the `bet_duels` realtime binding carries no
+      // team filter, since the table has no team column to filter on.
+      const { duel } = action;
+      if (!data.bets.some((b) => b.id === duel.betId)) return data;
+      // NOT "ignore any id you already hold", which is the rule for every
+      // insert case in this reducer. An UPDATE payload is a whole `bet_duels`
+      // row and the newer truth, so a held duel is REPLACED rather than kept —
+      // that is the entire reason one `duel-upsert` variant covers both events
+      // (see realtime.ts). The only UPDATE a duel row ever takes is
+      // `accepted_at` going from null to a timestamp, so "replace wholesale" and
+      // "patch acceptedAt" agree today; replacing is what stays correct if a
+      // second mutable column ever appears.
+      return {
+        ...data,
+        duels: data.duels.some((d) => d.betId === duel.betId)
+          ? data.duels.map((d) => (d.betId === duel.betId ? duel : d))
+          : [...data.duels, duel],
+      };
+    }
+    case "remove-membership": {
       // DOM-031/032: the membership (and with it the per-team balance) goes,
       // the pre-computed cascade replaces the wager list, and a ban — unlike a
       // kick — additionally records the block on re-joining (A-4).
+      //
+      // Extra Phase 2 task 11 adds the duel half, and it has to happen in this
+      // same commit: a departing participant's duels are voided and the
+      // survivor refunded (D3's `'participant-left'`), because half of a
+      // two-person bet is not a smaller bet — see `departureCascade` above for
+      // the whole argument and for why `action.wagers` was computed against a
+      // world in which these bets are already resolved.
+      //
+      // Skipping a duel this client already holds as resolved is the same
+      // money-moves-once guard `void-duel` carries, for the same race: the
+      // `bets` UPDATE the server's void produced may have arrived on the team
+      // channel before the RPC returned, in which case `bet-update` has already
+      // applied this refund.
+      const pending = action.voidedDuels.filter((v) =>
+        data.bets.some((b) => b.id === v.betId && b.state !== "resolved"),
+      );
+      const voided = new Set(pending.map((v) => v.betId));
+      const teams = pending.reduce(
+        (acc, v) => applyDeltas(acc, action.teamId, v.deltas),
+        data.teams,
+      );
       return {
         ...data,
         wagers: action.wagers,
-        teams: data.teams.map((t) =>
+        bets:
+          voided.size === 0
+            ? data.bets
+            : data.bets.map((b) =>
+                voided.has(b.id)
+                  ? {
+                      ...b,
+                      state: "resolved" as const,
+                      resolution: DEPARTURE_VOID,
+                    }
+                  : b,
+              ),
+        // The departing member's own refund is applied and then discarded with
+        // their membership one line below, which is exactly what Postgres does
+        // — `app.void_duel` credits every wagerer's `team_members` row and
+        // `remove_membership` deletes theirs immediately after. Their per-team
+        // balance dies with the membership (decision §4.4); there is nothing to
+        // pay it to and nowhere for it to go.
+        teams: teams.map((t) =>
           t.id === action.teamId
             ? {
                 ...t,
@@ -432,6 +897,7 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
             : t,
         ),
       };
+    }
     case "update-team-access":
       return {
         ...data,
@@ -452,6 +918,12 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         bets: data.bets.filter((b) => b.teamId !== action.teamId),
         wagers: data.wagers.filter((w) => !doomedBetIds.has(w.betId)),
         comments: data.comments.filter((c) => !doomedBetIds.has(c.betId)),
+        // Duels go the same way as wagers and comments, through the same set of
+        // doomed bet ids: `bet_duels` hangs off the bet, the bet hangs off the
+        // team, and Postgres removes both by ON DELETE CASCADE. A duel is not a
+        // reason to refuse a team deletion — balances are per-team (DOM-013),
+        // so nothing survives to refund to.
+        duels: data.duels.filter((d) => !doomedBetIds.has(d.betId)),
         transactions: data.transactions.filter((t) => t.teamId !== action.teamId),
       };
     }
@@ -888,6 +1360,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * this whole callback `[supabase]`-stable — see those refs' own comment,
    * beside `dataRef`, for why that stability matters for a channel this
    * function has nothing to do with.
+   *
+   * Extra Phase 2 (1v1 duels) adds `duel-upsert`, which needs no extra guard
+   * at all — only the second invariant, applied through a foreign key: a duel
+   * belongs to a team solely through its bet, so "ignore any id you do not
+   * already hold" becomes "ignore any duel whose BET you do not already hold."
+   * That single check is what drops duels on bets in a team this client cannot
+   * read, and it is doing more work here than for the other cases: the
+   * `bet_duels` realtime binding cannot be filtered server-side, because the
+   * table has no team column to filter on (see realtime.ts).
    */
   const applyRemote = useCallback(
     async (event: RemoteEvent) => {
@@ -950,6 +1431,31 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           const comment = toComment(event.row);
           if (!dataRef.current.bets.some((b) => b.id === comment.betId)) return;
           dispatch({ type: "add-comment", comment });
+          return;
+        }
+        case "duel-upsert": {
+          // ONE case for the `bet_duels` INSERT and UPDATE both, which is
+          // realtime.ts's decision and worth restating from the receiving end:
+          // a `bet_duels` payload is the COMPLETE row either way (no embed, no
+          // ordering column, nothing this module has to go back for — unlike a
+          // `bets` INSERT, which arrives without its options and is the sole
+          // reason `fetchBet` exists), and the rule here is identical for both
+          // — hold the duel for this bet id, or ignore it.
+          //
+          // The bet check is the universal receive rule reaching through the
+          // foreign key, since a duel names no team of its own. It also drops
+          // the case that RLS cannot: a duel on a bet in another of this
+          // user's teams, which this client legitimately holds but whose bet
+          // may not be loaded on this channel.
+          // Nothing here closes the bet or credits a wager when a duel is
+          // ACCEPTED, and that is not an omission: the same transaction also
+          // writes a `bets` UPDATE and a `wagers` INSERT, which arrive as their
+          // own events on this same channel and are applied by the two cases
+          // above. This one carries `acceptedAt` and nothing else, because
+          // `bet_duels` is the only table that knows it.
+          const duel = toDuel(event.row);
+          if (!dataRef.current.bets.some((b) => b.id === duel.betId)) return;
+          dispatch({ type: "duel-upsert", duel });
           return;
         }
         case "chat-insert": {
@@ -1180,6 +1686,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         state: "open",
         closesAt: result.bet.closesAt,
         maxWagerPerUser: draft.maxWagerPerUser,
+        // Spelled out, not inherited: `bets.kind` is `not null default 'pool'`
+        // in Postgres — which is exactly what let Extra Phase 2 add the column
+        // with no backfill — but a TypeScript object literal has no default to
+        // fall back on, and `Bet.kind` is deliberately REQUIRED rather than
+        // optional so the compiler asks this question at every construction
+        // site. `create_bet` writes pool bets and only pool bets; duels are
+        // `startDuel` below, through their own RPC.
+        kind: "pool",
         createdAt: result.bet.createdAt,
       };
       dispatch({ type: "add-bet", bet });
@@ -1205,6 +1719,19 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const team = data.teams.find((t) => t.id === bet.teamId);
       const member = team?.members.find((m) => m.userId === currentUserId);
       if (!team || !member) return fail("You are not a member of this team.");
+      // Extra Phase 2 task 8's first guard, and it is refused BEFORE the clock
+      // and the option check because it is not a wagering problem: a duel has
+      // exactly two wagers, one per participant, placed by `create_duel` and
+      // `accept_duel` themselves. `place_wager` refuses the same thing with the
+      // same sentence server-side, which is the only enforcement that counts
+      // (`wagers` INSERT has been revoked from `authenticated` since Phase 6,
+      // so that RPC is the sole write path). This copy exists so a surface that
+      // offers the wager modal on a duel row says why instead of round-tripping
+      // to find out. Keyed on `bet.kind`, exactly as the RPC is — not on
+      // `duelFor(betId)`, so the two tests cannot drift apart.
+      if (bet.kind === "duel") {
+        return fail("Wagers are placed by accepting the duel, not from the bet page.");
+      }
       if (!canAcceptWagers(bet, Date.now())) {
         return fail("Betting is closed for this bet.");
       }
@@ -1258,6 +1785,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitCloseBetEarly(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can close betting early.");
       }
+      // Task 8's second guard. A duel's "betting window" is its ACCEPT window,
+      // and closing it early is not a thing anyone can want: the challengee
+      // either accepts (which closes the bet, D2), declines, or lets it lapse.
+      // Refused outright rather than quietly aliased to something — a bet
+      // nobody may wager in has no wagering window to close, and `close_bet_early`
+      // says exactly this sentence server-side.
+      if (bet.kind === "duel") {
+        return fail("A duel has no betting window to close.");
+      }
       const effectiveState = computeEffectiveState(bet, Date.now());
       if (!canTransitionBetState(effectiveState, "closed")) {
         return fail(
@@ -1296,6 +1832,25 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * passed — nothing persists that transition on its own — which is why the
    * gate below is computeEffectiveState and not `bet.state`. The RPC writes
    * the missing open→closed step itself before resolving.
+   *
+   * **ONE mutator resolves every bet, pool and duel alike (Extra Phase 2, task
+   * 8), because one RPC does.** `resolve_bet` was extended with a fourth
+   * argument rather than joined by a sibling `resolve_duel`, so there is still
+   * exactly one place in the schema that writes a resolution and moves the
+   * balances behind it. What forks — here and inside the RPC, in the same shape
+   * — is AUTHORIZATION and the precondition:
+   *
+   *   * a pool bet keeps `canResolveBet` (creator, moderator or leader) and
+   *     `canTransitionBetState` over its effective state;
+   *   * a duel gets `canResolveDuel` (the named mediator, or any moderator when
+   *     the ROW says so — never a participant, D6/D7) and `computeDuelPhase`,
+   *     because "has betting closed?" is the wrong question to ask of a bet
+   *     whose stakes are placed by accepting it.
+   *
+   * `app.can_manage_bet` was deliberately NOT widened to admit the mediator,
+   * server-side: three RPCs share it, and one line there would have handed the
+   * mediator `delete_bet` and `close_bet_early` too. That is this phase's named
+   * risk 1, and the client mirrors the fork rather than the shortcut.
    */
   const resolveBet = useCallback(
     async (betId: string, resolution: BetResolution): Promise<MutationResult> => {
@@ -1303,16 +1858,39 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!bet) return fail("This bet no longer exists.");
       const team = data.teams.find((t) => t.id === bet.teamId);
       if (!team || !currentUserId) return fail("Team not found.");
-      if (!permitResolveBet(team, currentUserId, bet)) {
-        return fail("Only the bet creator or a moderator can resolve this bet.");
-      }
-      const effectiveState = computeEffectiveState(bet, Date.now());
-      if (!canTransitionBetState(effectiveState, "resolved")) {
-        return fail(
-          effectiveState === "open"
-            ? "Close betting before resolving."
-            : "This bet is already resolved.",
-        );
+
+      const duel = data.duels.find((d) => d.betId === bet.id);
+      if (duel) {
+        if (!permitResolveDuel(team, currentUserId, duel)) {
+          return fail("Only the mediator or a moderator can resolve this duel.");
+        }
+        // D8 half (a) decides the sentence here, not just the gate. An expired
+        // unaccepted duel already READS as void on every surface before
+        // anything has persisted it, and the RPC sweeps stale duels before it
+        // looks at state — so by the time it answers, that duel really is
+        // resolved and it says so. Reporting "hasn't been accepted yet" for the
+        // expired case would be a client sentence the server would never
+        // produce, and it would tell a mediator to wait for an acceptance that
+        // can no longer arrive.
+        const phase = computeDuelPhase(bet, duel, Date.now());
+        if (phase === "settled" || phase === "expired") {
+          return fail("This bet is already resolved.");
+        }
+        if (phase !== "accepted") {
+          return fail("This duel hasn't been accepted yet.");
+        }
+      } else {
+        if (!permitResolveBet(team, currentUserId, bet)) {
+          return fail("Only the bet creator or a moderator can resolve this bet.");
+        }
+        const effectiveState = computeEffectiveState(bet, Date.now());
+        if (!canTransitionBetState(effectiveState, "resolved")) {
+          return fail(
+            effectiveState === "open"
+              ? "Close betting before resolving."
+              : "This bet is already resolved.",
+          );
+        }
       }
       if (
         resolution.kind === "winner" &&
@@ -1324,16 +1902,32 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const result = await betDb.resolveBet(supabase, { betId: bet.id, resolution });
       if (!result.ok) return result;
 
+      // D3, and the one place this file mirrors a SQL DEFAULT rather than
+      // reading a value back. `resolve_bet` stores `'mediator'` when a DUEL is
+      // voided and the caller named no reason — it can, because the only way to
+      // reach that line is a human resolver who passed `app.can_resolve_duel`.
+      // The argument sent stays `undefined` (bet-mutations.ts is explicit that
+      // the client does not guess it, and PostgREST needs the null for the
+      // default to apply); what is mirrored is only the LOCAL copy, so the
+      // history row does not sit there reasonless for the rest of the session
+      // while Postgres holds a reason. A pool bet is untouched by this — its
+      // void writes NULL no matter what was passed, which is precisely why D3
+      // needed no backfill.
+      const applied: BetResolution =
+        duel && resolution.kind === "void"
+          ? { kind: "void", reason: resolution.reason ?? "mediator" }
+          : resolution;
+
       dispatch({
         type: "resolve-bet",
         teamId: bet.teamId,
         betId: bet.id,
-        resolution,
+        resolution: applied,
         deltas: result.deltas ?? [],
       });
       return ok;
     },
-    [supabase, data.bets, data.teams, currentUserId],
+    [supabase, data.bets, data.teams, data.duels, currentUserId],
   );
 
   /**
@@ -1351,6 +1945,24 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (!permitDeleteBet(team, currentUserId, bet)) {
         return fail("Only the bet creator or a moderator can delete this bet.");
       }
+      // D6, task 8's third guard: a duel may be deleted only BEFORE it is
+      // accepted. Once both stakes are down, deleting is the challenger's
+      // escape hatch from a bet they are losing — the honest exits after
+      // acceptance are a resolution or a void, both of which move money through
+      // `app.settle_bet` and leave a history row. Before acceptance there is
+      // nothing to protect: the ordinary delete path's `app.reverse_bet_effects`
+      // already refunds the challenger's stake, which is why one refusal is the
+      // whole change and no second reversal path exists.
+      //
+      // `canDeleteDuel` rather than an inline `acceptedAt === null`, so the
+      // composite rule (`canDeleteBet` AND unaccepted) has exactly one written
+      // form; and the check reads the stored fact, never the clock — an EXPIRED
+      // unaccepted duel is still deletable, and both routes refund the same
+      // coins to the same person.
+      const duel = data.duels.find((d) => d.betId === bet.id);
+      if (duel && !permitDeleteDuel(team, currentUserId, bet, duel)) {
+        return fail("A duel can only be deleted before it's accepted.");
+      }
 
       const result = await betDb.deleteBet(supabase, bet.id);
       if (!result.ok) return result;
@@ -1363,7 +1975,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       });
       return ok;
     },
-    [supabase, data.bets, data.teams, currentUserId],
+    [supabase, data.bets, data.teams, data.duels, currentUserId],
   );
 
   /**
@@ -1406,6 +2018,336 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       return ok;
     },
     [supabase, data.bets, data.teams, currentUserId],
+  );
+
+  // --- 1v1 duels: three write paths, one lifecycle (roadmap §8 Extra Phase 2) ---
+  //
+  // D1-D9. A duel is a `bets` row with `kind='duel'` plus a 1:1 `bet_duels`
+  // side row, so everything below reuses the machinery that already exists:
+  // `resolve_bet` resolves it, `delete_bet` deletes it, `app.settle_bet`
+  // settles it, and `enforce_bet_state_transition` — the one trigger in this
+  // schema with no service-context escape hatch — still sees only the two legal
+  // hops it has always seen. Nothing here is a second settlement path, and the
+  // temptation to write one (a "simpler" direct transfer between two people)
+  // is this phase's named risk 3: it would end up a coin apart from
+  // `resolve_bet` somewhere and break `delete_bet`'s reversal.
+  //
+  // Each mutator gates locally with the SAME shared predicates the RPC's SQL
+  // twins evaluate, and returns the RPC's own sentence on refusal, which is why
+  // the strings below are byte-identical to the ones in
+  // `20260906130100_duel_rpcs.sql`. The client gate is not the enforcement —
+  // every rule below is re-checked in one transaction with the row locked —
+  // it is what lets a surface say why before a round trip.
+  //
+  // ARC-014, once more where the code is rather than only in the interface
+  // above: nothing here notifies anybody. No push, no email, no bell, no tab
+  // title. A challenge that lapses in 24 hours is the single most tempting
+  // thing in this product to tap someone on the shoulder about, and D4's answer
+  // is that the FEED RE-ORDERS for the person who owes an answer — Extra Phase
+  // 3's job, on the surfaces, out of `computeDuelPhase` and the ids on these
+  // rows. Nothing in this file is asked to change for it.
+
+  /**
+   * Send a challenge (D1/D5/D9, roadmap task 8).
+   *
+   * `canStartDuel` is PLAIN MEMBERSHIP and is deliberately not `canCreateBet`:
+   * D9 says a `restricted` team does not ration duels, because DOM-002 rations
+   * bets posted for a team to wager into and a duel is a private arrangement
+   * between two people who have already agreed to it. What a restricted team
+   * gets instead is a guarantee it never has to ask for — `create_duel` stores
+   * `any_moderator = true` for any duel created while the team is restricted,
+   * whatever the challenger ticked. That coercion is NOT mirrored here and must
+   * not be: it lives in the RPC, inside the transaction that reads the team's
+   * access mode, and this function takes the server's answer back rather than
+   * predicting it (`result.duel.anyModerator` below, never `draft.anyModerator`).
+   * Predicting it locally would be a second copy of D9 that goes stale the
+   * moment the leader flips the mode mid-compose.
+   *
+   * The local patch afterwards rebuilds what the RPC wrote from what it
+   * returned plus what this client already knows. Two values are echoes rather
+   * than reads, and both are safe in a way worth stating:
+   *
+   *   * The option LABELS. `create_duel` snapshots the two participants'
+   *     `users.display_name` at insert time (bet_options has no UPDATE path at
+   *     all, by design, so a later rename must not silently relabel a bet
+   *     somebody has already wagered on). This client reads the same two names
+   *     out of `data.users`. They can only differ if a rename raced the
+   *     insert, which is cosmetic and gone on the next load.
+   *   * `placedAt` on the challenger's wager, taken from the bet's
+   *     `created_at`. `now()` in Postgres is the TRANSACTION timestamp, and all
+   *     six rows are one transaction, so `wagers.placed_at` and
+   *     `bets.created_at` are the same instant to the microsecond — not
+   *     approximately, exactly.
+   */
+  const startDuel = useCallback(
+    async (draft: NewDuelDraft): Promise<MutationResult> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("Team not found.");
+      if (!permitStartDuel(ctx.team, ctx.userId)) {
+        return fail("You are not a member of this team.");
+      }
+      const balance =
+        ctx.team.members.find((m) => m.userId === ctx.userId)?.coinBalance ?? 0;
+      const firstIssue = validateDuelDraft(draft, {
+        team: ctx.team,
+        challengerId: ctx.userId,
+        balance,
+      })[0];
+      if (firstIssue) return fail(firstIssue.message);
+
+      // Normalised once, here, so the same value is validated, sent and stored
+      // locally. `validateDuelDraft` trims before it compares and treats an
+      // empty mediator as "none", so a form that binds an empty string to a
+      // cleared picker passes validation — and would then send `""` as a uuid
+      // and get a type error from PostgREST instead of a sentence.
+      const challengeeId = draft.challengeeId.trim();
+      const mediatorId = draft.mediatorId?.trim() || null;
+
+      const result = await betDb.startDuel(supabase, {
+        teamId: ctx.team.id,
+        title: draft.title,
+        iconEmoji: draft.iconEmoji,
+        challengeeId,
+        mediatorId,
+        anyModerator: draft.anyModerator,
+        stake: draft.stake,
+      });
+      if (!result.ok || !result.duel) {
+        return result.ok ? fail("Could not send the challenge.") : result;
+      }
+
+      const started = result.duel;
+      const nameOf = (userId: string) =>
+        data.users.find((u) => u.id === userId)?.displayName ?? "?";
+      const bet: Bet = {
+        id: started.betId,
+        teamId: ctx.team.id,
+        creatorId: ctx.userId,
+        title: draft.title.trim(),
+        iconEmoji: draft.iconEmoji?.trim() || undefined,
+        // Position 0 IS the challenger and position 1 IS the challengee — the
+        // convention `create_duel` fixed with an explicit `values` list, which
+        // every surface, every test and `accept_duel` itself depend on.
+        // `option_ids` comes back in that order.
+        options: [
+          { id: started.optionIds[0], label: nameOf(ctx.userId) },
+          { id: started.optionIds[1], label: nameOf(challengeeId) },
+        ],
+        // D2: `open` with `closesAt` = the ACCEPT deadline, so the existing
+        // clock carries "waiting to be accepted" — UX-008's sort, the countdown
+        // and `computeEffectiveState` all work with no duel-specific branch and
+        // no fourth bet state.
+        state: "open",
+        closesAt: started.closesAt,
+        // Task 6's structural guarantee, and the reason this phase adds no
+        // payout code: a per-user cap equal to the stake makes a third wager on
+        // this bet impossible even if a write path ever leaked, which is what
+        // lets `settleBet` be reused unchanged.
+        maxWagerPerUser: draft.stake,
+        kind: "duel",
+        createdAt: started.createdAt,
+      };
+      const duel: Duel = {
+        betId: started.betId,
+        challengerId: ctx.userId,
+        challengeeId,
+        mediatorId,
+        // AS STORED, not as sent — D9's coercion, taken from the server's
+        // answer. See this function's doc comment.
+        anyModerator: started.anyModerator,
+        stake: draft.stake,
+        acceptedAt: null,
+        // Equal to the bet's `closesAt` at creation, and the two stay equal
+        // until `accept_duel` moves the bet's to now(). After that this is the
+        // only surviving record of when the challenge would have lapsed.
+        expiresAt: started.closesAt,
+      };
+      const wager: Wager = {
+        id: started.wagerId,
+        betId: started.betId,
+        userId: ctx.userId,
+        optionId: started.optionIds[0],
+        amount: draft.stake,
+        placedAt: started.createdAt,
+      };
+      dispatch({ type: "start-duel", teamId: ctx.team.id, bet, duel, wager });
+      return ok;
+    },
+    [supabase, requireContext, data.users],
+  );
+
+  /**
+   * Accept a challenge (D2/D5, roadmap task 8) — the challengee's stake, and
+   * the bet's move into AWAITING RESULT.
+   *
+   * Both halves of the guard are needed and neither implies the other, which is
+   * the single most likely bug in every duel surface Extra Phase 3 will build:
+   * `canAcceptDuel` is a roster+id rule (a member, the challengee, not yet
+   * accepted) and never looks at the clock, while `computeDuelPhase` is the
+   * clock and knows nothing about who is asking. An unaccepted duel past its
+   * deadline is EXPIRED before anything has persisted the void (D8 half (a)),
+   * so accepting it must be refused here even though the stored row still says
+   * `open` and `accepted_at is null`. The server agrees the hard way: it sweeps
+   * stale duels for the team before it reads the row, so what it refuses is a
+   * duel that is already void and already refunded.
+   *
+   * DOM-014 is absolute (D5): the balance check below is the same one
+   * `accept_duel` re-runs with the member row LOCKED, and the sentence is
+   * `validateWager`'s own. Nothing is ever accepted on credit, and the surface's
+   * answer to a refusal is `declineDuel(betId, "insufficient-funds")` — which
+   * is exactly why that void reason exists as a distinct value.
+   */
+  const acceptDuel = useCallback(
+    async (betId: string): Promise<MutationResult> => {
+      const bet = data.bets.find((b) => b.id === betId);
+      if (!bet) return fail("This bet no longer exists.");
+      const team = data.teams.find((t) => t.id === bet.teamId);
+      const member = team?.members.find((m) => m.userId === currentUserId);
+      if (!team || !member || !currentUserId) {
+        return fail("You are not a member of this team.");
+      }
+      // The duel row and the challengee's side of it, together: position 1 is
+      // theirs by the convention `create_duel` fixed, and `toBet` sorts options
+      // by `position` precisely so an index means what it says here. A duel bet
+      // with fewer than two options cannot exist — `create_duel` writes both in
+      // the same statement — so this reads as one "is this a well-formed duel"
+      // test with one sentence, rather than two guards for a state the schema
+      // cannot produce.
+      const duel = data.duels.find((d) => d.betId === bet.id);
+      const challengeeSide = bet.options[1];
+      if (!duel || !challengeeSide) return fail("This bet is not a duel.");
+
+      // ONE call to the shared predicate, then the sentence chosen by asking
+      // which of its clauses failed — the same shape `closeBetEarly` above uses
+      // after `canTransitionBetState`, and it keeps `canAcceptDuel` the single
+      // written form of the rule instead of an inlined copy of its three
+      // conditions. Identity is tested before acceptance because `accept_duel`
+      // tests them in that order: a stranger tapping an already-accepted duel
+      // must be told it is not theirs, not that it is taken.
+      if (!permitAcceptDuel(team, currentUserId, duel)) {
+        return fail(
+          currentUserId !== duel.challengeeId
+            ? "Only the person challenged can accept this duel."
+            : "This duel has already been accepted.",
+        );
+      }
+      const phase = computeDuelPhase(bet, duel, Date.now());
+      if (phase !== "pending") {
+        // One knowingly benign divergence, recorded so nobody hunts it: for a
+        // duel that is BOTH resolved and past its deadline (every declined or
+        // swept one, since voiding pulls `closes_at` back to the moment it
+        // happened) `accept_duel` tests the clock first and says "expired",
+        // while `computeDuelPhase` puts `resolved` first — deliberately, so a
+        // duel settled yesterday does not read as expired today — and lands
+        // here on "no longer open". Both are true, both refuse, and the phase's
+        // ordering is the one the whole feature is built on.
+        return fail(
+          phase === "expired"
+            ? "This challenge has expired."
+            : "This challenge is no longer open.",
+        );
+      }
+      if (duel.stake > member.coinBalance) return fail("Not enough coins.");
+
+      const result = await betDb.acceptDuel(supabase, bet.id);
+      if (!result.ok || !result.accepted) {
+        return result.ok ? fail("Could not accept the challenge.") : result;
+      }
+
+      dispatch({
+        type: "accept-duel",
+        teamId: team.id,
+        betId: bet.id,
+        acceptedAt: result.accepted.acceptedAt,
+        closesAt: result.accepted.closesAt,
+        wager: {
+          id: result.accepted.wagerId,
+          betId: bet.id,
+          userId: currentUserId,
+          optionId: challengeeSide.id,
+          amount: duel.stake,
+          // The server's clock again, and the same transaction-timestamp
+          // argument as `startDuel`: `accept_duel` reads `now()` once and the
+          // wager's default takes the same value, so `acceptedAt` IS this
+          // wager's `placed_at`.
+          placedAt: result.accepted.acceptedAt,
+        },
+      });
+      return ok;
+    },
+    [supabase, data.bets, data.teams, data.duels, currentUserId],
+  );
+
+  /**
+   * Refuse a challenge (D3/D5, roadmap task 8): the bet is voided, the
+   * challenger's stake comes back, and the reason is recorded as a suffix on
+   * the void rather than as a second kind of it.
+   *
+   * **The clock is deliberately not consulted here, and the asymmetry with
+   * `acceptDuel` directly above is the interesting part.** Declining a duel
+   * that has already expired is harmless: both paths void it and refund the
+   * challenger identically, through the same `app.settle_bet`. So
+   * `decline_duel` is the one duel RPC that does NOT sweep stale duels first —
+   * sweeping there would turn a no-consequence action into an error for no gain
+   * — and this mutator matches it. Refusing an expired challenge locally would
+   * be a client-side rule the server does not have, and it would strand a
+   * challengee who tapped Decline a second after the deadline with an error
+   * about a duel that was about to be voided anyway.
+   *
+   * `reason` is narrowed to two values at the type level (`DuelDeclineReason`)
+   * and again server-side. The other three `BetVoidReason`s are not the
+   * challengee's to claim: `'mediator'` belongs to whoever resolved the duel,
+   * `'expired'` is written by the sweep with no human in the loop, and
+   * `'participant-left'` by the kick/ban/leave cascade.
+   */
+  const declineDuel = useCallback(
+    async (
+      betId: string,
+      reason: betDb.DuelDeclineReason = "declined",
+    ): Promise<MutationResult> => {
+      const bet = data.bets.find((b) => b.id === betId);
+      if (!bet) return fail("This bet no longer exists.");
+      const team = data.teams.find((t) => t.id === bet.teamId);
+      if (!team || !currentUserId) return fail("You are not a member of this team.");
+      const duel = data.duels.find((d) => d.betId === bet.id);
+      if (!duel) return fail("This bet is not a duel.");
+
+      // `canDeclineDuel` answers false for BOTH "not the challengee" and
+      // "already accepted", so the sentence is chosen by asking which clause
+      // failed — identity first, matching `decline_duel`'s own check order.
+      if (!permitDeclineDuel(team, currentUserId, duel)) {
+        return fail(
+          currentUserId !== duel.challengeeId
+            ? "Only the person challenged can decline this duel."
+            : "This duel has already been accepted.",
+        );
+      }
+      // `bet.state`, not `computeDuelPhase` — this is the one duel guard that
+      // must not consult the clock (see the doc comment above). An already
+      // resolved challenge is gone; an expired-but-unswept one is still
+      // declinable, and declining it lands in the same place the sweep would.
+      if (bet.state === "resolved") {
+        return fail("This challenge is no longer open.");
+      }
+
+      const result = await betDb.declineDuel(supabase, bet.id, reason);
+      if (!result.ok) return result;
+
+      dispatch({
+        type: "void-duel",
+        teamId: bet.teamId,
+        betId: bet.id,
+        reason,
+        // The refunds Postgres actually applied, not a second local
+        // computation of them: `app.void_duel` runs `app.settle_bet(bet,
+        // 'void', null)` — the SQL twin of `settleBet`, the same function a
+        // mediator's ruling and `delete_bet`'s reversal both go through — so
+        // the balances on screen are the ones the database wrote.
+        deltas: result.deltas ?? [],
+      });
+      return ok;
+    },
+    [supabase, data.bets, data.teams, data.duels, currentUserId],
   );
 
   // --- team chat: its own store, its own lazy load (roadmap §8 Extra Phase 1) ---
@@ -1669,6 +2611,17 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * re-joining stays open (A-4). The wager cascade goes through settlement.ts,
    * team-scoped so other teams' pools are untouched (decision §4.4); the ids it
    * drops are what the RPC applies in Postgres.
+   *
+   * Extra Phase 2 task 11 gives the departure a second half: any DUEL the
+   * leaver is a participant in is voided and the survivor refunded, because
+   * dropping one of exactly two leaves the other's stake with nothing to settle
+   * against. `departureCascade` above computes both halves together and
+   * explains why their ORDER is a mirror of the RPC's rather than a choice.
+   * The duel deltas are the only part of this the server derives entirely on
+   * its own — a client-supplied list of BALANCE DELTAS would be free coins, as
+   * `20260905150000_bet_rpcs.sql`'s header says in as many words — so what is
+   * computed here is the local patch, and `app.void_duels_for_departing_member`
+   * is the authority.
    */
   const removeMember = useCallback(
     async (userId: string, ban: boolean): Promise<MutationResult> => {
@@ -1688,22 +2641,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         return fail("That member is not on this team.");
       }
 
-      const keptWagers = removeMemberWagersInTeam(
-        userId,
-        ctx.team.id,
-        data.bets,
-        data.wagers,
-      );
-      const kept = new Set(keptWagers.map((w) => w.id));
-      const removedIds = data.wagers
-        .filter((w) => !kept.has(w.id))
-        .map((w) => w.id);
+      const cascade = departureCascade(data, ctx.team.id, userId);
 
       const result = await db.removeMembership(supabase, {
         teamId: ctx.team.id,
         userId,
         ban,
-        wagerIds: removedIds,
+        wagerIds: cascade.removedWagerIds,
       });
       if (!result.ok) return result;
 
@@ -1712,11 +2656,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         teamId: ctx.team.id,
         userId,
         ban,
-        wagers: keptWagers,
+        wagers: cascade.keptWagers,
+        voidedDuels: cascade.voidedDuels,
       });
       return ok;
     },
-    [supabase, requireContext, data.bets, data.wagers],
+    [supabase, requireContext, data],
   );
 
   const kickMember = useCallback(
@@ -1775,7 +2720,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     return ok;
   }, [supabase, requireContext]);
 
-  /** The membership and its per-team balance go; wagers cascade as on a kick. */
+  /**
+   * The membership and its per-team balance go; wagers — and, since Extra
+   * Phase 2, duels — cascade exactly as on a kick. One `departureCascade` call
+   * serves both, because DOM-032 draws no distinction between being removed and
+   * walking out: the money consequences are identical and the leaver's duels
+   * strand their opponent either way.
+   */
   const leaveTeam = useCallback(async (): Promise<MutationResult> => {
     const ctx = requireContext();
     if (!ctx) return fail("Team not found.");
@@ -1787,20 +2738,13 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       );
     }
 
-    const keptWagers = removeMemberWagersInTeam(
-      ctx.userId,
-      ctx.team.id,
-      data.bets,
-      data.wagers,
-    );
-    const kept = new Set(keptWagers.map((w) => w.id));
-    const removedIds = data.wagers.filter((w) => !kept.has(w.id)).map((w) => w.id);
+    const cascade = departureCascade(data, ctx.team.id, ctx.userId);
 
     const result = await db.removeMembership(supabase, {
       teamId: ctx.team.id,
       userId: ctx.userId,
       ban: false,
-      wagerIds: removedIds,
+      wagerIds: cascade.removedWagerIds,
     });
     if (!result.ok) return result;
 
@@ -1809,11 +2753,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       teamId: ctx.team.id,
       userId: ctx.userId,
       ban: false,
-      wagers: keptWagers,
+      wagers: cascade.keptWagers,
+      voidedDuels: cascade.voidedDuels,
     });
     setCurrentTeamId(null);
     return ok;
-  }, [supabase, requireContext, data.bets, data.wagers]);
+  }, [supabase, requireContext, data]);
 
   /** UX-022: name, curated name color, avatar — applied everywhere at once. */
   const updateProfile = useCallback(
@@ -1982,6 +2927,23 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const wagers = data.wagers.filter((w) => betIds.has(w.betId));
     const transactions = data.transactions.filter((t) => t.teamId === team.id);
     const comments = data.comments.filter((c) => betIds.has(c.betId));
+    // Scoped through the bet ids exactly as `wagers` and `comments` are, and
+    // here it is the ONLY way: `bet_duels` has no `team_id` column at all (D1 —
+    // the bet owns the team), which is the same fact that makes RLS reach the
+    // table through `app.is_bet_team_member(bet_id)` and makes its realtime
+    // binding impossible to filter server-side.
+    //
+    // UX-010, confirmed rather than assumed: `duels` rides `TeamData`, whose
+    // only whole-world write is the `"replace"` action, so a reload swaps duels
+    // out with everything else. Switching TEAMS does not refetch anything at
+    // all in this app — `setTeamId` moves a single id and this memo re-derives
+    // every list above from the one loaded world — so duels are re-scoped by
+    // the same line that re-scopes bets, in the same render, and cannot lag a
+    // switch. (Chat is the exception, and has its own reset effect precisely
+    // because it is NOT a `TeamData` field.)
+    const duels = data.duels.filter((d) => betIds.has(d.betId));
+    const duelByBetId = new Map(duels.map((d) => [d.betId, d]));
+    const duelFor = (betId: string) => duelByBetId.get(betId);
 
     const richest = [...team.members].sort((a, b) => b.coinBalance - a.coinBalance);
     const poorest = [...team.members].sort((a, b) => a.profitLoss - b.profitLoss);
@@ -2038,6 +3000,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       wagers,
       transactions,
       comments,
+      duels,
+      duelFor,
       chat: {
         messages: chatSlice.messages,
         status: chatSlice.status,
@@ -2057,6 +3021,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       resolveBet,
       deleteBet,
       addComment,
+      startDuel,
+      acceptDuel,
+      declineDuel,
       loadChat,
       loadEarlierChat,
       sendChatMessage,
@@ -2093,6 +3060,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     resolveBet,
     deleteBet,
     addComment,
+    startDuel,
+    acceptDuel,
+    declineDuel,
     loadChat,
     loadEarlierChat,
     sendChatMessage,

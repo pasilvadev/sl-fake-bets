@@ -1,12 +1,14 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { ChatMessageRow } from "./chat";
-import type { BetRow, CommentRow, WagerRow } from "./team-data";
+import type { BetRow, CommentRow, DuelRow, WagerRow } from "./team-data";
 
 /**
  * Postgres Changes subscriptions — roadmap Phase 8 (ARC-005 / UX-013 / UX-018),
  * extended by Extra Phase 1 (UX-019, team chat) with a fourth binding on the
  * same channel — see `subscribeTeamChannel` below for why chat did not earn a
- * channel of its own.
+ * channel of its own — and by Extra Phase 2 (1v1 duels) with a fifth and a
+ * sixth, `bet_duels` INSERT and UPDATE, on that same channel and for the same
+ * §5 rule 1 reason.
  *
  * This module owns the wire: which channels exist, which tables and events each
  * one listens to, and how a raw payload becomes one `RemoteEvent`. It decides
@@ -45,15 +47,26 @@ type Client = SupabaseClient;
 export type RealtimeBetRow = Omit<BetRow, "bet_options">;
 
 /**
- * What the client is told happened, already narrowed to the six cases that can
- * change what is on screen.
+ * What the client is told happened, already narrowed to the seven cases that
+ * can change what is on screen.
  *
  * `bet-insert` carries only the id: a `bets` INSERT arrives without
  * `bet_options`, and a bet with no options cannot be rendered, so the id is
  * followed by one scoped single-row fetch (`fetchBet`).
  *
- * Deletes of `wagers`, `comments` and `chat_messages` are absent on purpose —
- * see `subscribeTeamChannel`.
+ * `duel-upsert` is ONE variant for two events, INSERT and UPDATE, which is the
+ * only place in this union where that collapse is right. A `bet_duels` row is
+ * a complete `DuelRow` in both payloads (no embed, no ordering column, nothing
+ * to go and fetch), and the receiver's rule is identical either way: replace
+ * the duel with this bet id, or ignore it if this client does not hold the
+ * bet. Splitting it into `duel-insert` and `duel-update` would hand
+ * team-context.tsx two reducer cases with the same body and invite them to
+ * drift apart. The only UPDATE a duel row ever takes is `accepted_at` moving
+ * from null to a timestamp (`accept_duel`), which is exactly an upsert of the
+ * whole row.
+ *
+ * Deletes of `wagers`, `comments`, `chat_messages` and `bet_duels` are absent
+ * on purpose — see `subscribeTeamChannel`.
  */
 export type RemoteEvent =
   | { kind: "bet-insert"; betId: string }
@@ -61,7 +74,8 @@ export type RemoteEvent =
   | { kind: "bet-delete"; betId: string }
   | { kind: "wager-insert"; row: WagerRow }
   | { kind: "comment-insert"; row: CommentRow }
-  | { kind: "chat-insert"; row: ChatMessageRow };
+  | { kind: "chat-insert"; row: ChatMessageRow }
+  | { kind: "duel-upsert"; row: DuelRow };
 
 export interface ChannelHandlers {
   onEvent: (event: RemoteEvent) => void;
@@ -121,6 +135,43 @@ function withRecovery(channel: RealtimeChannel, onResubscribe: () => void) {
  * kick/ban cascade, whose companion `team_members` change is not subscribed at
  * all (§5 rule 3). Applying half of either one would be worse than applying
  * neither; the pool corrects on the next load.
+ *
+ * `bet_duels` INSERT and UPDATE (Extra Phase 2, D1/D2) are in exactly the
+ * position `wagers` INSERT is one paragraph up, and for exactly its reason:
+ * the table HAS NO TEAM COLUMN, so there is no server-side filter to write.
+ * A duel belongs to a team only through its bet, and RLS knows that —
+ * `bet_duels_select_bet_team_member` scopes reads through
+ * `app.is_bet_team_member(bet_id)` — so a subscriber receives duel rows for
+ * bets it may read and no others. Do not "fix" this by adding
+ * `filter: "team_id=eq.<id>"`: there is no such column, the filter
+ * would match nothing, and the binding would go SILENTLY inert rather than
+ * erroring (design-realtime.md §4 fact 1 says the same about a table missing
+ * from the publication, and this is the same class of quiet failure). As with
+ * `wagers`, the receiver still checks that it holds the duel's bet, which
+ * drops duels on bets this client happens to have loaded for a team other
+ * than the one this channel belongs to.
+ *
+ * Two events rather than one because a duel changes twice on other people's
+ * screens: it is CREATED (the challengee needs to see the challenge without
+ * reloading — D4 re-orders the feed for them, and it can only re-order a duel
+ * the client actually holds), and it is ACCEPTED (`accepted_at` stops being
+ * null, which flips the row out of "waiting to be accepted" for everyone
+ * watching). The accompanying `bets` UPDATE — `state='closed'`, `closes_at=
+ * now()` — arrives on the `bets` binding above in the same transaction, so a
+ * client that dropped one of the two would render a half-accepted duel until
+ * its next load; both bindings existing is what keeps that pair whole.
+ *
+ * `bet_duels` DELETE is bound nowhere, and here the reason is structural
+ * rather than a judgement call like the `wagers` and `chat_messages` ones
+ * above: `bet_duels.bet_id references bets on delete cascade` is the ONLY way
+ * one of these rows ever dies, so every duel delete is a bet delete, and
+ * `bet-delete` already carries it. A duel-delete binding could therefore only
+ * ever say a second time what the client is already being told, and would say
+ * it with the same unfilterable, RLS-exempt DELETE payload (§4.3) that made
+ * the `bets` DELETE binding need a behavioural mitigation in the first place.
+ * Note that this is delete-the-ROW, not void-the-duel: a declined, expired or
+ * cascade-voided duel keeps its row and reaches this client as a `bets` UPDATE
+ * carrying `resolution_kind='void'` and its `void_reason`.
  *
  * `chat_messages` INSERT (Extra Phase 1, UX-019) rides this same channel — no
  * `chat:${teamId}` channel exists, and should not: §5 rule 1 is one coarse
@@ -188,6 +239,28 @@ export function subscribeTeamChannel(
       (payload) => {
         const row = payload.new as WagerRow;
         if (row?.id) handlers.onEvent({ kind: "wager-insert", row });
+      },
+    )
+    // Unfiltered — `bet_duels` has no team column; RLS scopes it. See the
+    // header above before adding a `filter` here.
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "bet_duels" },
+      (payload) => {
+        const row = payload.new as DuelRow;
+        // Guarded on `bet_id`, not `id`: this table's primary key IS its bet
+        // id (1:1 with `bets`, D1), so there is no separate `id` column to
+        // test and a copy-pasted `row?.id` here would be permanently falsy and
+        // drop every duel event on the floor.
+        if (row?.bet_id) handlers.onEvent({ kind: "duel-upsert", row });
+      },
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "bet_duels" },
+      (payload) => {
+        const row = payload.new as DuelRow;
+        if (row?.bet_id) handlers.onEvent({ kind: "duel-upsert", row });
       },
     )
     .on(

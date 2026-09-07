@@ -16,6 +16,11 @@
 --   60000000-…-0000000000NN  transactions tx-NN
 --   70000000-…-00000000000N  invite_codes (one per team)
 --
+-- `bet_duels` gets no block of its own: its primary key IS its bet's id
+-- (`bet_id uuid primary key references bets`), so a duel is reachable by the
+-- 20000000-… id of the bet it hangs off and inventing a second identifier for
+-- it would be inventing a row shape the schema does not have.
+--
 -- ONE transaction for the whole file. Two schema-level constraints require it:
 -- the deferred DOM-001 leader-is-a-member trigger (a team is inserted before its
 -- membership rows) and the deferred bets→bet_options winning-option FK (a
@@ -130,6 +135,17 @@ insert into public.invite_codes (id, team_id, code, created_by, created_at) valu
 -- settlement.test.ts: a stake leaves the balance at placement, so
 -- balance = ledger credits − stakes in flight + resolved payouts/refunds, and
 -- profit_loss is the realized outcome of the resolved bets only (b-05, b-06).
+--
+-- That formula is Phase 7's consistency guard verbatim
+-- (apps/web/src/lib/data/consistency-guard.ts), scoped per member to rows at or
+-- after joined_at, and it is the thing to re-derive before editing any number
+-- below. Three of the t-01 balances carry a DUEL stake as well as pool ones
+-- (Extra Phase 2, the section further down): u-06 −40, u-07 −25, u-09 −25.
+-- The guard does not know or care that those stakes belong to duels — a duel
+-- wager is a `wagers` row like any other, which is exactly why duels needed no
+-- settlement path of their own. u-08 has been CHALLENGED and has not answered,
+-- so his balance is untouched; money moves twice and never on credit (D5), and
+-- that asymmetry is the one thing to get right here.
 -- Note the leader rows carry role 'member': leader is a status on the team, not
 -- a role (DOM-003).
 
@@ -140,10 +156,23 @@ insert into public.team_members (team_id, user_id, role, coin_balance, profit_lo
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000003', 'moderator',  80,   0, '2026-08-01T19:12:00Z'),
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000004', 'member',     30, -60, '2026-08-02T10:30:00Z'),
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000005', 'member',     90,   0, '2026-08-02T11:00:00Z'),
-  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000006', 'member',    105,  25, '2026-08-03T14:45:00Z'),
-  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000007', 'member',     60,   0, '2026-08-05T09:20:00Z'),
+  -- u-06 Nina: 105 − 40. The stake on the PENDING duel b-08 left the moment she
+  -- sent the challenge, while it can still be declined, expire, or be cascaded
+  -- away by someone leaving. There is no escrow row holding it (D5) — the coins
+  -- are simply gone until a void refunds them through app.settle_bet's ordinary
+  -- refund branch.
+  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000006', 'member',     65,  25, '2026-08-03T14:45:00Z'),
+  -- u-07 Guiz: 60 − 25, his own stake on the ACCEPTED duel b-07.
+  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000007', 'member',     35,   0, '2026-08-05T09:20:00Z'),
+  -- u-08 Lelê: UNCHANGED at 65, and this is the row that proves the rule. He is
+  -- b-08's challengee and has not accepted, so not one coin of his has moved.
+  -- The symmetry of a duel's stake tempts you to debit both sides at once; do
+  -- that and the guard reports 40 coins of drift against him on the next load.
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000008', 'member',     65,   0, '2026-08-07T21:10:00Z'),
-  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000009', 'member',    100,   0, '2026-08-10T16:40:00Z'),
+  -- u-09 Pinto: 100 − 25, and his stake left on ACCEPT rather than at challenge
+  -- time — D5's second movement, and why b-07 has a two-sided pool while b-08
+  -- has a one-sided one.
+  ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000009', 'member',     75,   0, '2026-08-10T16:40:00Z'),
   -- Newest member: the 100-coin grant minus the 20 still in flight on b-02 (w-07).
   ('10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000010', 'member',     80,   0, '2026-09-01T12:00:00Z'),
   -- t-02 "Lanhouse Legends" (restricted) and t-03 "Churrasco FC" exist to give
@@ -164,6 +193,16 @@ insert into public.team_members (team_id, user_id, role, coin_balance, profit_lo
 -- --- bets ------------------------------------------------------------------------------
 -- Every lifecycle state is represented (ARC-010 wants the product to feel
 -- near-final): three open, one closed, one resolved-with-winner, one resolved-void.
+--
+-- No `kind` column in this list, deliberately: `bets.kind` is
+-- `not null default 'pool'` (20260906130000_duel_schema.sql), and that default is
+-- the entire reason Extra Phase 2 cost this schema no backfill — every row that
+-- existed before duels did is a pool bet and says so without being told. The
+-- fixture's TypeScript twin, packages/shared/src/mock-data.ts, has to spell
+-- `kind: "pool"` out on all six of these because a TS object literal has no
+-- default to inherit and `Bet.kind` is required; here the column supplies it.
+-- The two DUEL bets are in their own section below and do name it explicitly,
+-- because for them the default would be wrong.
 
 insert into public.bets (id, team_id, creator_id, title, icon_emoji, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, created_at) values
   ('20000000-0000-4000-a000-000000000001', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000002', 'Careca chega atrasado no churrasco de sábado?',        '🍖',   'open',     '2026-09-05T14:00:00Z', 100, null,     null,                                   '2026-09-02T20:00:00Z'),
@@ -190,6 +229,8 @@ insert into public.bet_options (id, bet_id, label, position) values
 
 -- --- wagers ------------------------------------------------------------------------------
 -- Pools: b-01 = 85, b-02 = 95, b-03 = 60, b-04 = 45, b-05 = 135, b-06 = 50.
+-- The two duel pools (b-07 = 50, b-08 = 40) are written in the duel section
+-- below instead, next to the bet_duels rows that explain their shape.
 
 insert into public.wagers (id, bet_id, option_id, user_id, amount, placed_at) values
   ('40000000-0000-4000-a000-000000000001', '20000000-0000-4000-a000-000000000001', '30000000-0000-4000-a000-000000000101', '00000000-0000-4000-a000-000000000001', 30, '2026-09-02T20:10:00Z'),
@@ -212,6 +253,113 @@ insert into public.wagers (id, bet_id, option_id, user_id, amount, placed_at) va
   -- b-06: resolved void, every stake refunded (DOM-019).
   ('40000000-0000-4000-a000-000000000015', '20000000-0000-4000-a000-000000000006', '30000000-0000-4000-a000-000000000601', '00000000-0000-4000-a000-000000000005', 30, '2026-08-26T08:30:00Z'),
   ('40000000-0000-4000-a000-000000000016', '20000000-0000-4000-a000-000000000006', '30000000-0000-4000-a000-000000000602', '00000000-0000-4000-a000-000000000008', 20, '2026-08-26T09:15:00Z');
+
+-- --- duels (Extra Phase 2) --------------------------------------------------------------
+-- One ACCEPTED duel (b-07) and one PENDING one (b-08), mirroring mockDuels in
+-- packages/shared/src/mock-data.ts. Four tables, because a duel is spread over
+-- four: the `bets` row that makes it a bet at all, its two auto-generated
+-- `bet_options`, the `bet_duels` row that makes it a duel, and the `wagers`
+-- rows that are where the money actually went.
+--
+-- WHY THERE IS NO STATE CALLED "WAITING" ANYWHERE BELOW (D1/D2). A duel is a
+-- `kind`, not a fourth `bet_state`. `bets.state` still admits exactly
+-- open→closed→resolved and `enforce_bet_state_transition` — the one trigger in
+-- this schema deliberately built with no service-context escape hatch — is
+-- byte-for-byte unchanged by this phase. "Waiting to be accepted" is spelled
+-- `kind='duel' and accepted_at is null and state='open'`, and the EXISTING
+-- clock carries it: closes_at is the accept deadline, so UX-008's sort,
+-- computeEffectiveState and the countdown all work with no special case.
+-- Accepting then does exactly what close_bet_early already does — state='closed',
+-- closes_at=now() — which is why b-07 below is 'closed' and not something new.
+--
+-- TIMESTAMPS: FIXED FOR THE ACCEPTED ONE, RELATIVE FOR THE PENDING ONE, and the
+-- inconsistency is on purpose in a file whose whole point is determinism.
+-- app.expire_stale_duels voids and refunds every duel with accepted_at is null
+-- and closes_at <= now(), swept on team load and before every duel write (D8
+-- half (b)). Seed b-08 with a hard-coded September date and the first person to
+-- open the app after this seed goes stale gets a duel that voids itself before
+-- they can look at it — no drift (the refund reconciles perfectly, which is
+-- worse: nothing complains), just a "pending duel" fixture that has never once
+-- been pending. `now()` is a transaction timestamp, so the three relative
+-- values below are computed once and agree to the microsecond, and every
+-- `supabase db reset` produces a challenge with 20 of its 24 hours left.
+-- b-07 needs none of that: an accepted duel is invisible to the sweep, so its
+-- dates are frozen like every other row here. mock-data.ts, which no running
+-- code reads, keeps b-08 frozen too and argues the opposite side there.
+
+insert into public.bets (id, team_id, creator_id, title, icon_emoji, kind, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, created_at) values
+  -- b-07, ACCEPTED. closes_at is the ACCEPTANCE instant (D2), which is why it
+  -- is EARLIER than the duel row's expires_at below rather than equal to it.
+  -- max_wager_per_user = the stake: on a duel that is not a creator preference
+  -- but the structural guarantee that a third wager is impossible even if a
+  -- write path ever leaked (task 6). Two symmetric stakes are exactly what let
+  -- app.settle_bet settle this with no duel-specific formula anywhere.
+  ('20000000-0000-4000-a000-000000000007', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000007', '1v1 no FIFA: o Guiz passa o Pinto?',   '🕹️', 'duel', 'closed', '2026-09-04T20:30:00Z', 25, null, null, '2026-09-04T19:00:00Z'),
+  -- b-08, PENDING. closes_at is the accept deadline itself — created_at plus
+  -- CONFIG.DUEL_ACCEPT_WINDOW_HOURS / app.duel_accept_window(), to the
+  -- microsecond, since both sides of the arithmetic read the same now().
+  ('20000000-0000-4000-a000-000000000008', '10000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000006', '1v1 de sinuca no sábado: Nina ou Lelê?', '🎱', 'duel', 'open',   now() + interval '20 hours',  40, null, null, now() - interval '4 hours');
+
+-- The two options are generated by create_duel from the participants'
+-- display_name — position 0 = challenger, position 1 = challengee — and are not
+-- the challenger's to choose. A duel has exactly two outcomes and they are the
+-- two people in it, which is the other half of why settleBet needs nothing new.
+insert into public.bet_options (id, bet_id, label, position) values
+  ('30000000-0000-4000-a000-000000000701', '20000000-0000-4000-a000-000000000007', 'Guiz',  0),
+  ('30000000-0000-4000-a000-000000000702', '20000000-0000-4000-a000-000000000007', 'Pinto', 1),
+  ('30000000-0000-4000-a000-000000000801', '20000000-0000-4000-a000-000000000008', 'Nina',  0),
+  ('30000000-0000-4000-a000-000000000802', '20000000-0000-4000-a000-000000000008', 'Lelê',  1);
+
+-- The duel halves. Between them the two rows cover both resolver arms D7
+-- allows, which is why there are two shapes here and not two of the same:
+--
+--   b-07 names a mediator (Pri, u-03) and leaves any_moderator false. Pri is a
+--   moderator of t-01, but only incidentally — the named mediator may be ANY
+--   teammate who is not one of the two participants, and no role is consulted
+--   by app.can_resolve_duel's first arm. This row satisfies the left half of
+--   bet_duels_has_a_resolver.
+--
+--   b-08 names nobody and sets any_moderator true — the pool arm, the CHECK's
+--   right half, and the shape D9 forces onto every duel created inside a
+--   `restricted` team. t-01 is free-for-all, so this one CHOSE it; it was not
+--   coerced. There is deliberately no fixture for D9's coercion, because there
+--   is nothing to fixture: it happens inside create_duel and the stored row is
+--   identical either way. That IS D9's "enforced at creation, never
+--   retroactively" — you cannot tell from a row which access mode produced it,
+--   and no later read is supposed to be able to.
+--
+-- expires_at vs the bet's closes_at: EQUAL on b-08, still pending, where the
+-- accept deadline is still the bet's deadline; DIVERGENT on b-07, where
+-- accepting overwrote closes_at while expires_at kept the deadline the
+-- challenge originally carried. That divergence is the entire reason the column
+-- is stored rather than derived from the bet, and b-07 is here partly so a
+-- reader can see it instead of taking the column comment's word for it.
+insert into public.bet_duels (bet_id, challenger_id, challengee_id, mediator_id, any_moderator, stake, accepted_at, expires_at) values
+  ('20000000-0000-4000-a000-000000000007', '00000000-0000-4000-a000-000000000007', '00000000-0000-4000-a000-000000000009', '00000000-0000-4000-a000-000000000003', false, 25, '2026-09-04T20:30:00Z', '2026-09-05T19:00:00Z'),
+  ('20000000-0000-4000-a000-000000000008', '00000000-0000-4000-a000-000000000006', '00000000-0000-4000-a000-000000000008', null,                                    true,  40, null,                   now() + interval '20 hours');
+
+-- Where the coins actually went (D5). b-07's pool is 50 — 25 a side, and
+-- structurally never more, because max_wager_per_user IS the stake; there is no
+-- third wager to write and no path that could produce one, since place_wager
+-- refuses kind='duel' outright and `wagers` INSERT has been revoked from
+-- `authenticated` since Phase 6.
+--
+-- b-08's pool is 40. ONE row, and the asymmetry is the whole fixture: the
+-- challengee's half does not exist until they accept. Adding a second row to
+-- make it look tidy would put 40 coins into a pool that never left anybody's
+-- balance, and the Phase 7 consistency guard would report it as drift against
+-- u-08 the first time anyone loaded the team — the guard working, not the guard
+-- being wrong.
+--
+-- Note the placed_at values on b-07: the challenger's is the bet's own
+-- created_at, because create_duel writes the bet and the challenger's wager in
+-- one transaction, and the challengee's is the acceptance instant. D5's two
+-- movements, visible in the data.
+insert into public.wagers (id, bet_id, option_id, user_id, amount, placed_at) values
+  ('40000000-0000-4000-a000-000000000018', '20000000-0000-4000-a000-000000000007', '30000000-0000-4000-a000-000000000701', '00000000-0000-4000-a000-000000000007', 25, '2026-09-04T19:00:00Z'),
+  ('40000000-0000-4000-a000-000000000019', '20000000-0000-4000-a000-000000000007', '30000000-0000-4000-a000-000000000702', '00000000-0000-4000-a000-000000000009', 25, '2026-09-04T20:30:00Z'),
+  ('40000000-0000-4000-a000-000000000020', '20000000-0000-4000-a000-000000000008', '30000000-0000-4000-a000-000000000801', '00000000-0000-4000-a000-000000000006', 40, now() - interval '4 hours');
+
 
 -- --- comments (UX-018) ----------------------------------------------------------------------
 

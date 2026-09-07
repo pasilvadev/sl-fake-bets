@@ -52,15 +52,37 @@ export type KnownFeatureFlag =
   | "crowd-resolution"    // DOM-020 [future]
   | "platform-icon-set"   // DOM-010 [future]
   | "locale-pt-br"        // UX-027  [future]
-  // Two flags above have live readers as of Extra Phase 1, and this comment
-  // used to claim there was only one — read on for why both halves of that
-  // old claim are now false.
+  // `global-team-chat` above and `coming-soon-teasers` below both have live
+  // `useFeatureFlag` calls today (pulse-rail.tsx + module-chip-strip.tsx, and
+  // wallet-module.tsx respectively), and `duel-bets` at the end of this union
+  // is the THIRD — its readers arrive one phase later, with Extra Phase 3's
+  // surfaces. So this block long ago stopped being the single-example one it
+  // was written as. While correcting that count (Extra Phase 2, task 15) it
+  // also has to correct what the FIRST correction got wrong about the history,
+  // because a comment that is merely out of date is a nuisance and one that is
+  // confidently false is a trap.
   //
-  // `global-team-chat` (above) is the first: it gates the real chat module,
-  // not a stub. That module replaced `chat-stub-module.tsx`, which is what
-  // this flag used to gate before Extra Phase 1, and which `coming-soon-teasers`
-  // (below) ALSO used to gate — the stub carried both flags at once, `SOON`
-  // painted by one and its very existence gated by the other.
+  // What actually happened, verified against the pre-Extra-Phase-1 tree rather
+  // than remembered:
+  //
+  //   - `global-team-chat` gated NOTHING before Extra Phase 1. It was a bare
+  //     union member with zero `useFeatureFlag` calls anywhere in the app and
+  //     a `false` seed (20260905120100_infra_tables.sql, `[future]`). Extra
+  //     Phase 1 gave it its first reader and flipped it true. It did not
+  //     "move" from the stub to the real module; it was never wired to the
+  //     stub at all.
+  //
+  //   - `chat-stub-module.tsx` was gated by `coming-soon-teasers` ALONE, from
+  //     `pulse-rail.tsx` and `module-chip-strip.tsx`. The stub itself imported
+  //     no flag hook whatsoever: its `SOON` badge was a hard-coded <span>, not
+  //     a flag-driven affordance.
+  //
+  // The earlier claim here — that `global-team-chat` used to gate the stub,
+  // and that "the stub carried both flags at once, `SOON` painted by one and
+  // its very existence gated by the other" — was false in both halves. The
+  // paragraphs below are untouched by the correction and remain exactly right:
+  // precisely ONE flag ever gated the stub, which is why deleting the stub
+  // would have orphaned that one.
   //
   // Deleting the stub without re-pointing `coming-soon-teasers` would have
   // silently ended ARC-016's live-toggle proof (roadmap Phase 9, task 2 —
@@ -72,13 +94,35 @@ export type KnownFeatureFlag =
   // proof outright rather than preserving it, and leaving it wired to the
   // now-deleted chat stub is a lie on screen — a toggle with no listener.
   //
-  // So `coming-soon-teasers` is RE-POINTED this phase, from the deleted chat
+  // So `coming-soon-teasers` was RE-POINTED by Extra Phase 1, from the deleted chat
   // stub to the Wallet module's disabled "Donate coins" button (DOM-023's
   // future-stub, still excluded as a feature — see Extra Phase 1's own
   // exclusion list). That button now paints its "SOON" affordance off this
   // flag, so ARC-016's toggle proof keeps a live, visible subject instead of
   // quietly losing one.
-  | "coming-soon-teasers";
+  | "coming-soon-teasers"
+  // Extra Phase 2 (1v1 duel bets), and the third flag with a live reader.
+  // Seeded `true` by 20260906130000_duel_schema.sql, and that seed is an
+  // INSERT ... on conflict (key) do update rather than the bare UPDATE the
+  // chat migration used, for a reason worth stating once: `global-team-chat`
+  // already existed as a row from 20260905120100_infra_tables.sql, so an
+  // UPDATE found it. This key does not exist yet, and an UPDATE would have
+  // matched zero rows and failed silently — the flag would then read absent,
+  // `useFeatureFlag` treats absent as OFF, and the feature would simply never
+  // appear with nothing anywhere reporting why.
+  //
+  // It ships one phase AHEAD of what it gates: Extra Phase 2 is domain, schema
+  // and write paths with no new pixels, and the `useFeatureFlag` calls land
+  // with Extra Phase 3's compose form, duel row and resolve control. That
+  // ordering is deliberate — the kill switch exists before the thing it kills,
+  // so whoever first needs duels gone does not need a migration to do it.
+  //
+  // What it hides is the UI, and only the UI. It does not disarm the RPCs and
+  // must never be made to: flipping it off with duels in flight cannot be
+  // allowed to strand coins, so `app.expire_stale_duels`, `app.void_duel` and
+  // the kick/ban cascade go on refunding underneath a hidden surface. A flag
+  // that can lose someone's money is not a kill switch, it is a bug.
+  | "duel-bets";
 
 /**
  * The two funnel events ARC-017 permits, and the only two `event_name` values

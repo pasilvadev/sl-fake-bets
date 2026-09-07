@@ -127,6 +127,24 @@ describe("removeMemberWagersInTeam — cascade stays inside one team (DOM-032)",
     state: "open",
     closesAt: "2026-12-01T00:00:00Z",
     maxWagerPerUser: 100,
+    /**
+     * `kind` is REQUIRED on `Bet` (D1, Extra Phase 2). `bets.kind` is
+     * `not null default 'pool'` in SQL — which is exactly why that phase
+     * needed no backfill — but a TypeScript literal inherits no default, so
+     * every synthetic `Bet` has to name its kind.
+     *
+     * `"pool"` is the right answer here and not merely the quiet one: this
+     * fixture exists to prove `removeMemberWagersInTeam` stays inside one
+     * team (DOM-032), and that function is pool-shaped by construction —
+     * dropping one bettor out of many leaves a valid pool. A duel is the case
+     * it must NOT be asked to handle (dropping one of exactly two leaves the
+     * survivor's stake with nothing to settle against), which is why Extra
+     * Phase 2 added `voidDuelsForDepartingMember` beside it rather than
+     * teaching this one about duels. Marking this row `"duel"` would put a
+     * duel bet in front of the pool cascade with no `bet_duels` row to match
+     * it — a state the schema cannot produce.
+     */
+    kind: "pool",
     createdAt: "2026-09-01T00:00:00Z",
   };
   const otherTeamWager: Wager = {

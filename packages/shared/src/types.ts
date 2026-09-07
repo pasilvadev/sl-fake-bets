@@ -13,10 +13,75 @@ export type TeamAccessMode = "free-for-all" | "restricted";
 /** Strictly ordered lifecycle (DOM-012). */
 export type BetState = "open" | "closed" | "resolved";
 
+/**
+ * Which SHAPE of bet a row is (D1, Extra Phase 2) — and the entirety of what
+ * `Bet` itself learns about duels. Everything kind-specific lives in `Duel`
+ * below, keyed by bet id, so `Bet` never grows a second set of mostly-null
+ * fields describing a shape 99% of its rows are not. The next kind after this
+ * one is a single member added here plus a single side interface; it is never
+ * six more optional fields on `Bet`, and that is the whole point of having a
+ * discriminator at all.
+ *
+ * SQL twin: the `public.bet_kind` enum and `bets.kind`
+ * (`not null default 'pool'`) in `20260906130000_duel_schema.sql`. The column
+ * default is what makes every pre-existing row correct with no backfill, and
+ * it is also why `Bet.kind` below is REQUIRED rather than optional: no row
+ * that comes out of the database can lack one, so a mapper or fixture that
+ * forgets it is a bug the compiler should catch here, not a `?? "pool"`
+ * quietly written at each of the dozen read sites — where the failure mode is
+ * a duel rendering as an ordinary pool bet, which is exactly the bug nobody
+ * would notice until someone wagered into it.
+ */
+export type BetKind = "pool" | "duel";
+
+/**
+ * WHY a bet was voided (D3, Extra Phase 2). Nullable next to a `"void"`
+ * resolution, and `null` for every pool bet and for every void that already
+ * existed before this phase — so D3 costs no backfill.
+ *
+ * An enum rather than free text because the next feature that voids a bet for
+ * a new reason should have to add a value in three coordinated places (here,
+ * `public.bet_void_reason`, and the copy that renders it) instead of inventing
+ * a string convention no other reader knows about.
+ *
+ * The reason is a SUFFIX, never a second state. A void is still a void: every
+ * stake refunded, zero realized P/L, one `VOID · REFUNDED` treatment on
+ * screen — `settleBet`'s refund branch does not look at this field and must
+ * not start. It exists so the history row can say the challengee *couldn't
+ * afford it* rather than the flat "void" the owner rejected, and so that
+ * `bets_void_reason_shape` (the CHECK that forbids a reason on a non-void
+ * resolution) has something to enforce.
+ *
+ * - `"mediator"` — a human resolver declared a draw/void. The pre-duel
+ *   meaning of every existing void, and the default a duel resolution falls
+ *   back to when a resolver voids without saying why.
+ * - `"declined"` — the challengee said no while the duel was still pending.
+ * - `"insufficient-funds"` — the challengee wanted in and could not cover the
+ *   stake. DOM-014 is absolute, so accept is refused and this is the decline
+ *   path the UI offers instead (D5).
+ * - `"expired"` — nobody accepted before `closesAt` (D8). Written by
+ *   `app.expire_stale_duels`, lazily, whenever someone next looks.
+ * - `"participant-left"` — a participant was kicked, banned, or left (task
+ *   11). A departing MEDIATOR voids nothing (D7): `app.can_resolve_duel`
+ *   falls back to the any-moderator pool at read time, so that duel is still
+ *   resolvable and nothing is stranded.
+ */
+export type BetVoidReason =
+  | "mediator"
+  | "declined"
+  | "insufficient-funds"
+  | "expired"
+  | "participant-left";
+
 /** Resolution outcome (DOM-018/019). Only present when state is "resolved". */
 export type BetResolution =
   | { kind: "winner"; winningOptionId: string }
-  | { kind: "void" }; // draw/void — all wagers refunded
+  // draw/void — all wagers refunded. `reason` (D3) is OPTIONAL, and that is
+  // not laziness: the column is nullable and nothing backfilled it, so every
+  // void written before Extra Phase 2 legitimately has none. `undefined` here
+  // means "voided, reason not recorded", never "voided for some other reason",
+  // and no payout path may branch on it — see BetVoidReason above.
+  | { kind: "void"; reason?: BetVoidReason };
 
 export interface User {
   id: string;
@@ -92,10 +157,90 @@ export interface Bet {
   state: BetState;
   /** Exactly when open→closed happens automatically (DOM-012). */
   closesAt: string;
-  /** Per-user max wager set by creator (DOM-017). */
+  /**
+   * Per-user max wager set by creator (DOM-017). On a duel this is not a
+   * preference but a structural guarantee: `create_duel` writes it equal to
+   * the stake, which makes a third wager impossible even if a write path ever
+   * leaked (task 6). Cheaper than a new formula, and it is why duels need no
+   * settlement code of their own.
+   */
   maxWagerPerUser: number;
   resolution?: BetResolution;
+  /**
+   * pool vs duel (D1). REQUIRED — see `BetKind` for why this is not optional
+   * even though it was added in a later phase than the rest of this interface.
+   */
+  kind: BetKind;
   createdAt: string;
+}
+
+/**
+ * The duel half of a duel bet (D1, Extra Phase 2): 1:1 with the `Bet` whose
+ * `kind` is `"duel"`, joined by `betId`, and deliberately a SEPARATE interface
+ * rather than six optional fields bolted onto `Bet`. Two consequences worth
+ * stating before someone "simplifies" them away:
+ *
+ *  - Every duel is also a full `Bet`, so `closesAt`, `state`, `resolution`,
+ *    UX-008's sort, `computeEffectiveState` and the countdown all keep working
+ *    with no special case (D2). A duel is not a fourth `BetState`.
+ *  - There is no `teamId` here. A duel reaches its team through its bet, the
+ *    way `Comment` does and unlike `ChatMessage`, which carries one. That is
+ *    the same trade the chat migration argued in reverse: chat denormalizes
+ *    because every read is an unbounded scroll and the join would repeat per
+ *    page, while a duel is loaded exactly once alongside the bet it hangs off.
+ *    It is also why the realtime binding on `bet_duels` cannot be filtered
+ *    server-side by team and leans on RLS instead — there is no column to
+ *    filter on, by design.
+ *
+ * Money is already gone from balances by the time you read this row (D5):
+ * the challenger's stake left at creation and the challengee's at accept,
+ * both as ordinary `wagers` rows through the same lock-then-debit sequence
+ * `place_wager` uses. There is no escrow field here and there must not be one.
+ */
+export interface Duel {
+  /** PK and FK at once — `bet_duels.bet_id references bets on delete cascade`. */
+  betId: string;
+  /** Sent the challenge, created the `Bet`, and holds position-0's option. */
+  challengerId: string;
+  /** Must answer it; holds position-1's option. Never equal to challengerId. */
+  challengeeId: string;
+  /**
+   * The named resolver (D7): any teammate who is not one of the two
+   * participants, or `null` when the duel relies on the any-moderator pool.
+   * Goes `null` if that person's user row ever disappears, which strands
+   * nothing precisely because `anyModerator` below is additive, not an
+   * alternative.
+   */
+  mediatorId: string | null;
+  /**
+   * D7's additive half: any moderator or the leader may also resolve this,
+   * whoever acts first, so a duel is never frozen behind one quiet person.
+   * D9's stored guarantee too — a duel created while the team was
+   * `restricted` has this `true` no matter what the challenger ticked, and
+   * flipping the team's access mode afterwards never rewrites it. The row,
+   * not the team's current settings, is the truth about who may resolve THIS
+   * duel.
+   */
+  anyModerator: boolean;
+  /** Symmetric, chosen by the challenger, paid by both sides (D5). >= 1. */
+  stake: number;
+  /**
+   * When the challengee accepted, or `null` while the challenge is still
+   * outstanding. Do NOT read this alone to decide what a duel is doing — an
+   * unaccepted duel past its deadline is expired, and only
+   * `computeDuelPhase(bet, duel, nowMs)` knows that, because the deadline
+   * lives on the bet and the clock is nobody's stored state (D8).
+   */
+  acceptedAt: string | null;
+  /**
+   * The accept deadline, written equal to the bet's `closesAt` at creation.
+   * Duplicated on purpose: `closesAt` is overwritten to `now()` on accept (D2
+   * — a duel does exactly what `close_bet_early` does), so after acceptance
+   * the bet no longer remembers when the challenge would have lapsed. This
+   * field does, which is what lets a settled duel's history still say how long
+   * the challengee took.
+   */
+  expiresAt: string;
 }
 
 /** Bet-scoped mini chat / comments (UX-018). */

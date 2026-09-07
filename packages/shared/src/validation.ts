@@ -25,7 +25,16 @@ export interface ValidationIssue {
     | "invite-code-required"
     | "inject-amount-invalid"
     | "chat-empty"
-    | "chat-too-long";
+    | "chat-too-long"
+    // Extra Phase 2 (1v1 duels). Five codes for a form with four fields,
+    // because "no target" and "yourself" want different sentences and the
+    // resolver rule can fail two different ways. `create_duel` repeats every
+    // message below verbatim — see validateDuelDraft.
+    | "duel-target-required"
+    | "duel-target-self"
+    | "duel-mediator-invalid"
+    | "duel-resolver-required"
+    | "duel-stake-invalid";
   message: string;
 }
 
@@ -111,6 +120,150 @@ export function validateWager(check: WagerCheck): ValidationIssue[] {
   if (check.amount > check.balance) {
     issues.push({ code: "over-balance", message: "Not enough coins." });
   }
+  return issues;
+}
+
+/**
+ * Draft payload for challenging one teammate to a duel (Extra Phase 2, D1/D5/D7).
+ *
+ * Shorter than `BetDraft` on purpose, and every absence is a decision:
+ *  - no `options` — `create_duel` generates exactly two from the participants'
+ *    display names, position 0 = challenger, position 1 = challengee (DOM-007's
+ *    floor is met structurally and there is nothing for a person to type);
+ *  - no `closesAt` — the accept deadline is `now() + app.duel_accept_window()`
+ *    (D2), never a client value, so there is no past-date rule to check here;
+ *  - no `maxWagerPerUser` — it IS the stake (task 6), which is what makes a
+ *    third wager impossible and a new settlement path unnecessary.
+ */
+export interface DuelDraft {
+  title: string;
+  /** Who is being challenged. A teammate, and never the challenger. */
+  challengeeId: string;
+  /** The named resolver (D7), or null to rely on the any-moderator pool. */
+  mediatorId: string | null;
+  /** D7's additive half — moderators/leader may resolve it too, whoever acts first. */
+  anyModerator: boolean;
+  /** Symmetric stake, paid by both sides (D5). */
+  stake: number;
+}
+
+/**
+ * Extra Phase 2 task 5 — the duel counterpart of `validateBetDraft`, and the
+ * single statement of what a well-formed challenge is. `create_duel` in
+ * `20260906130100_duel_rpcs.sql` re-checks every rule below and repeats every
+ * message byte-for-byte, per the convention every RPC in this repo follows:
+ * the client gates so a person sees the rule before submitting, the database
+ * enforces it so the rule survives Studio and PostgREST, and the two produce
+ * the same sentence so a server refusal never reads like a different product.
+ *
+ * `context` is the roster the ids are checked against plus the challenger's
+ * own per-team balance (DOM-013 — balances are per-team, so the caller must
+ * pass the balance for THIS team; there is no global one to fall back on).
+ *
+ * **D9 is deliberately NOT enforced here, and this is the paragraph that stops
+ * the next reader from "fixing" it.** In a `restricted` team a draft with
+ * `anyModerator: false` is perfectly valid and must NOT be rejected:
+ * `create_duel` silently stores `true` instead. Coercion, not refusal — the
+ * challenger never sees an error for a checkbox the UI had already ticked and
+ * disabled on their behalf. `mustForceAnyModerator(team)` in permissions.ts is
+ * what the UI asks to render that state; nothing in this function may consult
+ * `team.accessMode`, and `canStartDuel` is likewise plain membership, because
+ * DOM-002 rations bets posted for a team to wager into, and a duel is a
+ * private arrangement between two people who have already agreed to it.
+ *
+ * Also not here, and for the same reason it is not in `validateBetDraft`: the
+ * clock, the pending-challenge cap (`CONFIG.DUEL_MAX_PENDING_PER_CHALLENGER`,
+ * server-side only — the client cannot count another session's in-flight
+ * challenges) and whether the challengee can afford the stake (they are not
+ * the one filling in this form).
+ */
+export function validateDuelDraft(
+  draft: DuelDraft,
+  context: { team: Team; challengerId: string; balance: number },
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const isTeammate = (userId: string): boolean =>
+    context.team.members.some((m) => m.userId === userId);
+
+  if (draft.title.trim().length === 0) {
+    // Same code and same sentence as validateBetDraft's — a duel IS a bet
+    // (D1), so the title rule is not a duel rule and gets no duel-specific
+    // copy. Diverging here would put two sentences on one requirement.
+    issues.push({ code: "title-required", message: "Give the bet a title." });
+  }
+
+  // Three outcomes, one issue at most, and the ORDER is the whole design:
+  // self-challenge is tested before roster membership because the challenger
+  // trivially passes the roster test, so a plain "is a teammate" check would
+  // wave a self-challenge through. And blank is tested first because "pick who
+  // you're challenging" is the sentence for an untouched field, whereas an id
+  // that is simply not on the roster (a stale picker, a kicked member) is the
+  // same *user-facing* problem — pick someone — so it reuses that code and
+  // that message rather than inventing a third.
+  const challengeeId = draft.challengeeId.trim();
+  if (challengeeId.length === 0) {
+    issues.push({
+      code: "duel-target-required",
+      message: "Pick who you're challenging.",
+    });
+  } else if (challengeeId === context.challengerId) {
+    issues.push({
+      code: "duel-target-self",
+      message: "You can't challenge yourself.",
+    });
+  } else if (!isTeammate(challengeeId)) {
+    issues.push({
+      code: "duel-target-required",
+      message: "Pick who you're challenging.",
+    });
+  }
+
+  // D7: the named mediator is any teammate EXCEPT the two participants, and
+  // "any moderator" is additive rather than an alternative — so the real rule
+  // is "at least one possible resolver exists", which can fail in two ways.
+  // Its SQL twins are two CHECKs on `bet_duels`:
+  // `bet_duels_mediator_not_participant` and `bet_duels_has_a_resolver`.
+  const mediatorId = draft.mediatorId?.trim() ?? "";
+  if (mediatorId.length > 0) {
+    if (
+      !isTeammate(mediatorId) ||
+      mediatorId === context.challengerId ||
+      mediatorId === challengeeId
+    ) {
+      issues.push({
+        code: "duel-mediator-invalid",
+        message: "The mediator has to be a teammate who isn't in the duel.",
+      });
+    }
+    // Note what does NOT also fire: an invalid mediator with `anyModerator`
+    // false is not additionally "resolver-required". They picked someone;
+    // telling them to pick a mediator when they just did is noise, and the
+    // draft is refused either way until the pick is fixed.
+  } else if (!draft.anyModerator) {
+    issues.push({
+      code: "duel-resolver-required",
+      message: "Pick a mediator, or let any moderator resolve it.",
+    });
+  }
+
+  // One code and one sentence for what `validateWager` splits into
+  // `amount-invalid` and `over-balance`, because this is one field on one form
+  // and "whole amount you can afford" covers both failures without making the
+  // person read two errors about the same box. The split still exists where it
+  // matters: at creation the stake becomes a real wager, and `create_duel`
+  // refuses an unaffordable one with `Not enough coins.` — validateWager's own
+  // DOM-014 sentence — because by then it is a placement, not a draft.
+  if (
+    !Number.isInteger(draft.stake) ||
+    draft.stake < 1 ||
+    draft.stake > context.balance
+  ) {
+    issues.push({
+      code: "duel-stake-invalid",
+      message: "Stake must be a whole amount you can afford.",
+    });
+  }
+
   return issues;
 }
 

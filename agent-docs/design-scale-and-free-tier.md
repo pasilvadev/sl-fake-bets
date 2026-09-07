@@ -96,10 +96,13 @@ with an important difference:
 
 ### 2.2 Egress (5 GB/mo) — the tightest ceiling, and the one to design against
 
-`loadTeamData` (`apps/web/src/lib/data/team-data.ts`) is nine unbounded queries
-returning every user, team, membership, ban, invite code, bet, wager, comment
-**and the entire `transactions` ledger** the caller can see. It runs on cold
-start, on identity change, and after the two mutations that re-scope the world.
+`loadTeamData` (`apps/web/src/lib/data/team-data.ts`) is **ten** unbounded
+queries returning every user, team, membership, ban, invite code, bet, wager,
+comment, **duel** **and the entire `transactions` ledger** the caller can see.
+It runs on cold start, on identity change, and after the two mutations that
+re-scope the world. (It was nine until Extra Phase 2; the tenth is `bet_duels`,
+and the paragraph "**The tenth query, and why it was allowed**" below is the
+argument that let it in — read it before adding an eleventh.)
 
 That is affordable today (~1 MB raw, ~200 KB gzipped, a handful of times per
 session) and it is what makes egress the ceiling to watch: the payload grows
@@ -115,14 +118,51 @@ fix if egress ever becomes real, and the fix is small — page the ledger, or lo
 it when the modal opens (§4.1).
 
 **Chat is the first feature that applied this rule before shipping, not after
-the fact.** `loadTeamData` still issues exactly nine queries — Extra Phase 1
-(UX-019) does not add a tenth. `chat_messages` loads lazily, the moment its
-surface (rail or modal) first mounts, through its own paged RPC (`chat_page`,
-§2.1) rather than through `team-data.ts`. The paragraph above names the fix for
-`transactions`'s cold-start weakness after that weakness already existed; chat
-is the same rule applied prospectively — §4.1's ceiling-to-watch reached this
-table before any session had the chance to bolt a tenth query onto
-`loadTeamData` by default.
+the fact.** Extra Phase 1 (UX-019) does not add a query here at all:
+`chat_messages` loads lazily, the moment its surface (rail or modal) first
+mounts, through its own paged RPC (`chat_page`, §2.1) rather than through
+`team-data.ts`. The paragraph above names the fix for `transactions`'s
+cold-start weakness after that weakness already existed; chat is the same rule
+applied prospectively — §4.1's ceiling-to-watch reached this table before any
+session had the chance to bolt an extra query onto `loadTeamData` by default.
+
+**The tenth query, and why it was allowed** (`bet_duels`, Extra Phase 2). This
+is the first table since this document was written to be added to the cold-start
+batch rather than kept out of it, so the reason is recorded here rather than
+left to be inferred from a diff:
+
+- **It is bounded by the bet count it hangs off, not by a message rate.**
+  `bet_duels` is 1:1 with the `bets` rows whose `kind` is `'duel'`
+  (`bet_id` is both its primary key and its foreign key), so it is a strict
+  subset of a payload this function already fetches in full. Chat's row count
+  is a *rate* — every member, every day, for as long as the team exists, which
+  is why §2.1 gave it a retention window and its own paged RPC. A duel row
+  cannot appear without a bet row appearing beside it, so the tenth query can
+  never outgrow the sixth. That asymmetry is the whole argument; it is not
+  "one more small table" and must not be cited as precedent for one.
+- **Eight narrow columns, no body text.** `bet_id`, four uuids, a boolean, an
+  integer and two timestamps — under ~150 bytes a row, against a duel
+  population that is a fraction of the bets. Next to the `transactions` ledger
+  this same section already names as the payload's real weight, it is noise.
+- **It could not have been lazy without breaking the feed.** Chat lives behind
+  a surface that mounts on demand; a duel is a *bet*, and `bet-row.tsx` renders
+  its versus composition, its stake line and its per-viewer CTA in the same
+  feed pass as every pool bet. Deferring the duel rows would mean a first paint
+  in which duels render as pool bets and then visibly change — the class of
+  flicker `computeEffectiveState` exists to avoid.
+- **It also costs one sequential round trip that is not a query.**
+  `loadTeamData` awaits `sweep_stale_duels()` *before* the parallel batch (D8
+  half (b)), deliberately not folded into it: a sweep landing mid-read would
+  hand the client a bet still reading `open` beside members already refunded,
+  and Phase 7's consistency guard would report that as drift. It writes rather
+  than reads, so it is not one of the ten, but it is on the cold-start critical
+  path and belongs in any future latency budget.
+
+**The eleventh has to argue for itself**, and the bar is now this paragraph:
+show that the table is bounded by something already loaded, that its columns
+are narrow, and that a lazy load would break a first paint. Anything failing
+one of the three takes chat's road (§2.1) — its own paged RPC, behind its own
+surface — not this one.
 
 ### 2.3 Storage (1 GB) — a bound already enforced in the schema
 
