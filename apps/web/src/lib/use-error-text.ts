@@ -60,11 +60,16 @@ export function useErrorText() {
       [lookup],
     ),
     /**
-     * A bare code, for the one failure shape that is not a `MutationResult`:
-     * `uploadAvatar`'s `{ url, error }` pair (Phase 2, task 7).
+     * A bare code, for a failure shape that is not a `MutationResult`:
+     * `uploadAvatar`'s `{ url, error }` pair (Phase 2, task 7), and the mapped
+     * GoTrue errors in `auth-page.tsx` (plan-hosted-early-access.md Phase 1
+     * task 5). `values` is optional and only ever passed for the one mapped
+     * code that needs it (`password-too-short`'s `{min}`, shared with
+     * `weak_password`) — every other call site omits it exactly as before.
      */
     codeText: useCallback(
-      (code: MutationErrorCode): string => lookup(code, undefined),
+      (code: MutationErrorCode, values?: Record<string, string | number>): string =>
+        lookup(code, values),
       [lookup],
     ),
     /** The inline, field-attached half (§5.8). */

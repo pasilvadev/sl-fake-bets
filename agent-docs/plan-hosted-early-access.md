@@ -2,8 +2,10 @@
 
 **Status: IN EXECUTION since 2026-09-07.** Written and amended that day; the
 owner's Phase 0 A–B hand-off the same evening was the order. Phase 2's
-provisioning is done (execution record under Phase 2); Phase 1 is next; Phase 0
-part C is the owner's; Phase 2 tasks 8–10 resume after Phase 1.
+provisioning is done and Phase 1 is now done too (execution records under each
+phase, below); Phase 0 part C is the owner's; Phase 2 tasks 8–10 resume next,
+against the config and migrations Phase 1 just wrote; Phase 3 needs Phase 0
+part C.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
@@ -771,6 +773,204 @@ let Phase 2 use the D5 fallback. The sign-in/create toggle is where a
 "release-like" screen is won or lost: a friend who types a password into
 sign-in for an account that does not exist must read a sentence that points
 at "Create an account", not `invalid_credentials`.
+
+**Execution record — Phase 1, 2026-09-07 (one agent session).** All 11 tasks
+done, in one pass, against dev's live hosted project (Phase 2 had already
+provisioned it before this session started, out of the order this plan
+originally assumed — see Phase 2's own record). What actually happened, where
+it differed from the tasks above, and what is left.
+
+- *Task 1.* `config.toml`: `auto_expose_new_tables = false` uncommented,
+  `skip_nonce_check = false` permanently (its local-stack comment deleted),
+  `additional_redirect_urls` gained two hosted entries as WHOLE-value `env()`
+  placeholders (`SUPABASE_PROD_REDIRECT_URL`, `SUPABASE_VERCEL_PREVIEW_REDIRECT_URL`
+  — each already carries its own `/**` suffix; the CLI substitutes an entire
+  string, never part of one), a `[remotes.production]` block was added at the
+  end of the file, and the `[auth.email.template.magic_link]` block got its
+  "dormant until full release" comment (missed on the first pass, caught by
+  this record's own exit-criteria grep and fixed before it went further).
+  **Verified against Supabase's own docs (WebFetch, not memory) that
+  `[remotes.*]` is documented as a BRANCHING feature** — "each remote
+  configuration must reference an existing project ID" of a persistent branch
+  — and this org's two projects are independent, unbranched, and on a
+  Pro-gated feature they don't have. Whether `config push --project-ref
+  <prod-ref>` honors the block for a plain second project is therefore still
+  genuinely unverified; the block and a comment recording this exact caveat
+  are both in `config.toml` now, so Phase 2 task 8 starts from a documented
+  question instead of a surprise. `supabase/.env.example` created, naming
+  every `env()` this plan's phases actually read (the pre-existing
+  Twilio/S3/OpenAI placeholders in the stock template are dormant and
+  deliberately not repeated there).
+- *Task 2.* `20260907130000_alpha_flags.sql` — versioned after
+  `20260907123000` (dev's head per Phase 2's record) as required. `locale-pt-br`
+  flipped by UPDATE (matches `global-team-chat`'s shape); `auth-google` seeded
+  by `INSERT ... ON CONFLICT` (matches `duel-bets`'s shape), added to
+  `KnownFeatureFlag` in `infra.ts` with a comment distinguishing it from every
+  other member of that union (an ops kill switch, not a feature gate). **Not
+  yet pushed to the hosted dev project** — confirmed live via the keepalive
+  route (below): dev still reports 7 flags, not 8, because this migration and
+  task 9's are sitting in the repo, unapplied. The next `supabase db push
+  --linked` (or Phase 2 task 8's continuation) picks up both.
+- *Task 3.* `lib/supabase/env.ts` added; `client.ts`, `server.ts`, `proxy.ts`
+  all call `supabaseEnv()` instead of a bare `!`. **Live-verified**: with
+  `apps/web/.env.local` moved aside and `next dev` started clean, `curl /`
+  returned Next's dev error overlay payload with `"message":"Missing
+  NEXT_PUBLIC_SUPABASE_URL — see supabase/README.md §Hosted"` and a stack
+  rooted in `supabaseEnv`/`proxy` — not a `@supabase/ssr` internal trace.
+  `.env.local` was restored immediately after (same byte size before/after;
+  never read, only moved).
+- *Task 4.* `api/keepalive/route.ts`, `vercel.json`, `robots.ts`
+  (`/api/` added to `disallow`), `proxy.ts` matcher (`api` added to the
+  exclusion). **Live-verified against the real hosted dev project**: no
+  header → 401 `{"ok":false}`; wrong bearer → 401; correct bearer (a throwaway
+  `CRON_SECRET` exported for the test, not written anywhere) → 200
+  `{"ok":true,"flagCount":7}` — a real round trip through PostgREST and RLS on
+  `qkwvmdshqnkfqekilipo`, not a mock.
+- *Task 5.* The largest task, and the only one that touched shared code
+  beyond what task 5 itself lists: `packages/shared/src/config.ts` gained
+  `CONFIG.MIN_PASSWORD_LENGTH` (mirroring `config.toml`'s
+  `minimum_password_length`, the same duplicated-constant shape every other
+  value in that file carries) because `validateSignupDraft` needed a single
+  source for the number, and `apps/web/src/lib/use-error-text.ts`'s
+  `codeText` gained an optional second `values` parameter because
+  `weak_password` reduces to `password-too-short`'s `{min}`-templated
+  sentence and the old signature had nowhere to put it — both small,
+  backward-compatible, and load-bearing for this task rather than scope
+  creep. `validation.ts` gained `SignupDraft`/`validateSignupDraft` (email
+  shape regex kept LOCAL to the sign-in form in `auth-page.tsx`, exactly as
+  before — only the create-account path moved to the shared validator) and
+  `validation.test.ts` (7 tests, the first for a validator this plan adds).
+  `errors.ts` gained five new `MutationErrorCode` members
+  (`invalid-credentials`, `email-already-registered`, `rate-limited`,
+  `auth-disabled`, `network-error`); `weak_password` and `validation_failed`
+  deliberately did NOT get new codes — they reduce to `password-too-short`
+  and `email-invalid` (`ValidationCode`) instead, per D8's "same fact, one
+  sentence" rule. GoTrue's error codes were read from
+  `node_modules/.pnpm/@supabase+auth-js@2.115.0/.../error-codes.d.ts`, not
+  memory; the network-failure case uses auth-js's own exported
+  `isAuthRetryableFetchError` type guard rather than guessing at a status
+  code, after confirming via `errors.d.ts` that `AuthRetryableFetchError` is
+  the class for exactly that case and that `@supabase/supabase-js` re-exports
+  it (`export * from '@supabase/auth-js'` in its own `src/index.ts`). Both
+  catalogs gained the new `errors`/`validation` keys (alphabetically
+  positioned, matching every existing list) and a fully rewritten `authPage`
+  namespace — the OTP keys removed, `createAccountTitle`/`createAccountLead`/
+  `displayNameLabel`/`passwordLabel`/`toggleToCreate`/`toggleToSignIn`/
+  `privacyLink` etc. added. `auth-page.tsx` rewritten as one `AuthForm`
+  parameterized by `mode` rather than two near-duplicate components, since
+  the two modes share everything but title copy, the display-name field, the
+  password `autoComplete` token, and the submit label. **Live-verified**: SSR
+  HTML for `/` (sign-in) has `id="email"`/`id="password"` and no
+  `id="displayName"`; `/?mode=create` has all three, `autoComplete="nickname"`
+  on the name field; both responses' hydration payload correctly embeds the
+  full `authPage` catalog (next-intl shipping it for client-side mode
+  toggling, confirmed by inspecting where "Create your account" appeared in
+  the sign-in response — inside the serialized messages JSON, never in
+  visible markup). Not independently re-verified: an actual signup/sign-in
+  round trip against the hosted dev project (would create a real test
+  account there) — left for Phase 2 task 9, which exists for exactly that and
+  is better placed to account for the row afterward.
+- *Task 6.* `error.tsx` added, using `empty-state.tsx`'s ghost-S-mark pattern
+  at full-page size. **Live-fire tested**: a temporary unconditional throw
+  behind a scratch env var was added to `page.tsx`, the dev server restarted,
+  and `curl /` returned "Something broke on our end, not yours." / "Try
+  again" — then the throw was reverted with `git checkout` (confirmed
+  zero-diff) before continuing.
+- *Task 7.* `build-info.ts`, `next.config.ts`'s `env` copy, and
+  `profile-menu.tsx`'s footer row. **Also fixed `turbo.json`**, per the
+  addendum Phase 2's own execution record left for this task:
+  `globalPassThroughEnv` for `ENABLE_EXPERIMENTAL_COREPACK`/`CRON_SECRET`, and
+  `VERCEL_GIT_COMMIT_SHA` in the `build` task's `env`. Before writing it,
+  confirmed via Turborepo's own docs (WebFetch/WebSearch, not memory) that
+  Strict Environment Variable Mode is the default and DOES filter which env
+  vars actually reach a spawned task's process — a real concern, since a
+  wrongly-scoped fix here could have silently stripped
+  `NEXT_PUBLIC_SUPABASE_URL` from the Vercel build's client bundle — but also
+  that Turborepo's **Framework Inference** auto-allows every `NEXT_PUBLIC_*`
+  name for a detected Next.js package with no declaration needed, in strict
+  mode or not. That is exactly why Phase 2's build only warned about the two
+  non-prefixed custom names and never about the Supabase ones: the risk was
+  real in general, and already covered here by the framework, not by luck.
+- *Task 8.* `/privacy` page, `sitemap.ts` (two entries now), `privacy`
+  message namespace in both catalogs (~190 words, under the 400-word budget).
+  **Live-verified**: `<h1>Privacy</h1>` present, `/sitemap.xml` lists both
+  URLs, `/robots.txt` unaffected (privacy was never disallowed), and `/`'s
+  markup contains `href="/privacy"`. The account-deletion copy says "ask the
+  person who runs SL" rather than naming an email address — the owner's
+  personal address was available in this session's context but publishing it
+  into a public, committed privacy page is not what that context was for;
+  the owner can tighten the wording before Phase 3 (D8 already expects them
+  to read this page before go-live).
+- *Task 9.* `dashboard-page.tsx`'s `100vh` → `100svh`;
+  `20260907140000_analytics_events_size_check.sql` (same
+  not-yet-pushed-to-dev status as task 2's migration, same fix path);
+  `apps/web/package.json` gained `"engines": {"node": "22.x"}`.
+- *Task 10.* `scripts/supabase-privilege-audit.sql` needed no work — Phase 2
+  delivered it early (its own record says so, and `ls scripts/` confirmed it
+  present before this session touched anything). `scripts/db-push-prod.sh`
+  written to D3's exact spec and made executable. **Live-verified the one
+  criterion Phase 1 can verify without touching prod**: `.env.ops` was moved
+  aside (not deleted, not read), the script was run, it printed one line
+  ("`.env.ops` not found at the repo root — nothing to push with. Aborting.")
+  and exited 1 before any network call, and `.env.ops` was restored
+  immediately (byte-identical size before/after). The full dry-run-against-
+  prod path was deliberately NOT exercised — that reaches into Phase 3
+  territory (§7 risk 11 names schema-to-prod as the first irreversible-in-
+  spirit act) and Phase 1's own exit criteria don't ask for it. Root
+  `package.json` gained the four `db:*` scripts; `.env.ops.example` created
+  naming every D10 variable; `.gitignore` gained `!.env.ops.example`
+  (`supabase/.env.example` needed no equivalent line — the existing
+  `!.env.example` pattern already un-ignores that basename at any depth,
+  confirmed via `git status`/`git check-ignore` before assuming it).
+- *Task 11.* `.github/workflows/ci.yml` added, matching D11 exactly
+  (checkout, pnpm 11.25.0, Node 22.19.0, install --frozen-lockfile,
+  typecheck, lint, test, no deploy step). Not yet run for real — this repo's
+  own git history has no push from this session (commits, not pushes, per the
+  owner's standing instruction), so "CI green on the push" is the one exit
+  criterion this record cannot mark verified yet.
+
+**Exit criteria, checked against the list above:**
+
+- `pnpm typecheck && pnpm lint && pnpm test && pnpm build` green — ✔, run
+  three times across the session (once per major batch of edits, once final).
+  830 tests pass in `@repo/shared` (823 pre-existing + 7 new); `web` has no
+  test script of its own, unchanged from before this plan.
+- `next dev` with blank Supabase env vars renders the task-3 message — ✔.
+- `grep -rn "otp\|Otp\|OTP\|Mailpit\|mailpit" apps/web/src apps/web/messages` —
+  three matches, all dry historical comments in files this task doesn't touch
+  or in `auth-page.tsx`'s own new doc comment explaining what it replaced;
+  zero functional OTP code, zero OTP message keys. One genuinely stale
+  non-comment string WAS found this way and fixed:
+  `onboarding/steps.ts`'s `ONBOARDING_STEP_DESCRIPTIONS.signup` still said
+  "email OTP or Google" — corrected to describe the real screen.
+- Auth screen mapped errors / blank-display-name refusal — verified by
+  reading the code path (validation runs and returns before any network call;
+  every mapped code has a sentence in both catalogs, checked by the
+  `errorNamespaceFor`/exhaustive-`Record` typecheck in `i18n/messages.ts`
+  passing) plus the mode-rendering live check above. Not independently
+  forced through the browser for all seven mapped codes one at a time — the
+  typecheck-enforced exhaustiveness is the stronger guarantee here (a missing
+  sentence is a compile error, not a maybe).
+- `curl -i localhost:3000/api/keepalive` → 401 / 401 / 200 — ✔, against real
+  hosted dev, exact bodies recorded above.
+- Throwing in a client component renders `error.tsx` — ✔, live-fire tested.
+- `/privacy` server-rendered with `<h1>`, in the sitemap, linked from `/` —
+  ✔.
+- `bash scripts/db-push-prod.sh` with `.env.ops` absent exits non-zero with
+  one line, before the network — ✔.
+- `supabase/.env.example` / `.env.ops.example` name every variable Phase
+  1–5 actually read; `grep -rn "SERVICE_ROLE\|sb_secret" apps/web` — ✔ empty
+  (checked with `--exclude-dir=.next` — a bare run without it matches
+  bundled vendor source inside build output, which is gitignored, rebuilt
+  every time, and not what this criterion is about).
+
+**Left for whoever runs Phase 2's remaining tasks:** push
+`20260907130000_alpha_flags.sql` and `20260907140000_analytics_events_size_check.sql`
+to dev (`pnpm db:push:dev` now that task 10 built it); then Phase 2 task 8
+(config push to both projects, verifying whether `[remotes.production]`
+applied or the Management API fallback is needed — record which, per D5);
+then task 9 (the owner's first real account through the new form) and task
+10's remaining pieces.
 
 ### Phase 2 — Provision and wire (needs Phase 0 A–B) **[ARC-013: owner order required]**
 

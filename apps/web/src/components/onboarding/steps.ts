@@ -28,7 +28,7 @@ export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
 /** What each step actually is, for whoever reads the funnel's drop-off later. */
 export const ONBOARDING_STEP_DESCRIPTIONS: Record<OnboardingStep, string> = {
-  signup: "Auth screen: email OTP or Google (auth-page.tsx).",
+  signup: "Auth screen: sign in / create account with email + password, or Google (auth-page.tsx).",
   team: "No team yet: create one, or spend an invite code (team-gate.tsx).",
   profile: "First-run profile confirmation, skippable (profile-step.tsx).",
   dashboard: "Onboarding complete — the team dashboard (dashboard-page.tsx).",

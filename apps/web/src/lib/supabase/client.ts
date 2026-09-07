@@ -1,14 +1,15 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { supabaseEnv } from "./env";
 
 /**
  * Browser-side Supabase client (roadmap Phase 3, task 7).
  *
- * Since Phase 4 this is the app's auth surface (auth-page.tsx runs the OTP and
- * Google flows through it, auth-context.tsx listens for session changes), and
- * since Phase 5 it is also the data surface: team-context.tsx reads the whole
- * world through it and writes team/membership changes through the RPCs in
- * lib/data/. Bets and wagers still MUTATE in session-local state — persisting
- * those is Phase 6.
+ * Since Phase 4 this is the app's auth surface (auth-page.tsx runs the
+ * password and Google flows through it, auth-context.tsx listens for session
+ * changes), and since Phase 5 it is also the data surface: team-context.tsx
+ * reads the whole world through it and writes team/membership changes through
+ * the RPCs in lib/data/. Bets and wagers still MUTATE in session-local state —
+ * persisting those is Phase 6.
  *
  * `createBrowserClient` specifically, not supabase-js's `createClient`: it
  * persists the session (and the PKCE verifier the OAuth callback route needs)
@@ -20,8 +21,6 @@ import { createBrowserClient } from "@supabase/ssr";
  * the policies before anything could call this.
  */
 export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  const { url, anonKey } = supabaseEnv();
+  return createBrowserClient(url, anonKey);
 }

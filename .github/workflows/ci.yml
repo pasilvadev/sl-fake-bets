@@ -1,0 +1,30 @@
+# plan-hosted-early-access.md D11: the part Vercel's own Git integration does
+# not do. Vercel builds `main` and every PR independently on push (and its own
+# build is what proves `next build` succeeds) — this workflow's whole job is
+# running the tests nothing else runs. Free on a public repo
+# (pasilvadev/sl-fake-bets), so this adds no vendor and no cost.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test

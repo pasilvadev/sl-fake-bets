@@ -41,6 +41,22 @@ export type MutationErrorCode =
   | "team-not-found"
   | "not-a-member"
   | "member-not-on-team"
+  // --- password auth (plan-hosted-early-access.md D1/D8) --------------------
+  // GoTrue error codes, mapped in auth-page.tsx rather than rendered verbatim
+  // for the same reason every other mutator code is (`error.message` is prose
+  // aimed at a developer, in whatever shape a GoTrue release feels like) —
+  // read from node_modules/@supabase/auth-js's own error-code list, not from
+  // memory. Two GoTrue codes are deliberately NOT here: `weak_password`
+  // reduces to `password-too-short` and `validation_failed` reduces to
+  // `email-invalid` (both `ValidationCode`, packages/shared/src/validation.ts)
+  // — a server-side rejection of a fact the client already checks is not a
+  // second fact, and giving it a second sentence would be the D8 version of
+  // "Not enough coins." living in two places.
+  | "invalid-credentials"
+  | "email-already-registered"
+  | "rate-limited"
+  | "auth-disabled"
+  | "network-error"
   // --- authorization -------------------------------------------------------
   | "manager-only-create-bet"
   | "manager-only-team-settings"

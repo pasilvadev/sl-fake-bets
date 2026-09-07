@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
   // Monorepo: stop Next from mis-inferring the workspace root for file tracing.
   outputFileTracingRoot: path.join(__dirname, "../../"),
   typedRoutes: true,
+  // The build tag (plan-hosted-early-access.md D8, `lib/build-info.ts`): Vercel
+  // sets `VERCEL_GIT_COMMIT_SHA` server-side only, and a client component can
+  // read nothing but `NEXT_PUBLIC_*` names. This copies it under one at build
+  // time so the profile menu and the auth page footer can render it. Empty on
+  // any build that isn't Vercel's, which is the correct rendering of "local".
+  env: {
+    NEXT_PUBLIC_BUILD_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
+  },
 };
 
 /**

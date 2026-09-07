@@ -98,6 +98,17 @@ export const CONFIG = Object.freeze({
    * like the window above, the SQL copy must move with it.
    */
   DUEL_MAX_PENDING_PER_CHALLENGER: 3,
+  /**
+   * plan-hosted-early-access.md D1/D8: the password floor for the
+   * create-account form. Has a config twin — `supabase/config.toml`'s
+   * `[auth] minimum_password_length` — in the same duplicated-constant shape
+   * every other value in this file warns about: this is what
+   * `validateSignupDraft` checks client-side so a person reads the rule
+   * before the round trip, GoTrue's own `weak_password` is the server
+   * enforcing the SAME number, and the two must move together or the copy
+   * starts lying about what the database actually accepts.
+   */
+  MIN_PASSWORD_LENGTH: 6,
 });
 
 /** Suggested default per-user max wager = onboarding grant (DOM-017). */

@@ -128,7 +128,19 @@ export type KnownFeatureFlag =
   // allowed to strand coins, so `app.expire_stale_duels`, `app.void_duel` and
   // the kick/ban cascade go on refunding underneath a hidden surface. A flag
   // that can lose someone's money is not a kill switch, it is a bug.
-  | "duel-bets";
+  | "duel-bets"
+  // plan-hosted-early-access.md D7/D9, seeded true by
+  // 20260907130000_alpha_flags.sql. The odd one out in this union: every flag
+  // above gates a FEATURE — something this codebase built and can finish or
+  // hide. This one gates a LOGIN METHOD whose availability depends on a fact
+  // that lives entirely outside the repo — whether the Google OAuth consent
+  // screen is Published in Google Cloud. It is pure ops: if Publish ever gets
+  // rejected, revoked, or stuck in review, flipping this off hides "Continue
+  // with Google" on the next load with no deploy, while email + password (D1)
+  // keeps the alpha complete and working on its own. Never gate a genuinely
+  // finished, first-party feature behind this one — that is what the other
+  // members of this union are for.
+  | "auth-google";
 
 /**
  * The two funnel events ARC-017 permits, and the only two `event_name` values

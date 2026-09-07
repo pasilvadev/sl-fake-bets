@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { supabaseEnv } from "@/lib/supabase/env";
 
 /**
  * Session refresh on every navigation (roadmap Phase 4, task 5 — ARC-007).
@@ -19,10 +20,11 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { url, anonKey } = supabaseEnv();
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {
@@ -59,10 +61,13 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except Next's own static output and image files. Auth cookies
-     * are worth refreshing on page and API requests; spending a single-use
-     * refresh token on a favicon request is not.
+     * Everything except Next's own static output, image files, and `/api/`
+     * (plan-hosted-early-access.md Phase 1 task 4: the keep-alive cron hits
+     * `/api/keepalive` bearer-authenticated and carries no session at all —
+     * spending a single-use refresh token on it would do nothing but burn it).
+     * Auth cookies are worth refreshing on ordinary page requests; a favicon
+     * or a cron ping is not.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

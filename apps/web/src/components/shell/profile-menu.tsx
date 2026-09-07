@@ -9,6 +9,7 @@ import { CoinAmount } from "@/components/sl/coin-amount";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
 import { useAuth } from "@/lib/auth-context";
+import { buildTag } from "@/lib/build-info";
 import { LocaleSubmenu } from "./locale-switcher";
 
 const itemClass =
@@ -29,6 +30,7 @@ export function ProfileMenu() {
   const { open } = useModal();
   const { signOut } = useAuth();
   const t = useTranslations("profileMenu");
+  const tag = buildTag();
 
   return (
     <DropdownMenu.Root>
@@ -97,6 +99,18 @@ export function ProfileMenu() {
           >
             {t("signOut")}
           </DropdownMenu.Item>
+
+          {/* The build tag (plan-hosted-early-access.md D8): a footer row, not
+              an alpha banner — absent entirely on a local build (buildTag()
+              returns ""), present as a short mono SHA on Vercel. */}
+          {tag && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <div className="px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+                {tag}
+              </div>
+            </>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { SessionUser } from "@/lib/session-user";
+import { supabaseEnv } from "./env";
 
 /**
  * Server-side Supabase client (Phase 3, task 7; carrying the session since
@@ -14,10 +15,11 @@ import type { SessionUser } from "@/lib/session-user";
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const { url, anonKey } = supabaseEnv();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {

@@ -30,7 +30,7 @@ export function DashboardPage() {
           <BetFeed />
 
           <aside className="hidden lg:block">
-            <div className="sticky top-[96px] max-h-[calc(100vh-112px)] overflow-y-auto">
+            <div className="sticky top-[96px] max-h-[calc(100svh-112px)] overflow-y-auto">
               <PulseRail />
             </div>
           </aside>

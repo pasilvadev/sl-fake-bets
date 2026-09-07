@@ -20,7 +20,11 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+# Explicit `false` (plan-hosted-early-access.md §2.3): both hosted projects were
+# created after 2026-05-30 and default to `false` already — this just makes a
+# future local run exercise the same by-name GRANTs the migrations already carry
+# instead of quietly relying on the local-only `true` fallback.
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -163,11 +167,23 @@ site_url = "http://localhost:3000"
 # `localhost:3000` (its "Authorized JavaScript origins"), while Supabase's own
 # default is `127.0.0.1`. A post-auth redirect to a URL missing from this exact
 # list is rejected, and the two are NOT interchangeable here.
+#
+# The last two entries are the hosted union (plan-hosted-early-access.md D5):
+# the production host and the Vercel preview wildcard, so BOTH Supabase
+# projects accept BOTH origins — this list is not per-remote the way
+# `site_url` is below. Each is a WHOLE-value `env()` substitution (the CLI
+# replaces the entire string; there is no `/**` glued onto a substituted host),
+# resolved from `supabase/.env` — see `supabase/.env.example`. Google's own
+# JS-origin allow-list is what actually scopes OAuth per environment (Phase 0
+# part C), so a stray extra entry here being valid on both projects is
+# harmless.
 additional_redirect_urls = [
   "http://localhost:3000",
   "http://localhost:3000/**",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3000/**",
+  "env(SUPABASE_PROD_REDIRECT_URL)",
+  "env(SUPABASE_VERCEL_PREVIEW_REDIRECT_URL)",
 ]
 # ARC-007/UX-004 ("users rarely see a login screen") is delivered by the REFRESH
 # token, not by a long access token: the client renews silently on every visit.
@@ -258,6 +274,9 @@ otp_expiry = 3600
 
 # Decision §4.1 on ARC-006's open "email flavor" question: OTP code, not magic
 # link. The template below is what makes it a code — see the file for why.
+# Dormant until full release: plan-hosted-early-access.md D1 ships the alpha
+# on password + Google with no email sent at all; this stays configured,
+# untouched, so release does not redo the §2.1 research that produced it (§8).
 [auth.email.template.magic_link]
 subject = "Your SL sign-in code"
 content_path = "./supabase/templates/magic_link.html"
@@ -364,9 +383,10 @@ client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
 redirect_uri = ""
 url = ""
-# Required for Google sign-in against a local stack (see the apple block's note
-# on this flag). Hosted deployments should set this back to false.
-skip_nonce_check = true
+# Permanently false (plan-hosted-early-access.md D7): Docker is retired, so
+# "local stack" is no longer a case this ever runs against, on dev or prod —
+# not a per-environment toggle any more.
+skip_nonce_check = false
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
@@ -447,3 +467,36 @@ enabled = true
 # declarative_schema_path = "./schemas"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# =============================================================================
+# Per-project overrides (plan-hosted-early-access.md D5) — pushed to
+# `sl-fake-bets` (prod) specifically via
+# `supabase config push --project-ref <prod-ref>`. Every other command — the
+# owner's daily `db push --linked` / `db reset --linked` / `migration list
+# --linked` against dev (D3) — never resolves this block at all, because none
+# of them target the prod ref; the base config above is dev's config.
+#
+# CAVEAT, found while writing this (2026-09-07): Supabase's own docs describe
+# `[remotes.*]` as a *branching* feature — "each remote configuration must
+# reference an existing project ID" of a **persistent branch** of the current
+# project. `sl-fake-bets` was created as an independent project
+# (`supabase projects create`), not a branch of `sl-fake-bets-dev`, and
+# branching itself is a Pro-plan feature this org's two Nano projects (§2.3)
+# do not have. Whether `config push --project-ref <prod-ref>` honors this
+# block for a plain second project, silently ignores it, or errors is
+# therefore UNVERIFIED — Phase 2 task 8 is where that gets tested, against dev
+# first. If it does not apply, the fallback is the Management API directly
+# (`PATCH /v1/projects/{ref}/config/auth`), scripted per project — record in
+# plan-hosted-early-access.md which path worked.
+[remotes.production]
+project_id = "env(SUPABASE_PROD_PROJECT_REF)"
+
+[remotes.production.auth]
+# Dev's own site_url two screens up stays "http://localhost:3000" — that is
+# the base value every command that isn't this remote sees.
+site_url = "env(NEXT_PUBLIC_SITE_URL)"
+
+[remotes.production.auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_PROD_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_PROD_SECRET)"

@@ -16,13 +16,17 @@ import { siteUrl } from "@/lib/site";
  *
  * `/auth/` is the OAuth callback: a route handler with a one-time code in its
  * query string, never a destination.
+ *
+ * `/api/` (plan-hosted-early-access.md Phase 1 task 4) is the keep-alive cron
+ * endpoint — bearer-gated and answering only Vercel's own scheduler, never a
+ * page a crawler should be trying.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/join/", "/bet/", "/auth/"],
+      disallow: ["/join/", "/bet/", "/auth/", "/api/"],
     },
     sitemap: new URL("/sitemap.xml", siteUrl()).toString(),
   };

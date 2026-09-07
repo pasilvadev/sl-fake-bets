@@ -37,7 +37,14 @@ export type ValidationCode =
   | "duel-target-self"
   | "duel-mediator-invalid"
   | "duel-resolver-required"
-  | "duel-stake-invalid";
+  | "duel-stake-invalid"
+  // plan-hosted-early-access.md D1/D8: the create-account form. Both are
+  // reused server-side too — GoTrue's own `validation_failed` reduces to
+  // `email-invalid` and `weak_password` reduces to `password-too-short`
+  // (packages/shared/src/errors.ts) — because a server-side rejection of the
+  // same fact a client-side check already caught is not a second fact.
+  | "email-invalid"
+  | "password-too-short";
 
 /**
  * A rejected field, as a code the UI translates (D8).
@@ -398,4 +405,52 @@ export function validateInjection(amount: number): ValidationIssue[] {
         { code: "inject-amount-invalid" },
       ]
     : [];
+}
+
+/** UX-003's lowest-friction shape check — loose on purpose (catches a typo'd address, not a false rejection of a real one). */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Draft payload for password create-account (plan-hosted-early-access.md D1/D8). */
+export interface SignupDraft {
+  displayName: string;
+  email: string;
+  password: string;
+}
+
+/**
+ * The create-account form's only validator, and the reason it exists at all:
+ * a password sign-up has nothing to pre-fill a display name from (§2.5), so
+ * D8 carves this one field out of UX-002's "every input pre-filled" rule, on
+ * this one path — Google sign-ups keep arriving pre-filled and never call
+ * this. `display-name-required` is the exact code `validateProfileDraft`
+ * already owns; reused, not duplicated, because it is the same rule asked at
+ * a different moment.
+ *
+ * `email-invalid` and `password-too-short` are also each shared with a
+ * SERVER-side rejection for the identical fact: GoTrue's `validation_failed`
+ * reduces to the former and `weak_password` reduces to the latter
+ * (`packages/shared/src/errors.ts`), so a race between this check and the
+ * hosted config never produces two different sentences for one rule.
+ * `password-too-short`'s `{min}` mirrors `CONFIG.MIN_PASSWORD_LENGTH`, which
+ * itself mirrors `supabase/config.toml`'s `minimum_password_length` — the
+ * usual three-way duplicated constant this file's sibling, config.ts, warns
+ * about at each copy.
+ */
+export function validateSignupDraft(draft: SignupDraft): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  if (draft.displayName.trim().length === 0) {
+    issues.push({ code: "display-name-required" });
+  }
+  if (!EMAIL_SHAPE.test(draft.email.trim())) {
+    issues.push({ code: "email-invalid" });
+  }
+  if (draft.password.length < CONFIG.MIN_PASSWORD_LENGTH) {
+    issues.push({
+      code: "password-too-short",
+      values: { min: CONFIG.MIN_PASSWORD_LENGTH },
+    });
+  }
+
+  return issues;
 }
