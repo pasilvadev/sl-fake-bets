@@ -249,7 +249,7 @@
     "newDivider": "NOVAS",
     "newMessages": "Mensagens novas",
     "newCount": "{count} {count, plural, one {nova} other {novas}}",
-    "endOfHistory": "Isso é tudo dos últimos {days} dias — mensagens mais antigas são apagadas automaticamente."
+    "endOfHistory": "Isso é tudo dos últimos {days} dias"
   },
   "createBetFab": {
     "createBet": "Criar aposta",

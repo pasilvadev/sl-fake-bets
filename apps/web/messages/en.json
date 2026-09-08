@@ -249,7 +249,7 @@
     "newDivider": "New",
     "newMessages": "New messages",
     "newCount": "{count} new",
-    "endOfHistory": "That's the last {days} days — older messages are cleared automatically."
+    "endOfHistory": "That's the last {days} days"
   },
   "createBetFab": {
     "createBet": "Create bet",
