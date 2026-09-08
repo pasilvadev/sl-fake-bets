@@ -10,6 +10,7 @@ import { SMark } from "@/components/sl/s-mark";
 import { SITE_NAME } from "@/lib/site";
 import {
   CONFIG,
+  isEmailShaped,
   validateSignupDraft,
   type MutationErrorCode,
   type SignupDraft,
@@ -22,9 +23,6 @@ import { useTranslations } from "next-intl";
 import { LocaleTextSwitcher } from "@/components/shell/locale-switcher";
 import { authCallbackUrl, safeNextPath } from "@/lib/auth-redirect";
 import { useOnboardingStep } from "@/components/onboarding/steps";
-
-/** UX-003: the lowest-friction check that still catches a typo'd address. */
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AuthMode = "signIn" | "createAccount";
 type Pending = "none" | "google" | "submit";
@@ -66,10 +64,22 @@ function mapAuthError(
         values: { min: CONFIG.MIN_PASSWORD_LENGTH },
       };
     case "validation_failed":
+    // GoTrue's own address check, which is STRICTER than UX-003's loose shape
+    // (`isEmailShaped`) on purpose — the client's job is catching a typo, and
+    // GoTrue's is refusing an address it cannot deliver to. It reduces to the
+    // same code for the same D1/D8 reason `weak_password` does: the reader has
+    // one rule about their email address, so they get one sentence about it,
+    // not "That didn't go through" for the half the client cannot judge.
+    case "email_address_invalid":
       return { code: "email-invalid" };
     case "over_request_rate_limit":
     case "over_email_send_rate_limit":
       return { code: "rate-limited" };
+    // A GoTrue-side timeout is the same fact `isAuthRetryableFetchError`
+    // catches on this side — the request did not complete — and wants the same
+    // "check your connection and try again" sentence rather than the catch-all.
+    case "request_timeout":
+      return { code: "network-error" };
     case "signup_disabled":
     case "email_provider_disabled":
       return { code: "auth-disabled" };
@@ -148,8 +158,13 @@ export function AuthPage() {
 
   const signIn = useCallback(async () => {
     const address = email.trim();
-    if (!EMAIL_SHAPE.test(address)) {
-      setError(t("invalidEmail"));
+    // `isEmailShaped` + `email-invalid`, not a local regex and a local
+    // sentence: the create-account form already refuses a malformed address
+    // through `validateSignupDraft`'s `email-invalid` issue (D8), and one rule
+    // gets one shape check and one sentence in both languages. `@repo/shared`
+    // owns the check (UX-003's loose shape) and the catalog owns the words.
+    if (!isEmailShaped(address)) {
+      setError(codeText("email-invalid"));
       return;
     }
 
@@ -172,7 +187,7 @@ export function AuthPage() {
     // be pressed twice during the navigation.
     router.replace(destination);
     router.refresh();
-  }, [email, password, supabase, router, destination, t, codeText]);
+  }, [email, password, supabase, router, destination, codeText]);
 
   const createAccount = useCallback(async () => {
     const draft: SignupDraft = { displayName, email: email.trim(), password };

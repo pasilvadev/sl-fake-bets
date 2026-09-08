@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONFIG } from "./config";
-import { validateSignupDraft, type SignupDraft } from "./validation";
+import { isEmailShaped, validateSignupDraft, type SignupDraft } from "./validation";
 
 /**
  * plan-hosted-early-access.md Phase 1 task 5 — the first test for a validator
@@ -56,5 +56,38 @@ describe("validateSignupDraft", () => {
       { code: "email-invalid" },
       { code: "password-too-short", values: { min: CONFIG.MIN_PASSWORD_LENGTH } },
     ]);
+  });
+});
+
+/**
+ * `isEmailShaped` is the same rule as the `email-invalid` cases above, reached
+ * the other way: the SIGN-IN form has no draft to validate (the password's
+ * only judge is GoTrue) so it calls the predicate directly, and that call is
+ * the only user-facing use of this rule with no `validate*` function over it.
+ * The trim is the part worth pinning — the sign-in form passes an
+ * already-trimmed address and the create form does not, so the predicate has
+ * to own it for both to agree.
+ */
+describe("isEmailShaped", () => {
+  it("accepts an ordinary address", () => {
+    expect(isEmailShaped("duds@sl.local")).toBe(true);
+  });
+
+  it("trims before judging, so surrounding whitespace is not a rejection", () => {
+    expect(isEmailShaped("  duds@sl.local  ")).toBe(true);
+  });
+
+  it.each(["", "   ", "nope", "no@domain", "no.at.sign.com", "two@@at.com", "spa ce@sl.local"])(
+    "rejects %j",
+    (value) => {
+      expect(isEmailShaped(value)).toBe(false);
+    },
+  );
+
+  it("stays loose on purpose — UX-003 catches a typo, GoTrue refuses the undeliverable", () => {
+    // A shape check that rejected these would reject real addresses; the
+    // stricter judgement is `email_address_invalid`, mapped in auth-page.tsx.
+    expect(isEmailShaped("a@b.c")).toBe(true);
+    expect(isEmailShaped("duds+tag@sub.sl.local")).toBe(true);
   });
 });

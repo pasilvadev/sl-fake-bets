@@ -9,8 +9,9 @@
 # on Vercel regardless of `target` (plan-hosted-early-access.md, Phase 2's
 # execution record), so previews come from a branch or from this path.
 #
-# Everything here is either reinstalled (node_modules), rebuilt (.next,
-# .turbo, dist) or local-only (Docker volumes, env files, coverage).
+# Everything in the first block is either reinstalled (node_modules), rebuilt
+# (.next, .turbo, dist) or local-only (Docker volumes, coverage). The second
+# block is the secrets, and it is the half that actually needs stating.
 node_modules
 .next
 .turbo
@@ -20,3 +21,22 @@ coverage
 supabase/.branches
 supabase/.temp
 *.log
+
+# SECRETS. The reason this section is not "obviously unnecessary": a CLI upload
+# does not honor .gitignore (see above), so every file .gitignore keeps out of
+# the repo is still sitting in this working tree, and `vercel deploy` would
+# send it. `.env.ops` alone holds the PROD database password, the Supabase
+# access token, the Vercel token and CRON_SECRET (D10); `supabase/.env` holds
+# both Google client secrets; `client_secret*.json` is the raw download of one.
+# None of them is read by a build — the app's own env comes from Vercel's env
+# store — so there is nothing to lose by refusing to upload them.
+#
+# `.env.*` is a deliberate blanket: these patterns follow .gitignore matching,
+# so it also covers a future `apps/web/.env.production`. That is correct here —
+# D10 puts the app's build-time env in Vercel's own env store, never in a file
+# — but it is the one line to revisit if a build ever needs to READ an env
+# file rather than be handed the values.
+.env
+.env.*
+supabase/.env
+client_secret*.json

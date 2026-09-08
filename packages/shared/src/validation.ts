@@ -410,6 +410,22 @@ export function validateInjection(amount: number): ValidationIssue[] {
 /** UX-003's lowest-friction shape check — loose on purpose (catches a typo'd address, not a false rejection of a real one). */
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * The email shape check as a named predicate, because TWO forms ask it.
+ *
+ * `validateSignupDraft` below is one. The other is the SIGN-IN form, which has
+ * no draft type of its own (there is nothing to validate but the address — the
+ * password's only judge is GoTrue) and so cannot reach the rule through a
+ * `validate*` function. Before this export it kept its own copy of the regex
+ * in `auth-page.tsx` beside its own copy of the sentence, which is precisely
+ * the two-places-one-rule shape this module's own doc comment below warns
+ * against. Callers that need the sentence render `validation.email-invalid`
+ * from the catalog, the same key an `email-invalid` issue resolves to.
+ */
+export function isEmailShaped(value: string): boolean {
+  return EMAIL_SHAPE.test(value.trim());
+}
+
 /** Draft payload for password create-account (plan-hosted-early-access.md D1/D8). */
 export interface SignupDraft {
   displayName: string;
@@ -442,7 +458,7 @@ export function validateSignupDraft(draft: SignupDraft): ValidationIssue[] {
   if (draft.displayName.trim().length === 0) {
     issues.push({ code: "display-name-required" });
   }
-  if (!EMAIL_SHAPE.test(draft.email.trim())) {
+  if (!isEmailShaped(draft.email)) {
     issues.push({ code: "email-invalid" });
   }
   if (draft.password.length < CONFIG.MIN_PASSWORD_LENGTH) {

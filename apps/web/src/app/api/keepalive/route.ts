@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
 
   const result = await smokeTest();
   return NextResponse.json(result, {
+    status: result.ok ? 200 : 503,
     headers: { "Cache-Control": "no-store" },
   });
 }

@@ -23,7 +23,13 @@ no vision phase, only the documents describing the one Phase 3 already moved):
 through the form; `supabase/README.md` is rewritten hosted-first, with the
 local stack demoted to an appendix; and `design-stack.md`,
 `design-scale-and-free-tier.md`, `AGENT_SPEC.md` and `plan-mvp-roadmap.md` all
-state the hosted shape rather than the pre-transition one.
+state the hosted shape rather than the pre-transition one. **A post-execution
+review of all four phases followed (§10)**, on the owner's order the same day:
+eight findings, all applied — the load-bearing three were `.vercelignore`
+leaving `.env.ops` and both Google client secrets eligible for upload on a
+`vercel deploy`, a keep-alive that answered 200 while the probe failed, and a
+prod config script that could leave production auth pointing at localhost with
+exit code 0.
 This is the vision Phase 2→3 transition (`ARC-012`), which `ARC-013` says needs
 its own explicit, in-the-moment owner order. §4 (Phase 0) is that order in
 practice: the moment the owner hands an agent the tokens Phase 0 asks for, the
@@ -1899,3 +1905,102 @@ operational), ARC-017 (no third metric — the build tag is not analytics),
 UX-001/002/003/012/017/023/024/029 (self-signup with one required field on one
 path, published consent screen, deep links, privacy page in the sitemap, cards
 verified against a real unfurler).
+
+---
+
+## 10. Post-execution review (2026-09-07, after Phase 4)
+
+A review of everything Phases 1–4 shipped, on the owner's "review the work
+done on the hosted early access, if you find mistakes or improvements apply
+then" order. Every finding below was applied in the same pass;
+`pnpm typecheck / lint / test / build` are green (840 tests, 830 + 10 new).
+
+**The plan's own claims were re-checked and hold.** Notably: `next.config.ts`'s
+`env` block is safe when `VERCEL_GIT_COMMIT_SHA` is unset — Next's
+`getNextConfigEnv` skips a nullish value rather than inlining the string
+`"undefined"` (`next/dist/lib/static-env.js:58-70`), so `buildTag()`'s empty
+"local build" rendering is what actually happens; Turborepo's Framework
+Inference does cover `NEXT_PUBLIC_*` under strict env mode, so only the
+non-prefixed vars needed declaring in `turbo.json`; the Google client secret
+JSON at the repo root is gitignored and untracked; and D1's deliberate absence
+of password reset is stated in three places (D1, §7 risk 2, §8) rather than
+overlooked.
+
+### Fixed — the two that could have cost something real
+
+1. **`.vercelignore` did not exclude env files or the Google client secret,
+   while its own header claimed it did.** A CLI upload does not honor
+   `.gitignore` (that is the file's whole premise), and `vercel deploy` is the
+   *documented* preview path here (Phase 2 task 7) — so nothing in this repo
+   was keeping `.env.ops` (prod DB password, Supabase access token, Vercel
+   token, `CRON_SECRET`), `supabase/.env` (both Google client secrets) or the
+   raw `client_secret*.json` out of an upload. **Not verified:** whether the
+   CLI's own undocumented default excludes happened to cover them anyway; that
+   is exactly the thing a secret's confidentiality should not rest on, and the
+   CLI was not installed to inspect. Now excluded explicitly, with the `.env.*`
+   blanket's one future foot-gun (`apps/web/.env.production`) noted in place.
+   Nothing a build reads: D10 puts build-time env in Vercel's own store.
+
+2. **`/api/keepalive` answered 200 with `ok:false` when the probe failed.** The
+   route exists to produce a signal and the only signal anything watches is the
+   status code — Vercel's cron log, and any uptime check pointed here later. A
+   failing keep-alive looked exactly like a working one, so D4's whole purpose
+   would have surfaced as a *paused project weeks later*, with no record of when
+   it started. Now 503 on `!result.ok`.
+
+3. **`scripts/config-push-prod.sh` never checked the PATCH it exists to make.**
+   `supabase config push` has already overwritten prod's `site_url` with the
+   base config's `http://localhost:3000` and the DEV Google client by the time
+   the repair runs — so a rejected PATCH (expired token, wrong ref, a 4xx on
+   one field) left **production auth pointing at a laptop**, exit code 0, and a
+   table of `None`s that read like success. Now: HTTP status checked, non-2xx
+   aborts loudly with the response body and says what state prod is in, plus a
+   belt-and-braces assert that the returned `site_url` is the intended one.
+
+### Fixed — D8 correctness and accuracy
+
+4. **The sign-in form violated D8: one rule, two sentences, two regexes.**
+   `auth-page.tsx` kept its own `EMAIL_SHAPE` copy and its own
+   `authPage.invalidEmail` message — byte-identical to `validation.email-invalid`
+   in *both* catalogs — while the create-account form reached the same rule
+   through `validateSignupDraft`. This is exactly what `validation.ts`'s own doc
+   comment warns against ("never produces two different sentences for one
+   rule"). `isEmailShaped` is now exported from `@repo/shared` (owning the trim,
+   which the two call sites disagreed about), the sign-in form renders
+   `codeText("email-invalid")`, and the duplicate key is deleted from `en.json`
+   and `pt-BR.json`. Ten tests added.
+
+5. **Two GoTrue codes fell to `unexpected`.** `email_address_invalid` — GoTrue's
+   own stricter address check, which UX-003's deliberately loose shape lets
+   through — now reduces to `email-invalid` for the same reason `weak_password`
+   reduces to `password-too-short`. `request_timeout` now reduces to
+   `network-error`, the same fact `isAuthRetryableFetchError` catches on the
+   client side. Both read from the installed `@supabase/auth-js@2.115.0`
+   `ErrorCode` union, not from memory.
+
+6. **`auth/callback/route.ts` still claimed "auth-page.tsx verifies [the email
+   code] in place".** Untrue since D1 removed OTP entirely; Phase 1 updated
+   `client.ts`'s equivalent comment and missed this one. Rewritten to say what
+   is true now (every `code` here is an OAuth authorization code) without losing
+   why the dormant flow ships a code rather than a link.
+
+7. **CI ran twice per commit on any PR branch** (bare `push:` plus
+   `pull_request:`). Narrowed to `push: branches: [main]`, which is where work
+   lands here anyway.
+
+8. **`.env.ops.example` said it was loaded by `db-push-prod.sh` only** —
+   `config-push-prod.sh` (Phase 2) sources it too, on top of `supabase/.env`.
+
+### Noted, not changed
+
+- `packages/shared/src/infra.ts`'s `ANALYTICS_EVENTS` doc says "the only two
+  `event_name` values" and "**Do not add a third**" while listing three
+  (`signup_completed` is the third and is matched in
+  `supabase/queries/arc-017-metrics.sql`). Pre-dates this plan — ARC-017's cap
+  is on *metrics*, of which there are still two — so it is roadmap debt rather
+  than a hosted-transition defect, and correcting the sentence belongs with
+  whoever next touches that cap.
+- The keep-alive returns `smokeTest()`'s Postgres `error` string in its JSON
+  body. That is not a D9 violation: the endpoint is bearer-gated to Vercel's
+  own scheduler, no user reads it, and the text is the only diagnostic a failed
+  probe carries.

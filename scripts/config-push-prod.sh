@@ -62,6 +62,11 @@ echo
 
 supabase config push --project-ref "$SUPABASE_PROD_PROJECT_REF"
 
+# Bare `mktemp`, no `-t`: BSD mktemp treats the argument as a prefix, GNU
+# mktemp demands an XXXXXX template and errors out on one without it.
+RESPONSE_FILE="$(mktemp)"
+trap 'rm -f "$RESPONSE_FILE"' EXIT
+
 echo
 echo "Repairing prod-only auth fields (site_url + production Google client) ..."
 BODY="$(SITE_URL="$NEXT_PUBLIC_SITE_URL" \
@@ -75,8 +80,42 @@ BODY="$(SITE_URL="$NEXT_PUBLIC_SITE_URL" \
   "external_google_skip_nonce_check": False,
 }))')"
 
-curl -sS -X PATCH "https://api.supabase.com/v1/projects/$SUPABASE_PROD_PROJECT_REF/config/auth" \
+# The PATCH is checked, not assumed. Without this the failure mode is silent
+# and bad: `config push` above has ALREADY overwritten prod's site_url with
+# `http://localhost:3000` and the DEV Google client (that is the whole reason
+# this script exists), so a rejected PATCH — expired access token, wrong ref,
+# a 4xx on one field — leaves production auth pointing at a developer's laptop
+# with an exit code of 0 and a table of `None`s that reads like output. Status
+# code first, then the fields, and a non-2xx aborts loudly while the operator
+# is still watching.
+HTTP_STATUS="$(curl -sS -X PATCH "https://api.supabase.com/v1/projects/$SUPABASE_PROD_PROJECT_REF/config/auth" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$BODY" \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f"  {k} = {d.get(k)!r}") for k in ["site_url","uri_allow_list","mailer_autoconfirm","external_email_enabled","password_min_length","external_google_enabled","external_google_client_id","external_google_skip_nonce_check"]]'
+  -o "$RESPONSE_FILE" \
+  -w '%{http_code}')"
+
+if [[ "$HTTP_STATUS" != 2* ]]; then
+  echo >&2
+  echo "config-push-prod: the auth PATCH FAILED (HTTP $HTTP_STATUS)." >&2
+  echo "PROD AUTH IS NOW WRONG: the config push above set site_url to the base" >&2
+  echo "config's http://localhost:3000 and the DEV Google client. Fix the cause" >&2
+  echo "and re-run this script before anyone tries to sign in on production." >&2
+  echo "Response body:" >&2
+  cat "$RESPONSE_FILE" >&2
+  echo >&2
+  exit 1
+fi
+
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); [print(f"  {k} = {d.get(k)!r}") for k in ["site_url","uri_allow_list","mailer_autoconfirm","external_email_enabled","password_min_length","external_google_enabled","external_google_client_id","external_google_skip_nonce_check"]]' "$RESPONSE_FILE"
+
+# Belt-and-braces on the one field whose wrong value is silently survivable:
+# a 2xx that somehow did not take `site_url` still breaks every OAuth return
+# leg on prod, and the operator should not have to spot that in the table.
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("site_url") == sys.argv[2] else 1)' \
+  "$RESPONSE_FILE" "$NEXT_PUBLIC_SITE_URL" || {
+  echo >&2
+  echo "config-push-prod: the PATCH returned 2xx but site_url is NOT" >&2
+  echo "$NEXT_PUBLIC_SITE_URL. Prod auth is wrong — investigate before sign-in." >&2
+  exit 1
+}

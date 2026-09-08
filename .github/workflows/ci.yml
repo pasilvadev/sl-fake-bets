@@ -5,8 +5,14 @@
 # (pasilvadev/sl-fake-bets), so this adds no vendor and no cost.
 name: CI
 
+# `push` is narrowed to `main` on purpose: with a bare `push:` every commit on
+# a PR branch runs this workflow TWICE (once for the push, once for the PR's
+# synchronize event) for identical results. `main` is where work lands here
+# (there are no long-lived branches), and `pull_request` covers everything that
+# arrives any other way.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:

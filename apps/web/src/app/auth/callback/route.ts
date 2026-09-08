@@ -19,9 +19,13 @@ import { safeNextPath } from "@/lib/auth-redirect";
  * `next` is carried through the provider round-trip and honored here (UX-012
  * groundwork); `safeNextPath` is what keeps it from becoming an open redirect.
  *
- * There is no OTP leg here on purpose: the email template ships a CODE
- * (decision §4.1), which auth-page.tsx verifies in place — there is no link to
- * land on.
+ * There is no OTP leg here on purpose, and since
+ * plan-hosted-early-access.md D1 there is no OTP at all: the alpha signs
+ * people in with a password or with Google and sends no email whatsoever, so
+ * `code` below is always an OAuth authorization code. The dormant email flow
+ * (decision §4.1) ships a CODE rather than a magic link — see
+ * `supabase/templates/magic_link.html` — which is why even the full release
+ * adds a verify step to the auth screen rather than a second leg here.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;

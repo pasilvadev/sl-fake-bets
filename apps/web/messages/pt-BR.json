@@ -594,7 +594,6 @@
     "emailLabel": "E-mail",
     "emailPlaceholder": "voce@exemplo.com",
     "passwordLabel": "Senha",
-    "invalidEmail": "Digite um e-mail válido.",
     "signIn": "Entrar",
     "signingIn": "Entrando…",
     "createAccountSubmit": "Criar conta",
