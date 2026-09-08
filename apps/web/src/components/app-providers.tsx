@@ -42,29 +42,39 @@ import { ToastRoot } from "@/components/sl/toast-layer";
  * "outermost" reasoning for everything under it: a flag may gate anything,
  * including a provider's own children, and it depends on nothing.
  *
- * `locale` and `messages` cross the server/client boundary as props, exactly
- * like `initialUser` and `flags` — all four are per-request values a client
- * render must not go fetch for itself. Only the ACTIVE locale's catalog is
- * serialized (~4 KB gzipped at this size, ~10 KB by the end of Phase 3);
- * pre-emptively narrowing it per route with next-intl's `pick()` is not
- * warranted below ~800 keys and would cost the owner the single-file editing
- * surface §4 promises.
+ * `locale`, `messages` and `timeZone` cross the server/client boundary as
+ * props, exactly like `initialUser` and `flags` — all five are per-request
+ * values a client render must not go fetch for itself. `timeZone` is passed
+ * explicitly (rather than left for `NextIntlClientProvider` to infer) because
+ * an explicit `locale`/`messages` pair already breaks its auto-inherit from
+ * `i18n/request.ts`'s config — without it next-intl throws `ENVIRONMENT_
+ * FALLBACK` the moment any child calls a hook that touches the clock. Only the
+ * ACTIVE locale's catalog is serialized (~4 KB gzipped at this size, ~10 KB by
+ * the end of Phase 3); pre-emptively narrowing it per route with next-intl's
+ * `pick()` is not warranted below ~800 keys and would cost the owner the
+ * single-file editing surface §4 promises.
  */
 export function AppProviders({
   initialUser,
   flags,
   locale,
   messages,
+  timeZone,
   children,
 }: {
   initialUser: SessionUser | null;
   flags: FlagMap;
   locale: Locale;
   messages: Messages;
+  timeZone: string;
   children: ReactNode;
 }) {
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <NextIntlClientProvider
+      locale={locale}
+      messages={messages}
+      timeZone={timeZone}
+    >
       <FeatureFlagProvider flags={flags}>
         <AuthProvider initialUser={initialUser}>
           <ToastProvider>

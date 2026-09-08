@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getLocale, getTimeZone, getTranslations } from "next-intl/server";
 import { AppProviders } from "@/components/app-providers";
 import { createClient, getSessionUser } from "@/lib/supabase/server";
 import { loadRequestFeatureFlags } from "@/lib/data/feature-flags";
@@ -105,13 +105,21 @@ export async function generateMetadata(): Promise<Metadata> {
  * before any of this ran. Reading it here rather than re-deriving it is what
  * guarantees the exit criterion that `<html lang>` matches the language the
  * page is actually rendered in.
+ *
+ * `timeZone` is read the same way, for a narrower reason: `AppProviders` hands
+ * `locale` and `messages` to `NextIntlClientProvider` as explicit props, and
+ * that alone stops it from auto-inheriting the rest of `i18n/request.ts`'s
+ * config across the server/client boundary. Without `timeZone` here too, any
+ * client component calling a next-intl hook that touches the clock throws
+ * `ENVIRONMENT_FALLBACK`.
  */
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
-  const [initialUser, flags, locale] = await Promise.all([
+  const [initialUser, flags, locale, timeZone] = await Promise.all([
     getSessionUser(supabase),
     loadRequestFeatureFlags(),
     getLocale(),
+    getTimeZone(),
   ]);
 
   return (
@@ -125,6 +133,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           flags={flags}
           locale={locale}
           messages={messagesFor(locale)}
+          timeZone={timeZone}
         >
           {children}
         </AppProviders>
