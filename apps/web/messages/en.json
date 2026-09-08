@@ -561,7 +561,7 @@
     "loadFailedTitle": "Couldn't load your teams",
     "retry": "Try again",
     "noTeamsEyebrow": "No teams yet",
-    "noTeamsTitle": "Start one, or join with a code",
+    "noTeamsTitle": "Join with a code, or start one",
     "nameLabel": "Team name",
     "namePlaceholder": "Sl Originals",
     "freeForAll": "Free-for-all",
@@ -573,6 +573,7 @@
     "codePlaceholder": "xxxx-xxxx",
     "join": "Join",
     "joining": "Joining…",
+    "createTeamPrompt": "No code? Create a team instead",
     "signOut": "Sign out"
   },
   "profileStep": {

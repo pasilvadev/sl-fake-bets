@@ -561,7 +561,7 @@
     "loadFailedTitle": "Não deu pra carregar seus times",
     "retry": "Tentar de novo",
     "noTeamsEyebrow": "Nenhum time ainda",
-    "noTeamsTitle": "Crie um, ou entre com um código",
+    "noTeamsTitle": "Entre com um código, ou crie um time",
     "nameLabel": "Nome do time",
     "namePlaceholder": "Sl Originals",
     "freeForAll": "Livre para todos",
@@ -573,6 +573,7 @@
     "codePlaceholder": "xxxx-xxxx",
     "join": "Entrar",
     "joining": "Entrando…",
+    "createTeamPrompt": "Sem código? Crie um time",
     "signOut": "Sair da conta"
   },
   "profileStep": {

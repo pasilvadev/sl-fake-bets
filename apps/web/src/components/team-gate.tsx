@@ -56,8 +56,10 @@ const fieldClass =
 /**
  * UX-028's first moment: an account with no team yet. Deliberately NOT the
  * create-team modal — a modal implies something behind it to go back to, and
- * here there is nothing. Both ways in (create, or spend an invite code) sit on
- * the same screen because a new arrival usually already has one of the two.
+ * here there is nothing. Both ways in (spend an invite code, or create) sit on
+ * the same screen, invite code first — most arrivals were invited by a
+ * teammate and already have a code, so creating a team stays a collapsed
+ * button rather than an open form someone could fill in by mistake.
  */
 export function NoTeamsScreen() {
   // Onboarding's second step (UX-028, roadmap Phase 7.5): signup → **team** →
@@ -75,6 +77,9 @@ export function NoTeamsScreen() {
   const [code, setCode] = useState("");
   const [pending, setPending] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Most arrivals have a friend's code already, not a team to name — the
+  // create-team form only expands once someone actually asks for it.
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -109,46 +114,6 @@ export function NoTeamsScreen() {
           </div>
         </div>
 
-        <form onSubmit={submitCreate} className="space-y-3 border border-border p-4">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("nameLabel")}
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("namePlaceholder")}
-            className={fieldClass}
-          />
-          <div className="flex gap-2">
-            {(["free-for-all", "restricted"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setAccessMode(mode)}
-                className={cn(
-                  "flex-1 border p-2 text-left text-xs transition-colors",
-                  accessMode === mode
-                    ? "border-jade bg-jade-wash text-foreground"
-                    : "border-border text-muted-foreground hover:border-border-strong",
-                )}
-              >
-                {mode === "free-for-all" ? t("freeForAll") : t("restricted")}
-              </button>
-            ))}
-          </div>
-          <button
-            type="submit"
-            disabled={name.trim().length === 0 || pending !== null}
-            className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
-          >
-            {pending === "create" ? t("creating") : t("createTeam")}
-          </button>
-          <p className="text-[11px] text-muted-foreground">
-            {t("leadNote", { coins: CONFIG.ONBOARDING_GRANT_COINS })}
-          </p>
-        </form>
-
         <form onSubmit={submitJoin} className="space-y-3 border border-border p-4">
           <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {t("codeLabel")}
@@ -170,6 +135,57 @@ export function NoTeamsScreen() {
             </button>
           </div>
         </form>
+
+        {showCreateForm ? (
+          <form onSubmit={submitCreate} className="space-y-3 border border-border p-4">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("nameLabel")}
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("namePlaceholder")}
+              className={fieldClass}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              {(["free-for-all", "restricted"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setAccessMode(mode)}
+                  className={cn(
+                    "flex-1 border p-2 text-left text-xs transition-colors",
+                    accessMode === mode
+                      ? "border-jade bg-jade-wash text-foreground"
+                      : "border-border text-muted-foreground hover:border-border-strong",
+                  )}
+                >
+                  {mode === "free-for-all" ? t("freeForAll") : t("restricted")}
+                </button>
+              ))}
+            </div>
+            <button
+              type="submit"
+              disabled={name.trim().length === 0 || pending !== null}
+              className="cut-sm h-9 w-full px-5 text-xs font-semibold uppercase tracking-wide text-black bg-jade transition-[filter] motion-safe:hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {pending === "create" ? t("creating") : t("createTeam")}
+            </button>
+            <p className="text-[11px] text-muted-foreground">
+              {t("leadNote", { coins: CONFIG.ONBOARDING_GRANT_COINS })}
+            </p>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowCreateForm(true)}
+            className="w-full border border-border p-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-jade/50 hover:text-jade"
+          >
+            {t("createTeamPrompt")}
+          </button>
+        )}
 
         {error && <p className="text-xs text-negative">{error}</p>}
 
