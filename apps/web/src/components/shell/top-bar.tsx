@@ -39,7 +39,7 @@ export function TopBar() {
       <LocaleSync />
 
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <SMark className="size-5 shrink-0 text-foreground" />
+        <SMark className="h-5 w-auto shrink-0 text-foreground" />
         <TeamSwitcher />
       </div>
 

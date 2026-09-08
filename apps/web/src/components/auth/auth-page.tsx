@@ -254,7 +254,7 @@ export function AuthPage() {
         />
         <div className="relative max-w-md">
           <div className="flex items-center gap-3">
-            <SMark className="size-10 text-text-strong" />
+            <SMark className="h-10 w-auto text-text-strong" />
             <span className="text-2xl font-semibold tracking-tight text-text-strong">SL</span>
           </div>
 

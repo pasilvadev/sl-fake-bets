@@ -103,7 +103,7 @@ function JoinFlow({
     <main className="flex min-h-svh items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-5 border border-border bg-surface-1 p-6">
         <div className="flex items-center gap-3">
-          <SMark className="size-8 text-jade" />
+          <SMark className="h-8 w-auto text-jade" />
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {t("eyebrow")}

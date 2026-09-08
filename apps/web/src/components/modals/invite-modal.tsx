@@ -131,7 +131,7 @@ export function InviteModal() {
     >
       <div className="space-y-5">
         <div className="flex items-center gap-3 border border-border bg-surface-1 p-4">
-          <SMark className="size-8 text-jade" />
+          <SMark className="h-8 w-auto text-jade" />
           <div>
             <p className="text-sm font-medium text-text-strong">
               {t("join", { team: team.name })}

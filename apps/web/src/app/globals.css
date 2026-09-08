@@ -231,17 +231,11 @@
 @utility cut-mirror { clip-path: polygon(0 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 8px)); }
 @utility cut-danger { clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%, 0 15px); }
 
-/* S-mark, CSS-only clip-path — minimal geometric approximation of the stencil
-   "S" (two parallel diagonal cuts through a block). Loading/watermark/send-glyph
-   only until a real traced SVG replaces it. */
-@utility s-mark {
-  clip-path: polygon(
-    0% 0%, 100% 0%, 100% 24%, 32% 24%,
-    100% 76%, 100% 100%, 0% 100%, 0% 76%,
-    68% 76%, 0% 24%
-  );
-  background: currentColor;
-}
+/* The S-mark is no longer a utility here. It was a single-polygon clip-path
+   approximation, and the real mark is two disjoint arms — a shape clip-path
+   cannot express without a degenerate connecting sliver. It now lives as a
+   traced inline SVG in `sl/s-mark.tsx` (§4.3); use <SMark />, don't
+   reintroduce a CSS approximation of it. */
 
 @layer base {
   * {

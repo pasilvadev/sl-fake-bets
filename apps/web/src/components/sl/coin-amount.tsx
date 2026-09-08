@@ -3,14 +3,19 @@
 import { cn } from "cn";
 import { useLocale } from "next-intl";
 import { formatCoins } from "@/lib/format";
+import { SMark } from "@/components/sl/s-mark";
 
-/** Mini S-mark glyph, ~0.75em, currentColor — the coin glyph (§5.5). */
+/**
+ * Mini S-mark glyph, 0.75em tall, currentColor — the coin glyph (§5.5).
+ * Height-driven with an automatic width: the mark is 0.533 as wide as it is
+ * tall, and a square box here would park ~3px of dead air between the glyph
+ * and the numeral it prefixes.
+ */
 function CoinGlyph({ className }: { className?: string }) {
   return (
-    <span
-      aria-hidden
-      className={cn("s-mark inline-block shrink-0", className)}
-      style={{ width: "0.75em", height: "0.75em" }}
+    <SMark
+      className={cn("inline-block w-auto shrink-0", className)}
+      style={{ height: "0.75em" }}
     />
   );
 }

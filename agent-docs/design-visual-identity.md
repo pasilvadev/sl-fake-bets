@@ -2,7 +2,7 @@
 
 Dark-mode-only design system for SL Fake Bets. Synthesizes color science, typography/motif, component specs, and interaction rules into one system. Every value below is implementable directly as Tailwind v4 `@theme` tokens / shadcn CSS vars in `apps/web/src/app/globals.css`.
 
-> Brand is **"SL"** — never spell out the old name. The stencil-cut "S" mark and its two-parallel-diagonal-cut construction (source: `old-soulless-bg.jpeg`) is the one reusable asset — reuse 1:1, never redraw the mark itself. The faceted dark background in that lockup is **not** part of the in-product system (see Banned List #10-adjacent).
+> Brand is **"SL"** — never spell out the old name. The stencil-cut "S" mark and its two-parallel-diagonal-cut construction (source: `old-soulless-bg.jpeg`) is the one reusable asset — reuse 1:1, never redraw the mark itself. That 1:1 trace now exists as `sl/s-mark.tsx`; use it, and see §4.3 for what the mark's geometry actually is. The faceted dark background in that lockup is **not** part of the in-product system (see Banned List #10-adjacent).
 
 ### 0.1 Spec deviation from AGENT_SPEC
 
@@ -404,7 +404,9 @@ Never stack shadows on cards or list rows — that stacking is the clearest "vib
 
 ### 4.3 The slash motif — 68°, used with scarcity
 
-**Standardized angle: 68° from horizontal** (steeper than a generic 45° slash, steeper than shallow "esports" cuts at 8–15°) — matches the logo mark's near-vertical urgency. Every diagonal element in the app uses this one angle; never mix slash angles. (`--brand-slash-angle`/`--brand-slash-rad` in §2.5 are reference constants for canvas/SVG math elsewhere — they aren't consumed by any utility below. The real lever for this angle is the offset ratio in each `cut-*` rule; change all of them together, never just one.)
+**Standardized angle: 68° from horizontal** (steeper than a generic 45° slash, steeper than shallow "esports" cuts at 8–15°). Every diagonal element in the app uses this one angle; never mix slash angles.
+
+> **Correction, 2026-09-08.** This paragraph used to justify 68° as matching "the logo mark's near-vertical urgency". Tracing the mark disproved that: its cuts run at **≈28.5° from horizontal** — the shallow esports cut this rule claims to be steeper than. So 68° is a house angle that *contrasts* with the mark rather than echoing it. Left standing as the standard, because every `cut-*` utility, the divider, the void-strike and the numeral framing are already built on it and re-cutting the app to 28.5° is a much bigger decision than this correction. Just don't repeat the derivation — if the angle is ever revisited, it is a taste call, not a fact about the logo. (`--brand-slash-angle`/`--brand-slash-rad` in §2.5 are reference constants for canvas/SVG math elsewhere — they aren't consumed by any utility below. The real lever for this angle is the offset ratio in each `cut-*` rule; change all of them together, never just one.)
 
 Corner-cut clip-paths approximate 68° via unequal horizontal/vertical offsets (`vertical ≈ 2.48 × horizontal`, since `tan(68°) ≈ 2.475`):
 
@@ -422,21 +424,22 @@ Corner-cut clip-paths approximate 68° via unequal horizontal/vertical offsets (
 @utility cut-mirror  { clip-path: polygon(0 0, 100% 0, 100% 100%, 20px 100%, 0 calc(100% - 8px)); }
 @utility cut-danger  { clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 15px, 100% 100%, 0 100%, 0 15px); }
 
-/* S-mark, CSS-only clip-path — a minimal geometric approximation of the
-   stencil "S" (two parallel diagonal cuts through a block), NOT a trace
-   of the real logo. Use for the loading indicator / watermark / chat
-   send-glyph below until a real traced SVG (e.g.
-   apps/web/public/s-mark.svg) replaces it — never redraw the actual
-   wordmark mark itself from this approximation. */
-@utility s-mark {
-  clip-path: polygon(
-    0% 0%, 100% 0%, 100% 24%, 32% 24%,
-    100% 76%, 100% 100%, 0% 100%, 0% 76%,
-    68% 76%, 0% 24%
-  );
-  background: currentColor;
-}
+/* The S-mark is NOT here. It is not expressible as a clip-path: the real
+   mark is two disjoint arms, and a single polygon can only join them with
+   a degenerate sliver. It lives as a traced inline SVG — see below. */
 ```
+
+**The S-mark — `sl/s-mark.tsx`, traced not approximated (2026-09-08).** The `s-mark` clip-path utility that used to sit in this block was a placeholder, and a poor one: 40% pixel-IoU against the wordmark in `old-soulless-bg.jpeg`. It is replaced by `<SMark />`, an inline SVG whose every vertex is a least-squares fit of that source raster's edges — 96.5% IoU, stable across binarisation thresholds. Treat those coordinates as **measured data, not design**: don't round them to a grid, and don't "regularise" the near-symmetries (the upper arm's top and bottom splay are mirror-equal to within 0.2px, but its notch edges are genuinely not, and its left edge sits 0.9px right of the lower arm's).
+
+What the mark actually is, since the old approximation taught the wrong shape:
+
+| | |
+|---|---|
+| Construction | **Two disjoint arms**, not one zig-zag block. Upper: a left-pointing arrow — vertical left edge with top and bottom edges splaying off it at ±2.585 (dx/dy), with a wedge bitten out of its right side. Lower: a slanted bar that tapers, vertical at both ends. |
+| The cut | The wide diagonal void between the two arms **is** the mark. Never merge the paths or close the gap. |
+| Bbox / aspect | 149.2 × 279.6 in the source, normalised to a `0 0 160 300` viewBox — **aspect 0.533**, i.e. roughly half as wide as tall. The old utility was square, which is most of why it read wrong. |
+| Cut angles | The two arm-facing edges of the void run at **≈28.5° from horizontal** (dx/dy ≈ 1.84); the arm splays at ≈21.1°. Note these are *shallow* — see the discrepancy note under §4.3's 68° below. |
+| Sizing | `<SMark />` defaults to `h-5 w-auto`. Beside text (top-bar lockup, coin glyph, the four jade eyebrow lockups) use `h-* w-auto`. Centred decorative uses (watermark, loading indicator) pass `size-*` and get a square box with the glyph centred in it. |
 
 **Rule of scarcity: max one diagonal brand element visible per viewport.** The slash is a signature, never a pattern, and never carries semantic meaning by itself (state lives in color/glyph/weight, not in whether a corner is cut).
 
@@ -444,8 +447,8 @@ Corner-cut clip-paths approximate 68° via unequal horizontal/vertical offsets (
 |---|---|---|
 | Corner cut (`cut-sm`/`cut-md`) | One hero surface per screen: bet-detail header, primary CTA button, empty-state panel, rank-1 leaderboard row, and the single closing-soonest bet row's icon/CTA (§5.1) | Every card, list row, form input, modal, nav item |
 | Diagonal hairline divider (68°) | Bet-detail hero section break, void-row strike, landing section breaks | List separators, chat separators, table rows (stay horizontal — scan speed wins there) |
-| S-slash loading indicator (`s-mark` utility above) | Full-page loads, modal-submit pending | Never inside small buttons (use 3-dot mono sequence there instead) |
-| Watermark (`s-mark` utility, 4–6% opacity, 96–200px) | Empty states only | Behind active content; never more than one on screen |
+| S-slash loading indicator (`<SMark />`, above) | Full-page loads, modal-submit pending | Never inside small buttons (use 3-dot mono sequence there instead) |
+| Watermark (`<SMark />`, 4–6% opacity, 96–200px) | Empty states only | Behind active content; never more than one on screen |
 | Numeral framing | 68° cut on the *container chip* around a hero numeral (odds badge), or as a divider between value/unit (`2.4 ⟨cut⟩ x`) | Never cut into digit strokes themselves — money/odds legibility is non-negotiable |
 
 ### 4.4 Multi-option odds — no rainbow palette
@@ -564,7 +567,7 @@ An **unaccepted challenge past its deadline shows `VOID · NOT ACCEPTED IN TIME`
 
 ### 5.5 Coin display & P/L
 
-- Glyph: ≈12–14px inline SVG, the logo's two-diagonal-cut mark at miniature scale, `currentColor` (white by default, jade only on a live/positive delta). Placed before every amount.
+- Glyph: `<SMark />` at 0.75em tall (≈12px), `h-* w-auto` so the 0.533 aspect stands and no dead air opens up before the numeral, `currentColor` (white by default, jade only on a live/positive delta). Placed before every amount.
 - All amounts: `font-mono tabular-nums`, comma-grouped.
 - Gain: `/ +240` jade. Loss: `\ −180` rust. Same pairing reused identically across leaderboard deltas, chat mentions, toasts, and the per-user aggregated P/L view (one row per team the user is in, lifetime net delta only, same glyph+mono treatment as a transaction row, sorted by magnitude) — **one glyph vocabulary everywhere**, established once here.
 - Transaction history rows: dense, `py-2.5 border-b`, columns date (mono, N6) · description (N7) · delta (glyph-prefixed mono, right) · balance-after (mono, N6, smaller, right).
