@@ -2,6 +2,9 @@
   "common": {
     "language": "Idioma"
   },
+  "alphaTag": {
+    "label": "Alpha"
+  },
   "errors": {
     "already-in-team": "Você já está no {team}.",
     "auth-disabled": "O cadastro está desligado no momento. Tente mais tarde.",

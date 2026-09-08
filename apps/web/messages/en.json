@@ -2,6 +2,9 @@
   "common": {
     "language": "Language"
   },
+  "alphaTag": {
+    "label": "Alpha"
+  },
   "errors": {
     "already-in-team": "You are already in {team}.",
     "auth-disabled": "Sign-up is turned off right now. Try again later.",

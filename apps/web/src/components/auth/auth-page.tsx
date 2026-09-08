@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isAuthRetryableFetchError, type AuthError } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { SMark } from "@/components/sl/s-mark";
+import { AlphaTag } from "@/components/sl/alpha-tag";
 import { SITE_NAME } from "@/lib/site";
 import {
   CONFIG,
@@ -256,6 +257,11 @@ export function AuthPage() {
           <div className="flex items-center gap-3">
             <SMark className="h-10 w-auto text-text-strong" />
             <span className="text-2xl font-semibold tracking-tight text-text-strong">SL</span>
+            {/* The alpha sticker (owner ruling 2026-09-08 — see sl/alpha-tag.tsx).
+                `self-start` parks it on the wordmark's upper-right shoulder;
+                `-ml-1` tightens the lockup's 12px gap to 8px so it reads as
+                attached to "SL" rather than as a fourth item in the row. */}
+            <AlphaTag size="md" className="-ml-1 self-start" />
           </div>
 
           {/* The crawlable half of UX-017. Three sentences, present in the

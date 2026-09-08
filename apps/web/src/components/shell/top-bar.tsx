@@ -5,6 +5,7 @@ import { cn } from "cn";
 import { useTranslations } from "next-intl";
 import { canStartDuel } from "@repo/shared";
 import { SMark } from "@/components/sl/s-mark";
+import { AlphaTag } from "@/components/sl/alpha-tag";
 import { CoinAmount } from "@/components/sl/coin-amount";
 import { useTeam } from "@/lib/team-context";
 import { useModal } from "@/lib/modal-context";
@@ -40,6 +41,10 @@ export function TopBar() {
 
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <SMark className="h-5 w-auto shrink-0 text-foreground" />
+        {/* The alpha sticker (sl/alpha-tag.tsx). `translate-y-1` re-centres it:
+            rotating about the bottom-left corner lifts the shape's visual
+            centre ~4px above the bar's, and this puts it back. */}
+        <AlphaTag className="-ml-1.5 translate-y-1" />
         <TeamSwitcher />
       </div>
 

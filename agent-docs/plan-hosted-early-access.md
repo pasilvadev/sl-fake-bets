@@ -46,6 +46,8 @@ free-tier vendors, and the owner keeps developing on this Mac **without running
 Docker containers**. Every step the owner must personally do is batched into
 Phase 0 so agents can build the rest.
 
+> **Owner ruling, 2026-09-08:** the "no alpha banner" clause above is relaxed by exactly one element — a small rotated `ALPHA` tag on the wordmark lockup (auth hero and top bar; `apps/web/src/components/sl/alpha-tag.tsx`, `alphaTag.label` in the catalogs). It is a wordmark tag, not a banner; D8's build tag and everything else here stand unchanged, and the tag leaves with the alpha (delete the two call sites and the file).
+
 **Owner decisions taken on the research, same day (D1, D8):**
 
 - The research found that the product's email-code login cannot reach anyone

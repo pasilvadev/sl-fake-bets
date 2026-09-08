@@ -443,6 +443,8 @@ What the mark actually is, since the old approximation taught the wrong shape:
 
 **Rule of scarcity: max one diagonal brand element visible per viewport.** The slash is a signature, never a pattern, and never carries semantic meaning by itself (state lives in color/glyph/weight, not in whether a corner is cut).
 
+**Temporary exception (owner ruling 2026-09-08): the `ALPHA` sticker.** `<AlphaTag />` (`sl/alpha-tag.tsx`) tilts −12° on the wordmark lockup — the auth hero and the top bar — because the tilt is what makes it read as "test build" rather than a product tier; the 68°-derived 22° is too steep for a five-letter tag beside a 24px wordmark. It is the one element allowed off the house angle, it spends the viewport's diagonal budget while it exists, and it leaves with the alpha. Don't derive anything else from its angle.
+
 | Motif | Appears on | Must NOT appear on |
 |---|---|---|
 | Corner cut (`cut-sm`/`cut-md`) | One hero surface per screen: bet-detail header, primary CTA button, empty-state panel, rank-1 leaderboard row, and the single closing-soonest bet row's icon/CTA (§5.1) | Every card, list row, form input, modal, nav item |
