@@ -41,14 +41,19 @@
 --
 -- WHAT IS DELIBERATELY OUT (agent-docs/design-realtime.md §5 rule 3)
 --
---   team_members — one `resolve_bet` rewrites ~30 balance rows in a single
---   transaction. At 15 online members that is 450 delivered messages from ONE
---   resolution, more than a normal day of bets, wagers and comments combined.
---   It is also where the double-apply race bites: `resolve_bet` and
---   `delete_bet` already return the deltas they applied and the acting client
---   already dispatches them, so replaying the balance UPDATEs would move the
---   same money twice. Clients derive remote balance moves from the bet's own
---   resolution/deletion event instead.
+--   team_members UPDATE/DELETE — one `resolve_bet` rewrites ~30 balance rows
+--   in a single transaction. At 15 online members that is 450 delivered
+--   messages from ONE resolution, more than a normal day of bets, wagers and
+--   comments combined. It is also where the double-apply race bites:
+--   `resolve_bet` and `delete_bet` already return the deltas they applied and
+--   the acting client already dispatches them, so replaying the balance
+--   UPDATEs would move the same money twice. Clients derive remote balance
+--   moves from the bet's own resolution/deletion event instead. `team_members`
+--   INSERT is no longer in this list — `20260908120000_team_members_realtime.sql`
+--   adds the table to the publication for exactly that one event, a
+--   post-launch bug fix (a member joining was invisible to everyone else's
+--   dashboard until a refresh) that does not reopen the flood problem above,
+--   because a join is one row per membership, never a bulk write.
 --
 --   transactions — the ledger. Append-only, unbounded, and read by exactly one
 --   modal; nothing on screen goes stale without it.

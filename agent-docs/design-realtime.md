@@ -115,16 +115,19 @@ cost ARC-003 ranks above whatever throughput it would buy.
    §2 shows why: signal-only Realtime costs more than the polling it replaced.
    A full reload stays legal as a recovery path — on resubscribe after a dropped
    connection, or on a payload the client cannot reconcile — not as the design.
-3. **Subscribe to `bets`, `wagers`, `comments`, `chat_messages` and
-   `bet_duels`. Do not subscribe to `team_members` or `transactions`.** One
-   `resolve_bet` updates
+3. **Subscribe to `bets`, `wagers`, `comments`, `chat_messages`, `bet_duels`
+   and `team_members` INSERT only. Do not subscribe to `team_members` UPDATE
+   or DELETE, or to `transactions` at all.** One `resolve_bet` updates
    ~30 balance rows at once: 30 changes × 15 subscribers = **450 messages from a
    single resolution**, more than a normal day of everything else. Balances
    propagate by deriving them from the bet's resolution event, or by one scoped
    refetch triggered by it. This is also where the double-apply race recorded in
    Phase 7's notes actually bites — `resolve_bet` and `delete_bet` already return
    their deltas and the acting client already dispatches them, so replaying
-   `team_members` UPDATEs would apply the same move twice.
+   `team_members` UPDATEs would apply the same move twice. That reasoning is
+   entirely about UPDATE and does not extend to INSERT — see the `team_members`
+   sub-section below, added by a post-launch bug fix that amended this rule
+   from a blanket "do not subscribe" to the narrower one stated above.
    **`chat_messages` (Extra Phase 1, UX-019) binds INSERT only — never
    DELETE.** `app.prune_chat_messages()` enforces the 30-day retention window
    (D1) with a bulk daily delete, and a DELETE binding on this table would
@@ -186,6 +189,40 @@ cost ARC-003 ranks above whatever throughput it would buy.
    `toast-context.tsx`'s D5 forbids `show` outside the synchronous handler of
    an action the person took, and a duel is the most tempting thing in this
    product to announce on arrival. The pin IS the arrival notice (ARC-014).
+
+   **`team_members` INSERT (post-launch bug fix) is the team channel's
+   seventh binding, and the one that amends this rule instead of following
+   it.** Before it existed, someone joining a team while an existing member's
+   dashboard was open produced no event at all: the new member did not appear
+   in the roster or the standings module until a manual refresh, and if the
+   joiner was a brand-new account, any bet or wager they placed in the
+   meantime rendered with a blank "created by" — `userById` had no `users` row
+   to find for them. Both symptoms were the same fact reaching zero
+   subscribers, not two separate bugs.
+
+   - **Filtered server-side, unlike `bet_duels`.** `team_members` HAS a
+     `team_id` column, so — like `bets` and `chat_messages` — the binding
+     carries `filter: "team_id=eq.<id>"` rather than leaning on RLS alone.
+   - **INSERT only, and that is what keeps rule 3's actual concern intact.**
+     The flood the rule exists to prevent is specifically about UPDATE (30
+     balance rows × 15 subscribers from one `resolve_bet`); a join is a single
+     row, written once per membership for its entire lifetime by
+     `app.seed_membership`, with no bulk write path behind it. Binding only
+     INSERT and leaving UPDATE and DELETE unsubscribed is the same restraint
+     already established for `chat_messages` (INSERT only, never the nightly
+     retention prune's DELETE storm) — an established pattern applied to a
+     second table, not a new one.
+   - **The payload is a complete `MemberRow` needing no further fetch — the
+     JOINER might.** Unlike a `bets` INSERT (needs `fetchBet` for its options),
+     the membership half of this event is fully renderable as-is. What the
+     receiving client may still lack is the joiner's *own* `users` row, if this
+     is the first team it has ever shared with them — resolved by a second,
+     conditional scoped fetch (`fetchUser`), skipped entirely when the user is
+     already known (an existing account joining a second visible team).
+   - **DELETE (the kick/ban cascade) and UPDATE (balance changes) stay exactly
+     as unsubscribed as before this fix.** A departure still resolves on the
+     next load; balances still propagate purely by deriving them from a bet's
+     own resolution or deletion event, per rule 3 above.
 4. **`transactions` is a growth vector independent of Phase 8.** It is loaded in
    full on every cold start and grows without bound, and it is only needed by the
    ledger view. Not Phase 8's job to fix; Phase 8 must not make it worse by

@@ -76,11 +76,14 @@ import { useAuth } from "@/lib/auth-context";
 import {
   EMPTY_TEAM_DATA,
   fetchBet,
+  fetchUser,
   loadTeamData,
   toComment,
   toDuel,
+  toMember,
   toResolution,
   toWager,
+  type FetchedUser,
   type OnboardingInfo,
   type TeamData,
 } from "@/lib/data/team-data";
@@ -525,6 +528,22 @@ type TeamDataAction =
   /** A `bet_duels` INSERT or UPDATE off the team channel — see realtime.ts for
    * why one variant covers both, and `applyRemote` for the receive rule. */
   | { type: "duel-upsert"; duel: Duel }
+  /**
+   * A `team_members` INSERT off the team channel (bug fix, amending
+   * design-realtime.md §5 rule 3 — see realtime.ts's `subscribeTeamChannel`
+   * for the full argument for why an INSERT-only exception is safe). `user`
+   * is present only when this client had never held the joiner's `users` row
+   * before — a brand-new account, or an existing one this client has simply
+   * never shared a team with — and is what makes `userById` resolve for them
+   * from the very next render, everywhere a bet, wager or roster row names
+   * them.
+   */
+  | {
+      type: "add-member";
+      teamId: string;
+      member: TeamMember;
+      user: FetchedUser | null;
+    }
   | {
       type: "remove-membership";
       teamId: string;
@@ -878,6 +897,53 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         duels: data.duels.some((d) => d.betId === duel.betId)
           ? data.duels.map((d) => (d.betId === duel.betId ? duel : d))
           : [...data.duels, duel],
+      };
+    }
+    case "add-member": {
+      // The universal insert guard: a member this client already holds for
+      // this team is ignored rather than replaced — this client's own
+      // `joinTeamByCode` already went through `reload()` (D10, same as
+      // `createTeam`), so the overwhelmingly common receiver of this event is
+      // an EXISTING member's dashboard learning about someone else's arrival,
+      // and the rare self-echo (this device catching its own join over the
+      // socket before its `reload()` lands) must not clobber a row `reload()`
+      // may already have refreshed.
+      const team = data.teams.find((t) => t.id === action.teamId);
+      if (!team || team.members.some((m) => m.userId === action.member.userId)) {
+        return data;
+      }
+      const teams = data.teams.map((t) =>
+        t.id === action.teamId
+          ? {
+              ...t,
+              // Same order `loadTeamData` produces (join order) — append then
+              // resort, rather than trusting "this INSERT is the newest
+              // member," so a channel that reconnects and replays a backlog
+              // out of order still lands the roster in the one order every
+              // other surface assumes.
+              members: [...t.members, action.member].sort((a, b) =>
+                a.joinedAt.localeCompare(b.joinedAt),
+              ),
+            }
+          : t,
+      );
+      // `action.user` is `null` exactly when this client already held the
+      // joiner's `users` row (an existing account joining a SECOND team this
+      // client can see) — team-context.tsx's `applyRemote` decides that
+      // before dispatching, because only it can check `dataRef` at the moment
+      // the event actually arrived. Skip the merge rather than re-check here:
+      // re-deriving "already known" from `data.users`, which may have moved on
+      // by the time this reducer runs, could disagree with that decision and
+      // either drop a real user row or duplicate one.
+      if (!action.user) return { ...data, teams };
+      return {
+        ...data,
+        teams,
+        users: [...data.users, action.user.user],
+        onboarding: {
+          ...data.onboarding,
+          [action.user.user.id]: action.user.onboarding,
+        },
       };
     }
     case "remove-membership": {
@@ -1378,20 +1444,25 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    *
    * Two invariants hold every case together:
    *
-   *   * **Apply the payload, never refetch the world.** The only read in here
-   *     is `fetchBet` — one row — and it exists because a `bets` INSERT arrives
-   *     without its options. Answering events with `reload()` would cost more
-   *     than the polling Realtime replaced (design-realtime.md §2).
+   *   * **Apply the payload, never refetch the world.** The two reads in here
+   *     are `fetchBet` — one row, because a `bets` INSERT arrives without its
+   *     options — and `fetchUser`, one row, for a `member-insert` whose
+   *     joiner this client has never seen. Neither is `reload()`: answering
+   *     every event with a full reload would cost more than the polling
+   *     Realtime replaced (design-realtime.md §2).
    *   * **Ignore any id you do not already hold.** That single rule does three
    *     jobs at once: it drops the DELETE events RLS cannot filter (§4.3), it
    *     drops the client's own echo of a change it has already applied — which
    *     is what keeps money from moving twice — and it makes at-least-once
    *     delivery harmless.
    *
-   * Balances move here without `team_members` ever being subscribed (§5 rule
-   * 3): a resolution or a deletion carries enough to recompute the same deltas
-   * Postgres applied, through the same `settleBet` / `reverseBet` the RPCs are
-   * SQL twins of.
+   * Balances move here without `team_members` UPDATEs ever being subscribed
+   * (§5 rule 3): a resolution or a deletion carries enough to recompute the
+   * same deltas Postgres applied, through the same `settleBet` / `reverseBet`
+   * the RPCs are SQL twins of. `team_members` INSERT is a later, narrow
+   * exception to that same rule — see the `member-insert` case below and
+   * realtime.ts's header for why an INSERT does not reopen the flood problem
+   * the rule exists to prevent.
    *
    * Extra Phase 1 (UX-019) adds a fourth event, `chat-insert` — see that case
    * below for the two EXTRA guards it needs beyond the two invariants above
@@ -1410,6 +1481,16 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * read, and it is doing more work here than for the other cases: the
    * `bet_duels` realtime binding cannot be filtered server-side, because the
    * table has no team column to filter on (see realtime.ts).
+   *
+   * The post-launch bug fix adds `member-insert`, which borrows `chat-insert`'s
+   * team-id recheck (this binding IS filtered server-side, unlike `bet_duels`,
+   * but the same "don't trust it blindly" reasoning applies) and adds a THIRD
+   * kind of read to the one invariant allows only two of: `fetchUser`, and only
+   * conditionally, because whether this client already holds the joiner's
+   * `users` row is exactly the fact this case exists to not get wrong. Skipping
+   * the fetch for an already-known user is not an optimization bolted on after
+   * the fact — it is what keeps a member joining their SECOND visible team from
+   * reading as a second, duplicate `users` row.
    */
   const applyRemote = useCallback(
     async (event: RemoteEvent) => {
@@ -1526,6 +1607,33 @@ export function TeamProvider({ children }: { children: ReactNode }) {
             type: "remote-insert",
             message: chatDb.toChatMessage(row),
           });
+          return;
+        }
+        case "member-insert": {
+          const { row } = event;
+          // Defense in depth, matching `chat-insert`'s identical guard: the
+          // INSERT binding is already filtered server-side to this team, but
+          // a server-side filter is not a boundary this file trusts blindly.
+          if (row.team_id !== teamIdRef.current) return;
+          const team = dataRef.current.teams.find((t) => t.id === row.team_id);
+          // Ignore any id already held — the universal receive rule, and also
+          // what makes this client's own `joinTeamByCode` echo (racing its
+          // own `reload()`, D10) harmless rather than a second row.
+          if (!team || team.members.some((m) => m.userId === row.user_id)) {
+            return;
+          }
+          const member = toMember(row);
+          // This is the bug fix's other half. Without this fetch, a BRAND-NEW
+          // account — one no team this client belongs to has ever put in
+          // `data.users` — leaves `userById(member.userId)` answering
+          // `undefined` the instant this member's own bet or wager arrives on
+          // this same channel, and the "created by" tag it should carry
+          // renders blank until the next full load. `known` short-circuits
+          // the round trip for the ordinary case: an existing account joining
+          // a SECOND team this client can already see.
+          const known = dataRef.current.users.some((u) => u.id === member.userId);
+          const user = known ? null : await fetchUser(supabase, member.userId);
+          dispatch({ type: "add-member", teamId: row.team_id, member, user });
           return;
         }
       }

@@ -1,14 +1,17 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { ChatMessageRow } from "./chat";
-import type { BetRow, CommentRow, DuelRow, WagerRow } from "./team-data";
+import type { BetRow, CommentRow, DuelRow, MemberRow, WagerRow } from "./team-data";
 
 /**
  * Postgres Changes subscriptions — roadmap Phase 8 (ARC-005 / UX-013 / UX-018),
  * extended by Extra Phase 1 (UX-019, team chat) with a fourth binding on the
  * same channel — see `subscribeTeamChannel` below for why chat did not earn a
- * channel of its own — and by Extra Phase 2 (1v1 duels) with a fifth and a
- * sixth, `bet_duels` INSERT and UPDATE, on that same channel and for the same
- * §5 rule 1 reason.
+ * channel of its own — by Extra Phase 2 (1v1 duels) with a fifth and a sixth,
+ * `bet_duels` INSERT and UPDATE, on that same channel and for the same §5 rule
+ * 1 reason — and by a post-launch bug fix with a seventh, `team_members`
+ * INSERT, amending §5 rule 3's blanket "do not subscribe to team_members":
+ * see `subscribeTeamChannel`'s own comment on that binding for why an INSERT
+ * exception does not reopen the balance-flood problem the rule exists for.
  *
  * This module owns the wire: which channels exist, which tables and events each
  * one listens to, and how a raw payload becomes one `RemoteEvent`. It decides
@@ -47,7 +50,7 @@ type Client = SupabaseClient;
 export type RealtimeBetRow = Omit<BetRow, "bet_options">;
 
 /**
- * What the client is told happened, already narrowed to the seven cases that
+ * What the client is told happened, already narrowed to the eight cases that
  * can change what is on screen.
  *
  * `bet-insert` carries only the id: a `bets` INSERT arrives without
@@ -65,8 +68,17 @@ export type RealtimeBetRow = Omit<BetRow, "bet_options">;
  * from null to a timestamp (`accept_duel`), which is exactly an upsert of the
  * whole row.
  *
- * Deletes of `wagers`, `comments`, `chat_messages` and `bet_duels` are absent
- * on purpose — see `subscribeTeamChannel`.
+ * `member-insert` (bug fix, amending design-realtime.md §5 rule 3 — see
+ * `subscribeTeamChannel`'s own comment on the binding for the full argument)
+ * is a complete `MemberRow` in the same sense `duel-upsert`'s row is: no embed,
+ * nothing to go and fetch for the MEMBERSHIP half of the event. What often
+ * does need a fetch is the JOINER, if this client has never seen their `users`
+ * row before — that second, conditional lookup is `fetchUser`, resolved by
+ * team-context.tsx before it dispatches, exactly the way `bet-insert` resolves
+ * `fetchBet` first.
+ *
+ * Deletes of `wagers`, `comments`, `chat_messages`, `bet_duels` and
+ * `team_members` are absent on purpose — see `subscribeTeamChannel`.
  */
 export type RemoteEvent =
   | { kind: "bet-insert"; betId: string }
@@ -75,7 +87,8 @@ export type RemoteEvent =
   | { kind: "wager-insert"; row: WagerRow }
   | { kind: "comment-insert"; row: CommentRow }
   | { kind: "chat-insert"; row: ChatMessageRow }
-  | { kind: "duel-upsert"; row: DuelRow };
+  | { kind: "duel-upsert"; row: DuelRow }
+  | { kind: "member-insert"; row: MemberRow };
 
 export interface ChannelHandlers {
   onEvent: (event: RemoteEvent) => void;
@@ -132,9 +145,11 @@ function withRecovery(channel: RealtimeChannel, onResubscribe: () => void) {
  * two things that delete wagers are `delete_bet` — where the money is unwound
  * from the bets DELETE event, which needs those wagers still present to compute
  * the reversal, and cascade children replicate BEFORE their parent — and the
- * kick/ban cascade, whose companion `team_members` change is not subscribed at
- * all (§5 rule 3). Applying half of either one would be worse than applying
- * neither; the pool corrects on the next load.
+ * kick/ban cascade, whose companion `team_members` DELETE is still not
+ * subscribed (§5 rule 3 still holds for that direction — see the
+ * `team_members` INSERT paragraph below for the direction it no longer holds
+ * for). Applying half of either one would be worse than applying neither; the
+ * pool corrects on the next load.
  *
  * `bet_duels` INSERT and UPDATE (Extra Phase 2, D1/D2) are in exactly the
  * position `wagers` INSERT is one paragraph up, and for exactly its reason:
@@ -191,6 +206,29 @@ function withRecovery(channel: RealtimeChannel, onResubscribe: () => void) {
  * effect: the 30-day window is enforced on the *read* path (`chat.ts`'s page
  * query), so an aged-out row simply stops being fetched — nothing needs to be
  * told to take it off screen.
+ *
+ * `team_members` INSERT is a post-launch bug fix, and it amends §5 rule 3
+ * rather than following it: without this binding, a member joining — by
+ * invite code, while an existing member's dashboard is open — was invisible
+ * to everyone else at that table until they refreshed, and if the joiner was
+ * a BRAND-NEW account (this client had never loaded their `users` row through
+ * any team), any bet or wager they placed in the meantime rendered with no
+ * name where its creator belongs, because `userById` had nothing to find.
+ * Both symptoms were the same missing fact: nobody told this client a new row
+ * existed in `team_members` at all.
+ *
+ * The rule's actual concern — the flood a `resolve_bet` UPDATE would cause
+ * (~30 balance rows × 15 subscribers = 450 messages from one resolution, more
+ * traffic than a normal day of everything else combined) — is untouched,
+ * because it is specifically about UPDATE and this binding is INSERT-only,
+ * exactly the restraint already established for `chat_messages` above (bound
+ * for INSERT, never for the nightly prune's DELETE storm). A join is a single
+ * row, born once per member for the life of their membership, so there is no
+ * bulk write path here to flood anything — the asymmetry that makes an INSERT
+ * exception safe where a UPDATE or DELETE one would not be. `team_members` HAS
+ * a team column, so — like `bets` and `chat_messages`, and unlike `wagers` and
+ * `bet_duels` — this binding is filtered server-side to `team_id=eq.${teamId}`
+ * rather than leaning on RLS alone.
  */
 export function subscribeTeamChannel(
   supabase: Client,
@@ -274,6 +312,22 @@ export function subscribeTeamChannel(
       (payload) => {
         const row = payload.new as ChatMessageRow;
         if (row?.id) handlers.onEvent({ kind: "chat-insert", row });
+      },
+    )
+    // INSERT only — see the header's `team_members` paragraph for why this
+    // amends §5 rule 3 safely (a join is one row, never a bulk write) where a
+    // UPDATE binding (balance changes) would not be.
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "team_members",
+        filter: `team_id=eq.${teamId}`,
+      },
+      (payload) => {
+        const row = payload.new as MemberRow;
+        if (row?.user_id) handlers.onEvent({ kind: "member-insert", row });
       },
     );
 

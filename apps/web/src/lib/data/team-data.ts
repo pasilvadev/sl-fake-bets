@@ -125,7 +125,14 @@ interface TeamRow {
   created_at: string;
 }
 
-interface MemberRow {
+/**
+ * A `team_members` row. Exported, unlike most row shapes in this file, for the
+ * same reason `DuelRow` is: the realtime layer's `member-insert` event
+ * (roadmap Phase 8 extension — see `realtime.ts`'s `subscribeTeamChannel`)
+ * carries one of these verbatim off the wire, and `toMember` below maps it the
+ * same way whether it arrived through `loadTeamData` or over the socket.
+ */
+export interface MemberRow {
   team_id: string;
   user_id: string;
   role: TeamRole;
@@ -259,7 +266,7 @@ function toUser(row: UserRow): User {
   };
 }
 
-function toMember(row: MemberRow): TeamMember {
+export function toMember(row: MemberRow): TeamMember {
   return {
     userId: row.user_id,
     role: row.role,
@@ -474,6 +481,51 @@ export async function fetchBet(
     .maybeSingle();
   if (error || !data) return null;
   return toBet(data as unknown as BetRow);
+}
+
+/** What `fetchUser` hydrates a brand-new user id into — `User` for every
+ * surface that renders one, `OnboardingInfo` alongside it only because the
+ * two ride the same `users` row and `loadTeamData` never separates them
+ * either (see `OnboardingInfo`'s own doc comment for why it is not a `User`
+ * field). */
+export interface FetchedUser {
+  user: User;
+  onboarding: OnboardingInfo;
+}
+
+/**
+ * One user, by id — the realtime layer's second scoped fetch (Phase 8
+ * extension), for `member-insert` events whose `user_id` this client has
+ * never seen before: a brand-new account (no prior team ever put them in this
+ * client's `users` array) joining by invite code while an existing member's
+ * dashboard is open. Without this, `userById` answers `undefined` for the
+ * joiner everywhere — the roster, the standings module, and any bet or wager
+ * they place, whose "created by" would otherwise render blank until the next
+ * full load.
+ *
+ * RLS (`users_select_self_or_teammate`) is what makes this safe to call the
+ * instant the `member-insert` event fires and not a moment before: the
+ * `team_members` row it is reacting to has already committed by then, so the
+ * joiner is already a teammate and the policy already admits this row. A
+ * caller who is not on the same team gets no rows, same as `fetchBet`.
+ */
+export async function fetchUser(
+  supabase: Client,
+  userId: string,
+): Promise<FetchedUser | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select(
+      "id, display_name, name_color, avatar, locale, onboarded_at, profile_prefill",
+    )
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as unknown as UserRow;
+  return {
+    user: toUser(row),
+    onboarding: { onboardedAt: row.onboarded_at, prefill: row.profile_prefill },
+  };
 }
 
 // --- the load -----------------------------------------------------------------
