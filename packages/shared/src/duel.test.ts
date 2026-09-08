@@ -98,7 +98,17 @@ const duelTeam: Team = {
   name: "Duel Club",
   leaderId: LEADER,
   accessMode: "free-for-all",
-  inviteCode: "duel-club",
+  // Permanent only — this fixture's cast is all about duel lifecycle, not
+  // invite links, so one link in the D7 shape is enough to satisfy the type.
+  invites: [
+    {
+      id: "inv-duel-club",
+      code: "duel-club",
+      createdBy: LEADER,
+      createdAt: "2026-08-30T00:00:00Z",
+      expiresAt: null,
+    },
+  ],
   bannedUserIds: [],
   createdAt: "2026-08-30T00:00:00Z",
   members: [

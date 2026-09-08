@@ -109,6 +109,47 @@ export const CONFIG = Object.freeze({
    * starts lying about what the database actually accepts.
    */
   MIN_PASSWORD_LENGTH: 6,
+  /**
+   * The one temporary-link duration `plan-invite-links.md` (D2) offers: an
+   * invite link that dies on its own after this many hours instead of living
+   * until someone revokes it. `invite-modal.tsx`'s composer shows "{hours}
+   * hours" for its opt-in option, derived from this number rather than a
+   * hand-typed sentence, for the same reason `BET_DURATION_PRESETS.minutes`
+   * above is not paired with a hand-typed label: the owner may retune it, and
+   * this way the copy cannot fall out of step with the value.
+   *
+   * HARD WARNING, in the same shape as `DUEL_ACCEPT_WINDOW_HOURS` above: this
+   * is NOT the authority. `app.invite_temporary_ttl()` in
+   * `20260907150000_invite_links.sql` is — `create_invite_code` writes
+   * `expires_at = now() + app.invite_temporary_ttl()` and no client value is
+   * ever accepted for it (a client with a wrong clock could otherwise mint a
+   * link that dies in the past or lives for years). This constant exists only
+   * to write the sentence ("expires in 24 hours") and to preview the option
+   * before the round trip. Change one half and the other must move with it in
+   * the same commit, or the copy starts lying about what the database
+   * actually enforces — silently, with no test to catch it.
+   */
+  INVITE_TEMPORARY_TTL_HOURS: 24,
+  /**
+   * At most this many LIVE 24-hour links per team at once (D6,
+   * `plan-invite-links.md`) — rate control, not moderation (Extra Phase 2
+   * task 9's sentence applies verbatim here too: this bounds volume and says
+   * nothing about content). The permanent link is not counted by this number
+   * at all; it has its own one-live-per-team rule (D1/D8), enforced by a
+   * unique index rather than a count, because two permanents disagreeing on
+   * "the" link is a correctness bug and eleven temporary links is merely
+   * noise.
+   *
+   * HARD WARNING, same shape as every constant above: this is NOT the
+   * authority. `app.invite_max_live_temporary_per_team()` in
+   * `20260907150000_invite_links.sql` is — `create_invite_code` counts live
+   * temporary rows against it inside the same transaction that inserts, and
+   * raises SQLSTATE `SLI02` at the cap. This constant exists only to write the
+   * refusal sentence (`errors.invite-temp-cap`, interpolating `{max}`) and to
+   * disable the option client-side before the round trip. Change one half and
+   * the other must move with it in the same commit.
+   */
+  INVITE_MAX_LIVE_TEMPORARY_PER_TEAM: 10,
 });
 
 /** Suggested default per-user max wager = onboarding grant (DOM-017). */

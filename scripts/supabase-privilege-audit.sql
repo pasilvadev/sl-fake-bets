@@ -53,6 +53,7 @@
 --   shp = 20260905200000_share_previews.sql      cht = 20260906120000_team_chat.sql
 --   dsc = 20260906130000_duel_schema.sql          drp = 20260906130100_duel_rpcs.sql
 --   dpf = 20260906130400_duel_pair_rule_fix.sql
+--   inv = 20260907150000_invite_links.sql
 -- =============================================================================
 
 with roster_tables(object) as ( -- dom: domain tables; cht/dsc: the two later ones
@@ -90,7 +91,13 @@ table_exceptions(object, role, priv, note) as (values
   ('bet_duels','authenticated','delete','dsc: a duel dies only via its bet, by cascade'),
   ('bet_duels','anon','insert','dsc: belt-and-braces, same inherited-default correction'),
   ('bet_duels','anon','update','dsc: belt-and-braces, same inherited-default correction'),
-  ('bet_duels','anon','delete','dsc: belt-and-braces, same inherited-default correction')
+  ('bet_duels','anon','delete','dsc: belt-and-braces, same inherited-default correction'),
+  ('invite_codes','authenticated','insert','inv: create_invite_code/revoke_invite_code own every write'),
+  ('invite_codes','authenticated','update','inv: create_invite_code/revoke_invite_code own every write'),
+  ('invite_codes','authenticated','delete','inv: create_invite_code/revoke_invite_code own every write'),
+  ('invite_codes','anon','insert','inv: create_invite_code/revoke_invite_code own every write'),
+  ('invite_codes','anon','update','inv: create_invite_code/revoke_invite_code own every write'),
+  ('invite_codes','anon','delete','inv: create_invite_code/revoke_invite_code own every write')
 ),
 
 -- ah: 13 permission-mirror helpers. di: 5 invariant triggers. inf: set_updated_at.
@@ -98,6 +105,9 @@ table_exceptions(object, role, priv, note) as (values
 -- twins + 4 bet RPCs. dbo: the overdraw trigger. rrl: 2 reward/resolution helpers.
 -- ops: profile_prefill_kind. shp: bet_preview. cht: 4 chat helpers/RPC/trigger.
 -- drp: 12 duel helpers/RPCs/void-path. dpf: enforce_duel_pending_cap (recreated).
+-- inv: 2 tunables + create_invite_code/revoke_invite_code (team_preview_by_code
+-- and join_team_with_code are recreated with the same signatures, so they stay
+-- on their trp roster row unmoved).
 roster_functions(schema, name, args) as (values
   ('app','apply_transaction','p_team_id uuid, p_user_id uuid, p_kind transaction_kind, p_amount integer, p_description text'),
   ('app','bet_accepts_wagers','p_bet_id uuid'),
@@ -115,6 +125,8 @@ roster_functions(schema, name, args) as (values
   ('app','duel_max_pending_per_challenger',''),
   ('app','expire_stale_duels','p_team_id uuid'),
   ('app','handle_new_user',''),
+  ('app','invite_max_live_temporary_per_team',''),
+  ('app','invite_temporary_ttl',''),
   ('app','is_banned','p_team_id uuid, p_user_id uuid'),
   ('app','is_bet_team_member','p_bet_id uuid'),
   ('app','is_duel_participant','p_bet_id uuid'),
@@ -141,6 +153,7 @@ roster_functions(schema, name, args) as (values
   ('public','close_bet_early','p_bet_id uuid'),
   ('public','create_bet','p_team_id uuid, p_title text, p_icon_emoji text, p_options text[], p_closes_at timestamp with time zone, p_max_wager_per_user integer'),
   ('public','create_duel','p_team_id uuid, p_title text, p_icon_emoji text, p_challengee_id uuid, p_mediator_id uuid, p_any_moderator boolean, p_stake integer'),
+  ('public','create_invite_code','p_team_id uuid, p_code text, p_temporary boolean'),
   ('public','create_team','p_name text, p_access_mode team_access_mode, p_invite_code text'),
   ('public','decline_duel','p_bet_id uuid, p_reason bet_void_reason'),
   ('public','delete_bet','p_bet_id uuid'),
@@ -157,6 +170,7 @@ roster_functions(schema, name, args) as (values
   ('public','place_wager','p_bet_id uuid, p_option_id uuid, p_amount integer'),
   ('public','remove_membership','p_team_id uuid, p_user_id uuid, p_ban boolean, p_wager_ids uuid[]'),
   ('public','resolve_bet','p_bet_id uuid, p_kind bet_resolution_kind, p_winning_option_id uuid, p_void_reason bet_void_reason'),
+  ('public','revoke_invite_code','p_invite_id uuid'),
   ('public','set_updated_at',''),
   ('public','sweep_stale_duels',''),
   ('public','team_preview_by_code','p_code text')
@@ -183,7 +197,9 @@ function_exceptions(schema, name, args, role, note) as (values
   ('public','accept_duel','p_bet_id uuid','anon','dpf: anon named explicitly (from-public alone is not enough)'),
   ('public','decline_duel','p_bet_id uuid, p_reason bet_void_reason','anon','dpf: anon named explicitly (from-public alone is not enough)'),
   ('public','sweep_stale_duels','','anon','dpf: anon named explicitly (from-public alone is not enough)'),
-  ('public','resolve_bet','p_bet_id uuid, p_kind bet_resolution_kind, p_winning_option_id uuid, p_void_reason bet_void_reason','anon','dpf: anon named explicitly (from-public alone is not enough)')
+  ('public','resolve_bet','p_bet_id uuid, p_kind bet_resolution_kind, p_winning_option_id uuid, p_void_reason bet_void_reason','anon','dpf: anon named explicitly (from-public alone is not enough)'),
+  ('public','create_invite_code','p_team_id uuid, p_code text, p_temporary boolean','anon','inv: anon named explicitly (from-public alone is not enough)'),
+  ('public','revoke_invite_code','p_invite_id uuid','anon','inv: anon named explicitly (from-public alone is not enough)')
 ),
 
 live_tables as (

@@ -1,4 +1,4 @@
-import type { Bet, Duel, Team, TeamRole } from "./types";
+import type { Bet, Duel, Team, TeamInvite, TeamRole } from "./types";
 
 /**
  * Single home for authorization logic — every rule derived purely from
@@ -34,6 +34,36 @@ export function canCreateBet(team: Team, userId: string): boolean {
 /** DOM-006: invite-creation permission follows the team's access mode (DOM-002). */
 export function canInvite(team: Team, userId: string): boolean {
   return canCreateBet(team, userId);
+}
+
+/**
+ * D5 (`plan-invite-links.md`): who may revoke ONE link — the leader, any
+ * moderator (A-1), or whoever made that particular link. Not `canInvite`:
+ * creation is gated by the team's access mode (DOM-006), but revocation is a
+ * narrower, per-row question that access mode has no say in — a `restricted`
+ * team's ordinary member still cannot revoke a moderator's link, and a
+ * `free-for-all` team's ordinary member still CAN revoke their own, no matter
+ * what `canInvite` says about who may mint a new one.
+ *
+ * "The creator, still on the roster" is not a separate clause to check —
+ * `invite.createdBy === userId` already IS that check, because `userId` here
+ * is the acting user and `isMember(team, userId)` asks the roster about that
+ * same id. Someone who made a link and then left keeps no power over it: they
+ * are no longer `isMember`, so the second half of the `||` never fires for
+ * them, and only a moderator or the leader can clean up what they left behind.
+ *
+ * Roster + id only, exactly like every duel predicate below — there is no
+ * clock here because a link's liveness (`isInviteLive`, invites.ts) has
+ * nothing to do with whether it may be revoked; an expired or nearly-expired
+ * link is revoked the same way a fresh one is.
+ *
+ * SQL mirror: `revoke_invite_code`'s auth check in
+ * `20260907150000_invite_links.sql`, which raises `insufficient_privilege` for
+ * exactly the case this returns `false` for. The client copy is advice; the
+ * RPC is the enforcement.
+ */
+export function canRevokeInvite(team: Team, userId: string, invite: TeamInvite): boolean {
+  return isModeratorOrLeader(team, userId) || (isMember(team, userId) && invite.createdBy === userId);
 }
 
 /** Team settings / roster management surface: moderators and the leader. */

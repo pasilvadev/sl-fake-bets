@@ -136,14 +136,57 @@ export interface TeamMember {
   joinedAt: string; // ISO datetime
 }
 
+/**
+ * One invite link (`plan-invite-links.md` D1/D7). A team may hold several at
+ * once — the amendment to UX-005/DOM-005 that this plan makes: still
+ * permanent by default (`expiresAt: null`), now with an opt-in 24-hour
+ * alternative that the server, never the client, stamps a deadline onto (D2).
+ *
+ * There is no `revokedAt` here on purpose. Revocation is the database's fact
+ * (D7), not this type's: `Team.invites` is populated with only the
+ * NON-REVOKED rows in the first place (`team-data.ts`'s query, `mock-data.ts`'s
+ * fixtures), so a row that exists in this array was never revoked, full stop.
+ * A revoked row simply stops appearing on the next load/reload — there is
+ * nothing for a `revokedAt` field to add.
+ *
+ * SQL twin: `public.invite_codes`, in `20260905120000_domain_schema.sql` and
+ * amended by `20260907150000_invite_links.sql` (the `expires_at` column this
+ * type mirrors).
+ */
+export interface TeamInvite {
+  id: string;
+  code: string;
+  /**
+   * Who minted this link, or `null` if that user row is gone. `permissions.ts`'s
+   * `canRevokeInvite` reads this against the acting user's id (D5); it is NOT
+   * re-checked against the roster here — a creator who has since left the team
+   * keeps no revoke power, which is `canRevokeInvite`'s job to enforce, not this
+   * type's.
+   */
+  createdBy: string | null;
+  createdAt: string;
+  /** ISO, or null = permanent (D1). Apply `isInviteLive` (invites.ts) before trusting this against the clock. */
+  expiresAt: string | null;
+}
+
 export interface Team {
   id: string;
   name: string;
   /** Exactly one leader (DOM-001); holds all moderator powers plus leader-only ones (A-1). */
   leaderId: string;
   accessMode: TeamAccessMode;
-  /** Non-expiring invite token (UX-005/DOM-005). */
-  inviteCode: string;
+  /**
+   * Every non-revoked invite link this team holds (D7, `plan-invite-links.md`
+   * — amends UX-005/DOM-005). One representation, not a scalar plus a list
+   * that can disagree: a team is still born with exactly one permanent link
+   * (D9 — `create_team` is unchanged) and that link is still the default, but
+   * this list also carries whatever 24-hour links members have since made.
+   * Apply `isInviteLive`/`liveInvites` (invites.ts) with an injected `now`
+   * before rendering — expiry is deliberately NOT applied at load time, so a
+   * modal left open shows a link dying at the right moment instead of a stale
+   * list until the next reload (D3).
+   */
+  invites: TeamInvite[];
   members: TeamMember[];
   /**
    * Banned users (DOM-031 + assumption A-4): a ban removes the membership AND

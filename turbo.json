@@ -11,8 +11,12 @@
       "env": ["VERCEL_GIT_COMMIT_SHA"],
       "outputs": [".next/**", "!.next/cache/**"]
     },
-    "lint": {},
-    "typecheck": {},
+    // `^typecheck` on both: apps/web imports @repo/shared's SOURCE (workspace
+    // dep, no build step), so without a dependency edge a shared/src edit left
+    // web's typecheck/lint hash unchanged and turbo replayed a stale success.
+    // Found 2026-09-08 while Team.inviteCode became Team.invites.
+    "lint": { "dependsOn": ["^typecheck"] },
+    "typecheck": { "dependsOn": ["^typecheck"] },
     "test": {}
   }
 }

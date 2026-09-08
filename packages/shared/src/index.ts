@@ -8,6 +8,7 @@ export * from "./settlement";
 export * from "./ledger";
 export * from "./permissions";
 export * from "./state-machine";
+export * from "./invites";
 export * from "./id";
 export * from "./emoji-catalog";
 export * from "./mock-data";

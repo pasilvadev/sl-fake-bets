@@ -65,7 +65,30 @@ export const mockTeam: Team = {
   name: "SL Originals",
   leaderId: "u-01",
   accessMode: "free-for-all",
-  inviteCode: "sl-originals-4ever",
+  // Two links (D7, plan-invite-links.md): the permanent one every team is
+  // born with (D9 — unchanged since Phase 1) plus one 24-hour demo link, so
+  // this fixture exercises both kinds the way supabase/seed.sql's matching
+  // rows do for a running app. Fixed dates throughout — unlike the seed's
+  // `now()`-relative twin (Phase 1 task 11), every test here injects its own
+  // `now`, so a link that would already have died by the time someone reads
+  // this file is exactly the point: `duel-club`-style fixtures pin behaviour,
+  // they do not need to still be "live" by wall-clock time.
+  invites: [
+    {
+      id: "70000000-0000-4000-a000-000000000001",
+      code: "sl-originals-4ever",
+      createdBy: "u-01",
+      createdAt: "2026-08-01T18:00:00Z",
+      expiresAt: null,
+    },
+    {
+      id: "70000000-0000-4000-a000-000000000004",
+      code: "originals-day-pass",
+      createdBy: "u-02",
+      createdAt: "2026-08-01T18:00:00Z",
+      expiresAt: "2026-08-02T18:00:00Z",
+    },
+  ],
   bannedUserIds: [],
   createdAt: "2026-08-01T18:00:00Z",
   members: [
@@ -125,7 +148,15 @@ export const mockTeams: Team[] = [
     name: "Lanhouse Legends",
     leaderId: "u-02",
     accessMode: "restricted",
-    inviteCode: "lanhouse-legends-gg",
+    invites: [
+      {
+        id: "70000000-0000-4000-a000-000000000002",
+        code: "lanhouse-legends-gg",
+        createdBy: "u-02",
+        createdAt: "2026-07-15T20:00:00Z",
+        expiresAt: null,
+      },
+    ],
     bannedUserIds: [],
     createdAt: "2026-07-15T20:00:00Z",
     members: [
@@ -139,7 +170,15 @@ export const mockTeams: Team[] = [
     name: "Churrasco FC",
     leaderId: "u-05",
     accessMode: "free-for-all",
-    inviteCode: "churrasco-fc-2026",
+    invites: [
+      {
+        id: "70000000-0000-4000-a000-000000000003",
+        code: "churrasco-fc-2026",
+        createdBy: "u-05",
+        createdAt: "2026-08-20T12:00:00Z",
+        expiresAt: null,
+      },
+    ],
     bannedUserIds: [],
     createdAt: "2026-08-20T12:00:00Z",
     members: [

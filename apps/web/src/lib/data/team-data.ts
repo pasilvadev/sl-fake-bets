@@ -9,6 +9,7 @@ import type {
   MutationErrorCode,
   Team,
   TeamAccessMode,
+  TeamInvite,
   TeamMember,
   TeamRole,
   Transaction,
@@ -29,9 +30,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * The mapping is deliberately explicit rather than generated: `types.ts` is the
  * product's model and the schema is its Postgres representation, and Phase 3
  * recorded two places where the two shapes differ on purpose —
- * `Team.inviteCode` is a row in `invite_codes`, `Team.bannedUserIds` is the
- * `team_bans` table. Those joins happen here, once, so nothing downstream has
- * to know the schema is not the model.
+ * `Team.invites` is a group of rows in `invite_codes` (D7,
+ * `plan-invite-links.md` — replaces the old `Team.inviteCode` scalar),
+ * `Team.bannedUserIds` is the `team_bans` table. Those joins happen here,
+ * once, so nothing downstream has to know the schema is not the model.
  *
  * Extra Phase 2 (1v1 duels) adds a third such difference and one thing this
  * module had never done before. The difference: a duel is a `bets` row with
@@ -137,9 +139,19 @@ interface BanRow {
   user_id: string;
 }
 
+/**
+ * A non-revoked `invite_codes` row (D7/plan-invite-links.md's `expires_at`
+ * column, `20260907150000_invite_links.sql`). The query below already filters
+ * `revoked_at is null`, so every row this shape describes is one `toInvite`
+ * maps straight across with no extra branch for the revoked case.
+ */
 interface InviteCodeRow {
+  id: string;
   team_id: string;
   code: string;
+  created_by: string | null;
+  created_at: string;
+  expires_at: string | null;
 }
 
 interface BetOptionRow {
@@ -255,6 +267,42 @@ function toMember(row: MemberRow): TeamMember {
     profitLoss: row.profit_loss,
     joinedAt: row.joined_at,
   };
+}
+
+/**
+ * `invite_codes` row → `TeamInvite` (D7). Straight across, no revocation field
+ * to translate — see `TeamInvite`'s own doc comment for why the type has none:
+ * the query below already filters `revoked_at is null`, so a row reaching this
+ * mapper was never revoked in the first place.
+ */
+function toInvite(row: InviteCodeRow): TeamInvite {
+  return {
+    id: row.id,
+    code: row.code,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+/**
+ * D7's list order: permanent first (there is at most one live one, D1, but
+ * this does not assume that — it only decides where a permanent row sorts
+ * relative to temporary ones), then soonest-to-expire, then oldest-created.
+ * The same order `invites.ts`'s `liveInvites` renders in, so a load and a
+ * modal left open agree on where a link sits without either re-sorting the
+ * other's work — this is the load-time order, that is the live-render order,
+ * and D3 is why the two are allowed to differ only by which rows are IN the
+ * list, never by how the shared ones are ordered.
+ */
+function compareInvites(a: TeamInvite, b: TeamInvite): number {
+  if ((a.expiresAt === null) !== (b.expiresAt === null)) {
+    return a.expiresAt === null ? -1 : 1;
+  }
+  if (a.expiresAt !== null && b.expiresAt !== null && a.expiresAt !== b.expiresAt) {
+    return a.expiresAt.localeCompare(b.expiresAt);
+  }
+  return a.createdAt.localeCompare(b.createdAt);
 }
 
 /**
@@ -513,7 +561,10 @@ export async function loadTeamData(
         .from("team_members")
         .select("team_id, user_id, role, coin_balance, profit_loss, joined_at"),
       supabase.from("team_bans").select("team_id, user_id"),
-      supabase.from("invite_codes").select("team_id, code").is("revoked_at", null),
+      supabase
+        .from("invite_codes")
+        .select("id, team_id, code, created_by, created_at, expires_at")
+        .is("revoked_at", null),
       supabase.from("bets").select(BET_SELECT),
       supabase.from("wagers").select("id, bet_id, option_id, user_id, amount, placed_at"),
       supabase
@@ -554,9 +605,16 @@ export async function loadTeamData(
     bansByTeam.set(row.team_id, [...(bansByTeam.get(row.team_id) ?? []), row.user_id]);
   }
 
-  // The partial unique index allows exactly one active code per team, so this
-  // reproduces the `Team.inviteCode` scalar without a choice to make.
-  const codeByTeam = new Map(codeRows.map((row) => [row.team_id, row.code]));
+  // D7: every non-revoked link this team holds, grouped by team. Ordering is
+  // applied once at assembly below (`compareInvites`), the same way
+  // `membersByTeam` defers its sort to the final `Team.members` line rather
+  // than sorting a group that might still gain more rows here.
+  const invitesByTeam = new Map<string, TeamInvite[]>();
+  for (const row of codeRows) {
+    const list = invitesByTeam.get(row.team_id) ?? [];
+    list.push(toInvite(row));
+    invitesByTeam.set(row.team_id, list);
+  }
 
   const userRows = (users.data ?? []) as UserRow[];
 
@@ -575,7 +633,7 @@ export async function loadTeamData(
         name: row.name,
         leaderId: row.leader_id,
         accessMode: row.access_mode,
-        inviteCode: codeByTeam.get(row.id) ?? "",
+        invites: (invitesByTeam.get(row.id) ?? []).sort(compareInvites),
         // Roster order is not a product decision anywhere, so join order it is
         // — stable across reloads, and oldest-first reads as a history.
         members: (membersByTeam.get(row.id) ?? []).sort((a, b) =>

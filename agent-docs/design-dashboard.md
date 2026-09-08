@@ -16,7 +16,7 @@ Left: SL S-mark (20px, currentColor) · **team switcher** trigger (team initial 
 
 Right, fixed order:
 1. **Balance pill** — coin glyph + mono balance (current team, DOM-013); jade `+5` micro-tag docked for the daily grant (DOM-022/A-2 — automatic, never a claim button); click opens Wallet popover-equivalent (transactions modal).
-2. **Invite Friends** (outline) → invite modal (UX-023 preview).
+2. **Invite Friends** (outline) → invite modal (UX-023 preview; since plan-invite-links.md also the link manager — live links with kind and countdown, per-link revoke, permanent/24-hour composer).
 3. **Start 1v1** (outline/secondary, `rounded-sm`, sentence case — §5.3 reserves uppercase button text for the primary style, and §3's scarcity ruling keeps the cut off this bar) → start-duel modal (Extra Phase 3). Gated on plain membership and the `duel-bets` flag. **Note the asymmetry with the next entry and do not "fix" it:** in a `restricted` team an ordinary member sees Start 1v1 while Create Bet is refused, because D9 rations bets POSTED FOR THE TEAM TO WAGER INTO and a duel is a private arrangement between two people who have already agreed to it.
 4. **Create Bet** (primary jade/black, `rounded-sm`, **no cut-sm here** — see §3 scarcity ruling) → create-bet modal. Disabled with tooltip when team is `restricted` and user is a plain member (DOM-002/006).
 5. **Notifications bell** — permanent slot, `opacity-40 pointer-events-none`, tooltip "Notifications — coming soon" (ARC-014/015 future-stub; still inert after Extra Phase 4's toast system — no count, dot or badge is ever derived from a toast, D5).

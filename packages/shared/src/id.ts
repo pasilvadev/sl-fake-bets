@@ -1,8 +1,11 @@
 /**
  * Id + invite-code generation. Entity ids follow the fixture shape
  * (`b-…`, `w-…`, `tx-…`, `t-…`); invite codes get an explicit uniqueness
- * check against the existing code set (pure, given that set — UX-005/DOM-005
- * codes never expire, so the set only ever grows).
+ * check against the existing code set (pure, given that set). That set still
+ * only ever grows even after `plan-invite-links.md` (D1/D3): a revoked or
+ * expired code is never reissued, only ever excluded from what a *read*
+ * returns, so uniqueness still has to span every code a team has ever held,
+ * not just its currently-live ones.
  */
 
 // Typed accessor: this package's tsconfig lib is bare es2022 (no DOM/Node

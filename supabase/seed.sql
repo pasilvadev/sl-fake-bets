@@ -14,7 +14,11 @@
 --   40000000-…-0000000000NN  wagers       w-NN
 --   50000000-…-0000000000NN  comments     c-NN
 --   60000000-…-0000000000NN  transactions tx-NN
---   70000000-…-00000000000N  invite_codes (one per team)
+--   70000000-…-00000000000N  invite_codes: …0001-…0003 are the one-per-team
+--                             permanent link from before; …0004-…0006 are
+--                             plan-invite-links.md Phase 1 task 11's t-01
+--                             demo rows (a live temporary, an expired
+--                             temporary, a revoked permanent)
 --
 -- `bet_duels` gets no block of its own: its primary key IS its bet's id
 -- (`bet_id uuid primary key references bets`), so a duel is reachable by the
@@ -129,6 +133,21 @@ insert into public.invite_codes (id, team_id, code, created_by, created_at) valu
   ('70000000-0000-4000-a000-000000000001', '10000000-0000-4000-a000-000000000001', 'sl-originals-4ever',  '00000000-0000-4000-a000-000000000001', '2026-08-01T18:00:00Z'),
   ('70000000-0000-4000-a000-000000000002', '10000000-0000-4000-a000-000000000002', 'lanhouse-legends-gg', '00000000-0000-4000-a000-000000000002', '2026-07-15T20:00:00Z'),
   ('70000000-0000-4000-a000-000000000003', '10000000-0000-4000-a000-000000000003', 'churrasco-fc-2026',   '00000000-0000-4000-a000-000000000005', '2026-08-20T12:00:00Z');
+
+-- plan-invite-links.md Phase 1 task 11: three more t-01 rows so every filter in
+-- team_preview_by_code/join_team_with_code (D3's lazy-expiry predicate) has a
+-- row to exercise on a fresh `db reset` — a live temporary link, an expired
+-- temporary link, and a revoked permanent link. `created_at`/`expires_at` on
+-- the first two are deliberately `now()`-relative, unlike every other
+-- timestamp in this file: the "live" and "expired" rows have to still BE live
+-- or expired whenever this file runs, which a fixed date could not promise on
+-- the next `db reset` a week from now. mock-data.ts's TypeScript twin (Phase 2)
+-- uses fixed dates instead, because its tests inject `now` and never read the
+-- wall clock.
+insert into public.invite_codes (id, team_id, code, created_by, created_at, expires_at, revoked_at) values
+  ('70000000-0000-4000-a000-000000000004', '10000000-0000-4000-a000-000000000001', 'originals-day-pass',   '00000000-0000-4000-a000-000000000002', now(),                     now() + interval '20 hours', null),
+  ('70000000-0000-4000-a000-000000000005', '10000000-0000-4000-a000-000000000001', 'originals-stale-pass', '00000000-0000-4000-a000-000000000001', now() - interval '2 days', now() - interval '1 day',    null),
+  ('70000000-0000-4000-a000-000000000006', '10000000-0000-4000-a000-000000000001', 'originals-old-link',   '00000000-0000-4000-a000-000000000001', '2026-07-01T12:00:00Z',    null,                         '2026-07-02T12:00:00Z');
 
 -- --- team_members --------------------------------------------------------------------
 -- coin_balance and profit_loss are the fixture's DERIVED values, pinned by

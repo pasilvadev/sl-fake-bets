@@ -877,4 +877,26 @@ Gated on the seeded `locale-pt-br` flag, so §6 risk 7 can be re-imposed by flip
 
 ---
 
+### Invite links: expiry choice & revocation — planned elsewhere
+
+Not an Extra Phase in this doc's series, and deliberately so: it closes open
+decision #6 and amends UX-005/DOM-005, and `plan-invite-links.md` carries the
+decision record (D1–D12) that would swamp this file.
+
+**Lifts from §6 risk 7:** nothing. Every item on that list is untouched by
+this plan — pt-BR (above) is already lifted, and notifications (ARC-014),
+coin donation (DOM-023), crowd resolution (DOM-020), native mobile and the
+platform icon set (DOM-010) all stay excluded.
+
+What it changed that a reader of THIS doc needs to know:
+
+- `Team.inviteCode: string` became `Team.invites: TeamInvite[]` — every
+  non-revoked link, permanent or 24-hour, with expiry applied by the shared
+  selectors rather than at load time.
+- `invite_codes` is no longer a direct client write. `create_invite_code` and
+  `revoke_invite_code` are the only writers now, same SECURITY DEFINER shape
+  as the RPCs `bet_duels` already used.
+
+---
+
 Hosting: see `plan-hosted-early-access.md`.

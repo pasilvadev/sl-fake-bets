@@ -157,6 +157,7 @@ against dev only — it can never reach prod through that file by construction
 | `migrations/20260907123000_prune_chat_messages_revoke.sql` | Re-revokes `app.prune_chat_messages()` from `anon`/`authenticated`, undoing an unrelated migration's blanket re-grant (caught by the hosted privilege audit, below) |
 | `migrations/20260907130000_alpha_flags.sql` | Hosted early access (D9): flips `locale-pt-br` on, seeds the `auth-google` ops kill switch |
 | `migrations/20260907140000_analytics_events_size_check.sql` | Hosted early access: bounds `analytics_events.properties` at 4 KiB |
+| `migrations/20260907150000_invite_links.sql` | Invite links: expiry choice & revocation (`plan-invite-links.md`) — nullable `invite_codes.expires_at`, the lazy-expiry predicate on `team_preview_by_code`/`join_team_with_code`, and the `create_invite_code`/`revoke_invite_code` RPCs that withdraw the table's last direct client write |
 | `queries/arc-017-metrics.sql` | The two ARC-017 metrics, as SQL. This is the entire analytics product — run it in Studio; there is no dashboard |
 | `seed.sql` | `mock-data.ts` as Postgres rows. Runs on `db reset` — **dev only, always**; `db push` never runs it without `--include-seed`, and no prod command in this repo ever passes that flag |
 | `templates/magic_link.html` | Why email login was designed as a CODE, not a link — dormant until full release adds the SMTP vendor that makes editing it possible (`plan-hosted-early-access.md` §8) |

@@ -319,7 +319,13 @@ export function validateTeamDraft(draft: TeamDraft): ValidationIssue[] {
   return issues;
 }
 
-/** UX-005/DOM-005: codes never expire, so joining only needs a non-blank one. */
+/**
+ * A non-blank code is the whole draft-time rule, and stays that way after
+ * `plan-invite-links.md` (D1/D3): whether a well-formed code is still LIVE —
+ * not expired, not revoked — is a question about the server's data and the
+ * server's clock, not about the shape of what someone typed, so it belongs to
+ * `team_preview_by_code`/`join_team_with_code` and never to this function.
+ */
 export function validateInviteCode(code: string): ValidationIssue[] {
   return code.trim().length === 0
     ? [{ code: "invite-code-required" }]

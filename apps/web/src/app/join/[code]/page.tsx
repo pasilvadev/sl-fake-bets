@@ -33,10 +33,31 @@ export async function generateMetadata({
   ]);
 
   if (!preview) {
+    // An expired or revoked link (plan-invite-links.md D3) lands here as much
+    // as a mistyped one, and the card a chat unwraps for it should say so.
+    // Without its own `openGraph` this branch inherited the root layout's
+    // generic tagline as og:description — the same replace-not-merge rule the
+    // found branch below documents — which the browser pass of that plan's
+    // Phase 5 caught on `/join/originals-stale-pass`.
+    const notFoundTitle = t("inviteNotFound");
+    const notFoundDescription = t("inviteNotFoundDescription");
     return {
-      title: t("inviteNotFound"),
-      description: t("inviteNotFoundDescription"),
+      title: notFoundTitle,
+      description: notFoundDescription,
       robots: { index: false, follow: false },
+      openGraph: {
+        type: "website",
+        siteName: SITE_NAME,
+        locale: OG_LOCALES[locale],
+        title: `${notFoundTitle} — ${SITE_NAME}`,
+        description: notFoundDescription,
+        url: `/join/${code}`,
+      },
+      twitter: {
+        card: "summary",
+        title: `${notFoundTitle} — ${SITE_NAME}`,
+        description: notFoundDescription,
+      },
     };
   }
 

@@ -61,11 +61,13 @@ export type MutationErrorCode =
   | "manager-only-create-bet"
   | "manager-only-team-settings"
   | "manager-only-remove-member"
+  | "manager-only-invite"
   | "leader-only-inject"
   | "leader-only-delete-team"
   | "creator-or-mod-only-resolve"
   | "creator-or-mod-only-delete"
   | "creator-or-mod-only-close"
+  | "creator-or-mod-only-revoke-invite"
   | "member-only-comment"
   | "member-only-chat"
   | "duel-resolver-only"
@@ -73,6 +75,14 @@ export type MutationErrorCode =
   | "cannot-remove-leader"
   | "leader-cannot-leave"
   | "already-in-team"
+  // --- invite links (plan-invite-links.md) ----------------------------------
+  // D8: a second permanent link is refused, not silently regenerated, and D6's
+  // anti-spam cap on live 24-hour links — rate control, not moderation, same
+  // sentence DUEL_MAX_PENDING_PER_CHALLENGER's comment makes for its cap.
+  // Both are keyed on SQLSTATE only (`SLI01`/`SLI02`), never on message text —
+  // D9's rule, same as every other mapped code in this file.
+  | "invite-permanent-exists"
+  | "invite-temp-cap"
   // --- bet lifecycle -------------------------------------------------------
   | "bet-not-found"
   | "bet-already-resolved"

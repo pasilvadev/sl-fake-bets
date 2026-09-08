@@ -1,4 +1,5 @@
 import {
+  CONFIG,
   generateInviteCode,
   type MutationErrorCode,
   type TeamAccessMode,
@@ -17,6 +18,14 @@ import { fail, ok, unexpected, type MutationResult } from "./result";
  * table writes; routing those through an RPC too would add a function whose
  * whole body is the policy that already exists.
  *
+ * `invite_codes` (`plan-invite-links.md` D4, `20260907150000_invite_links.sql`)
+ * used to be the one exception — a direct client INSERT — and no longer is:
+ * both `createInviteCode` and `revokeInviteCode` below are RPCs now, because
+ * the expiry timestamp must come from the server's clock (D2), the
+ * one-permanent and cap rules (D6/D8) must be checked inside the same
+ * transaction as the insert, and the reason `invite_codes` was ever a direct
+ * write — nothing needed the extra function — is gone.
+ *
  * Every function here returns MutationResult rather than throwing: a failure
  * from this layer is almost always a rule the user tripped ("You are already in
  * that team"), which the modals render inline. The RPCs raise those with a
@@ -28,8 +37,76 @@ type Client = SupabaseClient;
 /** Postgres unique-violation — the invite-code collision retry below. */
 const UNIQUE_VIOLATION = "23505";
 
+/**
+ * `create_invite_code`'s two named refusals (`plan-invite-links.md` D6/D8,
+ * `20260907150000_invite_links.sql`) — a second live permanent link, and the
+ * tenth-plus live 24-hour link. Named the same way `bet-mutations.ts` names
+ * `DUEL_PENDING_CAP_SQLSTATE`/`DUEL_DUPLICATE_PAIR_SQLSTATE`: a SQLSTATE is a
+ * NAME the migration can reword its `raise` sentence around tomorrow without
+ * silently breaking the toast mapped to it today, which matching on
+ * `error.message` could never promise (D9).
+ */
+const INVITE_PERMANENT_EXISTS_SQLSTATE = "SLI01";
+const INVITE_TEMP_CAP_SQLSTATE = "SLI02";
+
 function asFailure(error: PostgrestError): MutationResult {
   return unexpected(error);
+}
+
+/**
+ * One `PostgrestError` from `create_invite_code`, turned into the sentence a
+ * toast can show — same shape as `bet-mutations.ts`'s `asDuelFailure`, and the
+ * same rule: keyed on SQLSTATE only, never on message text, because the 125
+ * `raise exception` strings across `supabase/migrations` are the last line of
+ * defence against races and tampering, not 125 translated sentences, and
+ * pattern-matching `error.message` would start failing silently the day
+ * someone reworded a migration (D9). Everything else — including a plain
+ * `23505` this function's own retry loop (`withFreshCode`) did not absorb —
+ * falls through to `unexpected`.
+ */
+function asInviteFailure(error: PostgrestError): MutationResult {
+  if (error.code === INVITE_PERMANENT_EXISTS_SQLSTATE) {
+    return fail("invite-permanent-exists");
+  }
+  if (error.code === INVITE_TEMP_CAP_SQLSTATE) {
+    // Interpolated from CONFIG, never typed into the string, for the same
+    // reason `asDuelFailure` interpolates `duel-pending-cap` from CONFIG: a
+    // sentence that said "10" while the constant said something else would be
+    // a lie the type system could not see. The SQL side counts against its
+    // own copy of the same number (`app.invite_max_live_temporary_per_team()`).
+    return fail("invite-temp-cap", {
+      values: { max: CONFIG.INVITE_MAX_LIVE_TEMPORARY_PER_TEAM },
+    });
+  }
+  return unexpected(error);
+}
+
+/**
+ * The five-attempt retry against a generated invite code colliding with an
+ * existing one (`23505`) — DOM-001/002 + DOM-021's original shape in
+ * `createTeam`, factored out because `plan-invite-links.md`'s
+ * `createInviteCode` needs the exact same retry for the exact same reason. A
+ * member cannot SELECT other teams' invite codes (RLS), so proving uniqueness
+ * by reading every existing code first is not an option — `id.ts`'s alphabet
+ * is sized so that trying, and retrying on the rare collision, is proof enough.
+ *
+ * `attempt` is handed a freshly generated code on every try and returns
+ * whatever its own RPC call returns, untouched: this function only decides
+ * whether to retry (another `23505`), stop with whatever the RPC said
+ * (success or any other failure), or give up after five tries — `null`, which
+ * every caller turns into `fail("invite-code-failed")`, since "the whole
+ * namespace is somehow exhausted" has no better sentence than that one.
+ */
+async function withFreshCode<T>(
+  attempt: (
+    code: string,
+  ) => PromiseLike<{ data: T | null; error: PostgrestError | null }>,
+): Promise<{ data: T | null; error: PostgrestError | null } | null> {
+  for (let attemptCount = 0; attemptCount < 5; attemptCount++) {
+    const result = await attempt(generateInviteCode([]));
+    if (!result.error || result.error.code !== UNIQUE_VIOLATION) return result;
+  }
+  return null;
 }
 
 /**
@@ -43,16 +120,65 @@ export async function createTeam(
   supabase: Client,
   draft: { name: string; accessMode: TeamAccessMode },
 ): Promise<MutationResult & { teamId?: string }> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { data, error } = await supabase.rpc("create_team", {
+  const result = await withFreshCode((code) =>
+    supabase.rpc("create_team", {
       p_name: draft.name.trim(),
       p_access_mode: draft.accessMode,
-      p_invite_code: generateInviteCode([]),
-    });
-    if (!error) return { ok: true, teamId: data as string };
-    if (error.code !== UNIQUE_VIOLATION) return asFailure(error);
-  }
-  return fail("invite-code-failed");
+      p_invite_code: code,
+    }),
+  );
+  if (!result) return fail("invite-code-failed");
+  if (result.error) return asFailure(result.error);
+  return { ok: true, teamId: result.data as string };
+}
+
+/**
+ * `plan-invite-links.md` D2/D4/D6/D8: mint one link, permanent or 24-hour.
+ * `create_invite_code` is where the expiry is actually decided — `temporary`
+ * only names which the caller asked for; the deadline itself is
+ * `now() + app.invite_temporary_ttl()`, stamped by the server, never by a
+ * client clock a wrong device could lie with. The same `withFreshCode` retry
+ * `createTeam` uses covers the code collision here too, and D8's own comment
+ * explains why a concurrent second permanent is still safe: it lands as
+ * `23505` on the unique index, the retry's next attempt tries a fresh code
+ * against the *same* rule, and that attempt is what surfaces `SLI01` —
+ * self-correcting, not a bug to guard against twice.
+ */
+export async function createInviteCode(
+  supabase: Client,
+  input: { teamId: string; temporary: boolean },
+): Promise<MutationResult & { inviteId?: string }> {
+  const result = await withFreshCode((code) =>
+    supabase.rpc("create_invite_code", {
+      p_team_id: input.teamId,
+      p_code: code,
+      p_temporary: input.temporary,
+    }),
+  );
+  if (!result) return fail("invite-code-failed");
+  if (result.error) return asInviteFailure(result.error);
+  return { ok: true, inviteId: result.data as string };
+}
+
+/**
+ * `plan-invite-links.md` D4/D5: revoke one link. `canRevokeInvite`
+ * (`packages/shared/src/permissions.ts`) is the client's advisory copy of who
+ * may act; `revoke_invite_code` is the enforcement, and its three named
+ * refusals (link gone, not on the roster, neither moderator/leader nor the
+ * link's own creator) all fall through to `unexpected` here rather than
+ * getting their own codes — `team-context.tsx`'s `revokeInvite` already
+ * refuses `creator-or-mod-only-revoke-invite` client-side before this call
+ * ever fires, so every refusal that reaches this function is either a stale
+ * screen or a race, not a rule an ordinary user is meant to trip.
+ */
+export async function revokeInviteCode(
+  supabase: Client,
+  inviteId: string,
+): Promise<MutationResult> {
+  const { error } = await supabase.rpc("revoke_invite_code", {
+    p_invite_id: inviteId,
+  });
+  return error ? unexpected(error) : ok;
 }
 
 /** UX-005/DOM-005 + A-4, all decided inside the RPC (see its header). */

@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  CONFIG,
   canAcceptDuel as permitAcceptDuel,
   canAcceptWagers,
   canBan as permitBan,
@@ -30,11 +31,13 @@ import {
   canManageTeam as permitManageTeam,
   canResolveBet as permitResolveBet,
   canResolveDuel as permitResolveDuel,
+  canRevokeInvite as permitRevokeInvite,
   canStartDuel as permitStartDuel,
   canTransitionBetState,
   computeDuelPhase,
   computeEffectiveState,
   generateId,
+  inviteCreationBlocker,
   removeMemberWagersInTeam,
   reverseBet,
   settleBet,
@@ -61,6 +64,7 @@ import {
   type Team,
   type TeamAccessMode,
   type TeamDraft,
+  type TeamInvite,
   type TeamMember,
   type Transaction,
   type User,
@@ -191,6 +195,19 @@ export interface TeamState {
   /** Access-mode gated (DOM-002/006): free-for-all => any member; restricted => leader/moderator only. */
   canCreateBet: boolean;
   canInvite: boolean;
+  /**
+   * D5 (`plan-invite-links.md`): may the current user revoke THIS link — the
+   * leader, a moderator, or whoever made it. A FUNCTION rather than a boolean,
+   * unlike every other `can*` member on this object: revocation is a per-row
+   * question (a `free-for-all` member may revoke their own 24-hour link but
+   * not a moderator's), where `canInvite` above answers once for the whole
+   * team because DOM-006 gates creation by access mode alone. Wraps
+   * `packages/shared/src/permissions.ts`'s `canRevokeInvite(team, userId,
+   * invite)` with `team`/`currentUser.id` already applied, the same way
+   * `duelFor` wraps a lookup rather than leaving every surface to reconstruct
+   * the roster+id check itself.
+   */
+  canRevokeInvite: (invite: TeamInvite) => boolean;
   canManage: boolean;
   /** DOM-024: leader-only coin injection — moderators excluded. */
   canInject: boolean;
@@ -393,6 +410,27 @@ export interface TeamState {
   kickMember: (userId: string) => Promise<MutationResult>;
   banMember: (userId: string) => Promise<MutationResult>;
   updateTeamSettings: (settings: { accessMode: TeamAccessMode }) => Promise<MutationResult>;
+  /**
+   * Mint one link, permanent or 24-hour (`plan-invite-links.md` D2/D6/D8).
+   * Refuses `manager-only-invite` when `!canInvite` (DOM-006's access-mode
+   * gate, same as `addBet`'s `manager-only-create-bet`), then
+   * `inviteCreationBlocker(team, now, temporary)` for D8's second-permanent
+   * refusal and D6's cap — both re-checked inside `create_invite_code`'s own
+   * transaction regardless, because a concurrent create from another tab can
+   * always land between this client-side read and that write. On success,
+   * `reload()` — D10: an invite link is not dashboard-live, so, exactly like
+   * `createTeam`/`joinTeamByCode`, the mutation earns its own round trip
+   * instead of a local patch.
+   */
+  createInvite: (temporary: boolean) => Promise<MutationResult & { inviteId?: string }>;
+  /**
+   * Revoke one link by id (D4/D5). Looks it up in `team.invites` first
+   * (`team-not-found` if absent — the list is already stale either way, and
+   * `reload()` below is what actually fixes that), refuses
+   * `creator-or-mod-only-revoke-invite` when `!canRevokeInvite(invite)`, then
+   * `reload()` on success — same D10 reasoning as `createInvite` above.
+   */
+  revokeInvite: (inviteId: string) => Promise<MutationResult>;
   deleteTeam: () => Promise<MutationResult>;
   leaveTeam: () => Promise<MutationResult>;
   updateProfile: (draft: ProfileDraft) => Promise<MutationResult>;
@@ -2579,7 +2617,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     [supabase, currentUserId, reload],
   );
 
-  /** UX-005/DOM-005/006 + A-4: codes never expire, bans still keep you out. */
+  /**
+   * UX-005/DOM-005/006 + A-4, amended by `plan-invite-links.md`: permanent by
+   * default, a link may now also be a 24-hour one that dies on its own or be
+   * revoked by hand — bans still keep a banned user out regardless of which
+   * kind of link they hold.
+   */
   const joinTeamByCode = useCallback(
     async (code: string): Promise<MutationResult> => {
       if (!currentUserId) return fail("not-signed-in");
@@ -2588,8 +2631,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
       // The client's own copy of canJoinTeam only answers for teams it can
       // already see; the authoritative check is inside join_team_with_code.
-      const known = data.teams.find(
-        (t) => t.inviteCode.toLowerCase() === code.trim().toLowerCase(),
+      // D7: this matches against EVERY non-revoked link the team holds, not
+      // one scalar code — a live 24-hour link joins exactly like the
+      // permanent one. Liveness (`isInviteLive`) is deliberately NOT checked
+      // here: the RPC is the authority on expiry (D3), and a stale local
+      // match against an already-expired code still reaches
+      // `join_team_with_code`, which is what actually refuses it.
+      const known = data.teams.find((t) =>
+        t.invites.some((i) => i.code.toLowerCase() === code.trim().toLowerCase()),
       );
       if (known && !permitJoinTeam(known, currentUserId)) {
         return fail("already-in-team", { values: { team: known.name } });
@@ -2696,6 +2745,79 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       return ok;
     },
     [supabase, requireContext],
+  );
+
+  /**
+   * `plan-invite-links.md` D2/D5/D6/D8: mint one link, permanent or 24-hour.
+   * `requireContext` → permit → db → reload, the same idiom `createTeam` and
+   * `joinTeamByCode` already use — an invite link is not one of the
+   * dashboard's live-scoped facts (D10), so the round trip earns its own
+   * reload rather than a hand-rolled local patch.
+   *
+   * Gate order matters and mirrors the RPC exactly: DOM-006's access-mode
+   * check first (`manager-only-invite`, `permitInvite` — the same predicate
+   * `canInvite` above is built from), THEN D6/D8's per-kind blocker
+   * (`inviteCreationBlocker`, which needs to know WHICH kind is being
+   * requested and returns its own `MutationErrorCode` directly — no `fail()`
+   * mapping table to keep in step with `invites.ts`'s two string literals).
+   * Both are advice: `create_invite_code` re-checks everything inside its own
+   * transaction, because a concurrent create from another tab can always land
+   * between this read and that write (the same sentence `inviteCreationBlocker`'s
+   * own doc comment makes).
+   */
+  const createInvite = useCallback(
+    async (temporary: boolean): Promise<MutationResult & { inviteId?: string }> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("team-not-found");
+      if (!permitInvite(ctx.team, ctx.userId)) {
+        return fail("manager-only-invite");
+      }
+      const blocker = inviteCreationBlocker(ctx.team, Date.now(), temporary);
+      if (blocker === "invite-temp-cap") {
+        return fail(blocker, {
+          values: { max: CONFIG.INVITE_MAX_LIVE_TEMPORARY_PER_TEAM },
+        });
+      }
+      if (blocker) return fail(blocker);
+
+      const result = await db.createInviteCode(supabase, {
+        teamId: ctx.team.id,
+        temporary,
+      });
+      if (!result.ok) return result;
+
+      await reload();
+      return result;
+    },
+    [supabase, requireContext, reload],
+  );
+
+  /**
+   * D4/D5: revoke one link by id. The invite is looked up in the CURRENT
+   * `team.invites` rather than trusted from the caller, for the same reason
+   * `removeMember` looks the member up on the roster before acting: a stale
+   * id (a link already gone from a list rendered a while ago) fails here as
+   * `team-not-found` instead of reaching the RPC with nothing local to show
+   * for it either way, and `reload()` on success is what actually clears a
+   * stale list, exactly as it is for `createInvite` above.
+   */
+  const revokeInvite = useCallback(
+    async (inviteId: string): Promise<MutationResult> => {
+      const ctx = requireContext();
+      if (!ctx) return fail("team-not-found");
+      const invite = ctx.team.invites.find((i) => i.id === inviteId);
+      if (!invite) return fail("team-not-found");
+      if (!permitRevokeInvite(ctx.team, ctx.userId, invite)) {
+        return fail("creator-or-mod-only-revoke-invite");
+      }
+
+      const result = await db.revokeInviteCode(supabase, inviteId);
+      if (!result.ok) return result;
+
+      await reload();
+      return ok;
+    },
+    [supabase, requireContext, reload],
   );
 
   /**
@@ -2990,6 +3112,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // on the client; RLS and the Phase 5 RPCs are its server-side mirror.
       canCreateBet: permitCreateBet(team, currentUser.id),
       canInvite: permitInvite(team, currentUser.id),
+      canRevokeInvite: (invite: TeamInvite) =>
+        permitRevokeInvite(team, currentUser.id, invite),
       canManage: permitManageTeam(team, currentUser.id),
       canInject: permitInjectCoins(team, currentUser.id),
       canDelete: permitDeleteTeam(team, currentUser.id),
@@ -3032,6 +3156,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       kickMember,
       banMember,
       updateTeamSettings,
+      createInvite,
+      revokeInvite,
       deleteTeam,
       leaveTeam,
       updateProfile,
@@ -3071,6 +3197,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     kickMember,
     banMember,
     updateTeamSettings,
+    createInvite,
+    revokeInvite,
     deleteTeam,
     leaveTeam,
     updateProfile,
