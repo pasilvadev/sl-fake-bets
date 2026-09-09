@@ -131,7 +131,15 @@ export interface TeamMember {
    * is how they get out.
    */
   coinBalance: number;
-  /** Aggregated profit/loss standing (DOM-026) — feeds the "podium of the poor" (DOM-028). */
+  /**
+   * Aggregated profit/loss standing (DOM-026) — feeds `CoinDelta` wherever a
+   * resolved bet's own outcome is shown (the wallet's "Your P/L" line, a bet
+   * row's win/loss readout). No longer a leaderboard sort key: DOM-028's
+   * "podium of the poor" ranked by this field originally, but Poorest now
+   * mirrors DOM-027 by `coinBalance` instead (owner decision, `agent-docs/
+   * found-bugs.md` "Richest/poorest leaderboard wrong" — see
+   * `deriveStandings` in `standings.ts`).
+   */
   profitLoss: number;
   joinedAt: string; // ISO datetime
 }

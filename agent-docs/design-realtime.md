@@ -115,19 +115,42 @@ cost ARC-003 ranks above whatever throughput it would buy.
    §2 shows why: signal-only Realtime costs more than the polling it replaced.
    A full reload stays legal as a recovery path — on resubscribe after a dropped
    connection, or on a payload the client cannot reconcile — not as the design.
-3. **Subscribe to `bets`, `wagers`, `comments`, `chat_messages`, `bet_duels`
-   and `team_members` INSERT only. Do not subscribe to `team_members` UPDATE
-   or DELETE, or to `transactions` at all.** One `resolve_bet` updates
-   ~30 balance rows at once: 30 changes × 15 subscribers = **450 messages from a
-   single resolution**, more than a normal day of everything else. Balances
-   propagate by deriving them from the bet's resolution event, or by one scoped
-   refetch triggered by it. This is also where the double-apply race recorded in
-   Phase 7's notes actually bites — `resolve_bet` and `delete_bet` already return
-   their deltas and the acting client already dispatches them, so replaying
-   `team_members` UPDATEs would apply the same move twice. That reasoning is
-   entirely about UPDATE and does not extend to INSERT — see the `team_members`
-   sub-section below, added by a post-launch bug fix that amended this rule
-   from a blanket "do not subscribe" to the narrower one stated above.
+3. **Subscribe to `bets`, `wagers`, `comments`, `chat_messages`, `bet_duels`,
+   and `team_members` INSERT and UPDATE. Do not subscribe to `team_members`
+   DELETE, or to `transactions` at all.** This rule originally read "INSERT
+   only" for `team_members`, refusing UPDATE outright: one `resolve_bet`
+   updates ~30 balance rows at once, 30 changes × 15 subscribers = **450
+   messages from a single resolution**, more than a normal day of everything
+   else, and balances propagated instead by deriving them from the bet's
+   resolution event on the client — which is also where the double-apply race
+   Phase 7's notes recorded actually bit: `resolve_bet` and `delete_bet`
+   already return their deltas and the acting client already dispatches them,
+   so replaying `team_members` UPDATEs on top would have moved the same money
+   twice.
+   **A second post-launch bug fix (the negative-balance drift,
+   `agent-docs/found-bugs.md`) retired that reasoning rather than amending it
+   again.** The 450-message count was never wrong, but every-client-derives-
+   its-own-delta was only correct as long as EVERY balance-moving write path
+   told every client enough to derive it — and two didn't: a joiner's
+   `team_members` INSERT used to snapshot `coin_balance = 0` a statement
+   before the onboarding grant landed (fixed independently, see
+   `20260908130000_seed_membership_truthful_grant.sql`), and every ledger
+   credit (`app.apply_transaction` — grants, daily rewards, injections) moved
+   a balance through a table (`transactions`) nothing subscribes to and a
+   column (`team_members.coin_balance`) nothing subscribed to either, so an
+   observer's copy fell behind by exactly the credits it missed and a later
+   delta compounded the gap into a negative balance nobody actually had. The
+   fix is not "accept the 450 messages and derive as before" — deriving from
+   deltas was the design that broke, twice, the moment more than one write
+   path could move a balance unannounced. `team_members` UPDATE is now
+   subscribed and `coin_balance`/`profit_loss`/`role` are applied ABSOLUTELY
+   on every client from that row, replacing all client-side delta math
+   (`agent-docs/design-scale-and-free-tier.md` §2.5 has the updated budget —
+   450 real messages, but now carrying the truth). The double-apply race is
+   moot under this model: an UPDATE overwrites rather than adds, so the
+   acting client's own optimistic write and its later echo of the same RPC
+   agree by construction instead of by a guard against replaying a delta.
+   See the `team_members` sub-section below for both bug fixes in full.
    **`chat_messages` (Extra Phase 1, UX-019) binds INSERT only — never
    DELETE.** `app.prune_chat_messages()` enforces the 30-day retention window
    (D1) with a bulk daily delete, and a DELETE binding on this table would
@@ -219,10 +242,56 @@ cost ARC-003 ranks above whatever throughput it would buy.
      is the first team it has ever shared with them — resolved by a second,
      conditional scoped fetch (`fetchUser`), skipped entirely when the user is
      already known (an existing account joining a second visible team).
-   - **DELETE (the kick/ban cascade) and UPDATE (balance changes) stay exactly
-     as unsubscribed as before this fix.** A departure still resolves on the
-     next load; balances still propagate purely by deriving them from a bet's
-     own resolution or deletion event, per rule 3 above.
+   - **DELETE (the kick/ban cascade) stays unsubscribed.** A departure still
+     resolves on the next load — there is no money to lose by waiting, since
+     `remove_membership` deletes the row rather than leaving a stale balance
+     on it, and the departing member's own tab is the one being torn down.
+
+   **`team_members` UPDATE (a second post-launch bug fix, the negative-balance
+   drift, `agent-docs/found-bugs.md`) is the team channel's EIGHTH binding, and
+   the one that retires this rule's original "INSERT only" reasoning rather
+   than extending it.**
+
+   - **What actually broke.** Two write paths moved a balance without telling
+     any observer: a joiner's own INSERT used to snapshot `coin_balance = 0`
+     for one statement before `app.seed_membership`'s follow-up grant landed
+     (independently closed by making the INSERT itself truthful — see
+     `20260908130000_seed_membership_truthful_grant.sql`), and every ledger
+     credit (`app.apply_transaction` — onboarding grants, daily rewards,
+     leader injections) moved `team_members.coin_balance` through an UPDATE
+     nothing subscribed to, next to a `transactions` INSERT nothing
+     subscribed to either (rule 4 below). An observer's copy of a teammate's
+     balance therefore fell behind by exactly the credits it never heard
+     about, and the NEXT delta it DID receive (a wager, a resolution) applied
+     on top of that stale number — the negative balances the bug report
+     describes were never real in Postgres, only on screens that had missed
+     a credit somewhere upstream.
+   - **The fix is a model change, not a bigger exception.** Every local
+     balance delta across every mutator and every `applyRemote` case is gone
+     (`team-context.tsx`'s `member-update`/`member-updates` reducer cases and
+     the mutators that used to call the now-deleted `applyDeltas`). A
+     `team_members` row's `coin_balance`, `profit_loss` and `role` are set
+     ABSOLUTELY from this UPDATE's payload on every client, including the one
+     that caused the change — which gets its OWN instant feedback either from
+     its RPC's own `balance_after` snapshot (`place_wager`/`create_duel`/
+     `accept_duel`) or by simply waiting a beat for its own echo of this same
+     event (`resolve_bet`/`delete_bet`, which return deltas rather than a
+     snapshot). Realtime delivers in commit order, so a stale echo racing an
+     optimistic write is always overwritten by the truth, never averaged with
+     it — nothing can accumulate the way a delta could.
+   - **Filtered server-side, exactly like the INSERT binding.** `team_id=
+     eq.${teamId}`, for the same reason: the column is there.
+   - **Coalesced client-side, not server-side, against the 450-message
+     count rule 3 restates.** A resolution still writes ~30 rows in one
+     transaction and Realtime still delivers ~30 messages for it — the
+     traffic is real and `design-scale-and-free-tier.md` §2.5 carries the
+     updated budget. What the client does about the SHAPE of that burst is a
+     UI concern, not a wire one: `team-context.tsx` buffers `member-update`
+     events per team across one animation frame and applies them as a single
+     `member-updates` dispatch, so the standings module re-sorts once per
+     resolution instead of once per row.
+   - **DELETE (the kick/ban cascade) is untouched by this fix** and stays
+     exactly as unsubscribed as the bullet above already states.
 4. **`transactions` is a growth vector independent of Phase 8.** It is loaded in
    full on every cold start and grows without bound, and it is only needed by the
    ledger view. Not Phase 8's job to fix; Phase 8 must not make it worse by

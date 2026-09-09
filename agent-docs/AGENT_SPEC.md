@@ -119,8 +119,8 @@ SL Fake Bets: for-fun web platform for friend groups to bet fake platform coins 
 
 **Leaderboard, badges, moderation**
 - **DOM-027 [mvp]** Per-team leaderboard of richest members (by current balance).
-- **DOM-028 [mvp]** Per-team "podium of the poor": biggest losers by profit/loss standing. Separate from DOM-027.
-- **DOM-029 [mvp]** Name badges in chats and bets: top 5, bottom 5, and distinct badges for ranks 1/2/3. Open: which leaderboard feeds which badge (assume top/ranks from DOM-027, bottom from DOM-028).
+- **DOM-028 [mvp]** Per-team leaderboard of poorest members, by current balance ascending. ~~"Podium of the poor": biggest losers by profit/loss standing. Separate from DOM-027.~~ *(Amended, owner decision — `agent-docs/found-bugs.md` "Richest/poorest leaderboard wrong": a profit/loss board is empty whenever nobody is net-negative and gets padded with winners once fewer than 5 members are — not a coherent bottom-N list, which real resolutions exposed. Poorest is now the exact mirror of DOM-027 — every member has a balance, so the board is always fully populated with no separate metric to track.)*
+- **DOM-029 [mvp]** Name badges in chats and bets: top 5, bottom 5, and distinct badges for ranks 1/2/3. ~~Open: which leaderboard feeds which badge (assume top/ranks from DOM-027, bottom from DOM-028).~~ *(Resolved by DOM-028's amendment above: both leaderboards now share one metric — current balance — so "top 5"/ranks 1–3 and "bottom 5" are the two ends of the same sorted list, not a choice between two.)*
 - **DOM-030 [mvp]** Chat, bet titles, and images are free-form — no content moderation/filtering system.
 - **DOM-031 [mvp]** Leaders and moderators can kick or ban members. Open: functional difference kick vs ban (assume ban blocks rejoin via invite link).
 - **DOM-032 [mvp]** Kick/ban removes all the user's wagers from that team's active (unresolved) bets; resolved bets stay untouched. Open: removed stake refunded, forfeited, or just removed from pool — unspecified, affects pool math.

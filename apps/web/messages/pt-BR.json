@@ -223,8 +223,6 @@
     "eyebrow": "RANKING",
     "richest": "Mais ricos",
     "poorest": "Mais pobres",
-    "donorNote": "Quem mais financia a casa",
-    "empty": "Todo mundo ainda tá no azul. Suspeito.",
     "full": "Ver ranking completo"
   },
   "teamModule": {
@@ -364,9 +362,7 @@
     "eyebrow": "RANKING",
     "title": "Classificação",
     "richest": "Mais ricos",
-    "poorest": "Mais pobres",
-    "empty": "Todo mundo ainda tá no azul. Suspeito.",
-    "donorNote": "Quem mais financia a casa"
+    "poorest": "Mais pobres"
   },
   "transactionsModal": {
     "eyebrow": "CARTEIRA",

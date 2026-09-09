@@ -33,7 +33,7 @@ import type { TeamData } from "./team-data";
  *
  *   profit_loss  = deriveProfitLoss(...)   (resolved bets only — DOM-026)
  *
- * Two things it deliberately does NOT flag:
+ * Three things it deliberately does NOT flag:
  *
  *  * Rows from a previous membership. A kick deletes the membership and its
  *    balance, but the member's `transactions` rows and their wagers on already
@@ -46,6 +46,23 @@ import type { TeamData } from "./team-data";
  *    anyone else the ledger term is not missing — it is invisible, and an
  *    absent row is indistinguishable from a real drift. Those members are
  *    skipped rather than guessed at.
+ *  * `coinBalance` for anyone but the viewer (added by the negative-balance
+ *    drift fix, `agent-docs/found-bugs.md`). This guard's ledger term is
+ *    `data.transactions` — a snapshot from the last `loadTeamData`, refreshed
+ *    only by the viewer's OWN `add-transaction` dispatches (a claimed reward,
+ *    an injection they made or received). Now that other members' balances
+ *    move on this client via `member-update` — an absolute overwrite that
+ *    never touches `data.transactions` at all — a leader or moderator's
+ *    ledger term for a TEAMMATE goes stale the instant that teammate claims a
+ *    reward or is injected into, and this guard would flag the resulting gap
+ *    as drift when the stored balance is the one telling the truth. Before
+ *    this fix the same gap existed but happened to net to zero: the stored
+ *    balance was ALSO wrong in exactly the way the stale ledger predicted,
+ *    which is what let a real bug hide behind a guard reporting no issues.
+ *    `profitLoss` has no such gap — it moves only through bet resolution,
+ *    which this guard already recomputes from `teamBets`/`teamWagers` rather
+ *    than from a ledger snapshot — so it stays checked for everyone the
+ *    viewer can see.
  */
 
 export interface ConsistencyIssue {
@@ -73,39 +90,44 @@ function checkMember(
   teamBets: Bet[],
   teamWagers: Wager[],
   teamTransactions: Transaction[],
+  /** Only the viewer's own ledger snapshot is guaranteed complete — see this
+   * file's header, third bullet. */
+  checkBalance: boolean,
 ): ConsistencyIssue[] {
   const member = team.members.find((m) => m.userId === userId);
   if (!member) return [];
 
   const scopedWagers = wagersSinceJoin(teamWagers, userId, joinedAt);
-
-  const ledger = teamTransactions
-    .filter((t) => t.userId === userId && t.createdAt >= joinedAt)
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const credits = teamBets.reduce((sum, bet) => {
-    if (bet.state !== "resolved" || !bet.resolution) return sum;
-    const delta = settleBet(bet, scopedWagers, bet.resolution).find(
-      (d) => d.userId === userId,
-    );
-    return sum + (delta?.balanceDelta ?? 0);
-  }, 0);
-
-  const stakes = scopedWagers
-    .filter((w) => w.userId === userId)
-    .reduce((sum, w) => sum + w.amount, 0);
-
   const issues: ConsistencyIssue[] = [];
-  const expectedBalance = ledger + credits - stakes;
-  if (member.coinBalance !== expectedBalance) {
-    issues.push({
-      teamId: team.id,
-      teamName: team.name,
-      userId,
-      field: "coinBalance",
-      stored: member.coinBalance,
-      expected: expectedBalance,
-    });
+
+  if (checkBalance) {
+    const ledger = teamTransactions
+      .filter((t) => t.userId === userId && t.createdAt >= joinedAt)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const credits = teamBets.reduce((sum, bet) => {
+      if (bet.state !== "resolved" || !bet.resolution) return sum;
+      const delta = settleBet(bet, scopedWagers, bet.resolution).find(
+        (d) => d.userId === userId,
+      );
+      return sum + (delta?.balanceDelta ?? 0);
+    }, 0);
+
+    const stakes = scopedWagers
+      .filter((w) => w.userId === userId)
+      .reduce((sum, w) => sum + w.amount, 0);
+
+    const expectedBalance = ledger + credits - stakes;
+    if (member.coinBalance !== expectedBalance) {
+      issues.push({
+        teamId: team.id,
+        teamName: team.name,
+        userId,
+        field: "coinBalance",
+        stored: member.coinBalance,
+        expected: expectedBalance,
+      });
+    }
   }
 
   const expectedProfitLoss = deriveProfitLoss(userId, teamBets, scopedWagers);
@@ -126,8 +148,12 @@ function checkMember(
 /**
  * Every drift the current viewer is actually able to see. `viewerId` is the
  * signed-in user: their own membership is always checkable, and a moderator or
- * leader can additionally check everyone on that team, because that is exactly
- * the shape of the `transactions` SELECT policy.
+ * leader can additionally check everyone on that team's `profitLoss`, because
+ * that is exactly the shape of the `transactions` SELECT policy `checkMember`
+ * leans on for the ledger term. `coinBalance` is narrower than that policy
+ * now (this file's header, third bullet): only `member.userId === viewerId`
+ * checks it, because a teammate's ledger snapshot is the one thing that can
+ * go stale without a wrong stored value alongside it to cancel it out.
  */
 export function findConsistencyIssues(
   data: TeamData,
@@ -157,6 +183,7 @@ export function findConsistencyIssues(
           teamBets,
           teamWagers,
           teamTransactions,
+          member.userId === viewerId,
         ),
       );
     }

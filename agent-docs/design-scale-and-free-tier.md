@@ -199,15 +199,35 @@ because every handler applies the event's own payload. Connections peak at
 Phase 8's implementation adds three facts worth carrying into any scale
 decision:
 
-- Only `bets`, `wagers` and `comments` are in the publication.
-  `team_members` and `transactions` are deliberately absent — one `resolve_bet`
-  updates ~30 balance rows, which would be **450 messages from a single
-  resolution** at 15 subscribers, more than a normal day of everything else.
-  Balances are derived from the resolution event instead.
+- Only `bets`, `wagers` and `comments` were in the publication at the time.
+  `team_members` and `transactions` were deliberately absent — one
+  `resolve_bet` updates ~30 balance rows, which would be **450 messages from a
+  single resolution** at 15 subscribers, more than a normal day of everything
+  else. Balances were derived from the resolution event instead. **Revised by
+  the negative-balance drift fix** (`agent-docs/found-bugs.md`,
+  post-launch): `team_members` is now published and its UPDATE event is
+  subscribed — see the paragraph immediately below, which is the budget this
+  bullet used to state on its own.
 - Replica identity stays at the default (primary key), which halves the WAL
   volume of every wager and comment versus `replica identity full`.
 - The one extra read is `fetchBet` — a single row, when a remote `bets` INSERT
   arrives without its options.
+
+**Updated for `team_members` UPDATE.** The 450-messages-per-resolution count
+above was the reason this event stayed unsubscribed, and it was never wrong —
+it is still exactly what a 15-subscriber team resolving a 30-wagerer bet
+costs. What changed is the OTHER side of that trade: deriving balances from
+resolution/deletion deltas alone turned out to miss two write paths entirely
+(a joiner's own INSERT under-reporting their starting balance; every ledger
+credit — grants, daily rewards, injections — moving a balance through columns
+nothing was subscribed to), producing the negative-balance bug this fix
+closes. 450 messages from one resolution is now real, accepted traffic rather
+than a rejected design: against the 2M/month ceiling it is 0.0225%, and a
+team resolving one such bet a day for a month is still ~13.5K messages —
+under 1% of quota. The client-side cost is bounded the same way `fetchBet`
+already is: `team-context.tsx` coalesces a resolution's burst of
+`member-update` events into one `member-updates` dispatch per animation
+frame, so the 450 WIRE messages cost one re-render, not thirty.
 
 ### 2.6 Idle pausing (7 days) — the ceiling that bites first, and it is not a quota
 

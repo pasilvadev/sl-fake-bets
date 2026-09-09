@@ -47,7 +47,7 @@ The dashboard's **one** diagonal cut = one feed row (icon chip + CTA `cut-sm` + 
 ## 4. Pulse Rail (4 modules, top→bottom by check-frequency)
 
 1. **Wallet** — big mono balance numeral (N8) + coin glyph; "Daily login: +5 today ✓" line (auto-grant); "Your P/L" slash-glyph line (DOM-026); "View transaction history" → modal (DOM-025 dense rows: date · description · delta · balance-after); disabled **Donate Coins** button, tooltip "Coming soon" (DOM-023 future-stub; the long-term home is also a per-name user popover — post-MVP).
-2. **Standings** — segmented tab **Richest** (default, DOM-027) / **Poorest** (DOM-028): same compact row shape (rank digit mono, avatar, name in own name-color + inline parallelogram rank badge DOM-029, amount right mono). Top 5 + "View full leaderboard" → modal. Poorest carries dry copy (rank-1 tagline "House's favorite donor"; all-zero P/L → "Everyone's still solvent. Suspicious.").
+2. **Standings** — segmented tab **Richest** (default, DOM-027) / **Poorest** (DOM-028, owner decision: mirrors Richest by current balance ascending rather than the original realized-loss "podium of the poor" — `agent-docs/found-bugs.md`): same compact row shape (rank digit mono, avatar, name in own name-color + inline parallelogram rank badge DOM-029, amount right mono, both tabs). Top 5 + "View full leaderboard" → modal. Always fully populated — no empty state and no rank-1 tagline, since every member has a balance.
 3. **Team** — "n / 30 members", avatar cluster (max 6 + `+N`), Invite button (redundant entry, expected here), **Manage Team** (leader/mod → Team Settings modal: access-mode toggle DOM-002, roster with kick/ban DOM-031 ember ordinary-destructive, leader-only per-row Inject Coins DOM-024, danger zone type-to-confirm delete DOM-033/034) / **View Team** (member, read-only variant).
 4. **Team Chat (UX-019, Extra Phase 1)** — `TEAM CHAT` eyebrow + unread-count badge, header **expand** control. In-place scrollback over the most recent ~30 messages (§5.7 anatomy: dense rows, no bubbles, 24px avatar, name-color `UserName` + inline rank badge, mono trailing timestamp); working composer pinned to the panel bottom, the `/` send glyph live (jade on hover, §5.7). A "See earlier messages" control sits above the oldest loaded row — it and the header expand control both open the same full-scrollback chat modal (owner decision D4, Extra Phase 1): rail and modal read one store slice, never two independent copies of the same messages. Distinct from per-bet chat (UX-018, bet-detail only).
 
@@ -68,7 +68,7 @@ The dashboard's **one** diagonal cut = one feed row (icon chip + CTA `cut-sm` + 
 
 ## 7. Empty & loading
 - Zero-bets team (t-02/t-03 exercise this live): ghost S-mark watermark 5% + "No bets yet. Someone has to make the first bad decision." + Create Bet CTA (`cut-sm` legitimate here).
-- Zero transactions: "No transactions yet."; all-zero P/L: solvent line (§4.2 copy).
+- Zero transactions: "No transactions yet." Standings has no empty state of its own any more (§4.2) — Poorest mirrors Richest by balance, and a team always has at least a leader.
 - Zero-message chat (Extra Phase 1): the same shared ghost pattern (`design-visual-identity.md` §5.10), not a bespoke chat treatment — S-mark watermark + one dry line, no CTA (there is nothing to click, only something to type).
 - Skeletons: row-shaped, opacity-breathe 0.4↔0.6, no shimmer.
 

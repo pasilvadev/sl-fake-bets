@@ -8,10 +8,12 @@ import type { BetRow, CommentRow, DuelRow, MemberRow, WagerRow } from "./team-da
  * same channel — see `subscribeTeamChannel` below for why chat did not earn a
  * channel of its own — by Extra Phase 2 (1v1 duels) with a fifth and a sixth,
  * `bet_duels` INSERT and UPDATE, on that same channel and for the same §5 rule
- * 1 reason — and by a post-launch bug fix with a seventh, `team_members`
- * INSERT, amending §5 rule 3's blanket "do not subscribe to team_members":
- * see `subscribeTeamChannel`'s own comment on that binding for why an INSERT
- * exception does not reopen the balance-flood problem the rule exists for.
+ * 1 reason — by a post-launch bug fix with a seventh, `team_members` INSERT,
+ * amending §5 rule 3's blanket "do not subscribe to team_members" — and by a
+ * second post-launch bug fix (the negative-balance drift, `found-bugs.md`)
+ * with an eighth, `team_members` UPDATE, which retires rule 3 entirely: see
+ * `subscribeTeamChannel`'s own comment on that binding for why balances are
+ * now server-authoritative on every client instead of derived from deltas.
  *
  * This module owns the wire: which channels exist, which tables and events each
  * one listens to, and how a raw payload becomes one `RemoteEvent`. It decides
@@ -50,7 +52,7 @@ type Client = SupabaseClient;
 export type RealtimeBetRow = Omit<BetRow, "bet_options">;
 
 /**
- * What the client is told happened, already narrowed to the eight cases that
+ * What the client is told happened, already narrowed to the nine cases that
  * can change what is on screen.
  *
  * `bet-insert` carries only the id: a `bets` INSERT arrives without
@@ -77,6 +79,13 @@ export type RealtimeBetRow = Omit<BetRow, "bet_options">;
  * team-context.tsx before it dispatches, exactly the way `bet-insert` resolves
  * `fetchBet` first.
  *
+ * `member-update` (second bug fix, retiring §5 rule 3 rather than amending it
+ * — see `subscribeTeamChannel`'s own comment on the binding) is also a
+ * complete `MemberRow`: `coin_balance`, `profit_loss` and `role`, applied
+ * ABSOLUTELY by team-context.tsx's reducer rather than added to a locally
+ * tracked delta. This is what makes balances server-authoritative on every
+ * open tab, not just the one that made the change.
+ *
  * Deletes of `wagers`, `comments`, `chat_messages`, `bet_duels` and
  * `team_members` are absent on purpose — see `subscribeTeamChannel`.
  */
@@ -88,7 +97,8 @@ export type RemoteEvent =
   | { kind: "comment-insert"; row: CommentRow }
   | { kind: "chat-insert"; row: ChatMessageRow }
   | { kind: "duel-upsert"; row: DuelRow }
-  | { kind: "member-insert"; row: MemberRow };
+  | { kind: "member-insert"; row: MemberRow }
+  | { kind: "member-update"; row: MemberRow };
 
 export interface ChannelHandlers {
   onEvent: (event: RemoteEvent) => void;
@@ -217,18 +227,50 @@ function withRecovery(channel: RealtimeChannel, onResubscribe: () => void) {
  * Both symptoms were the same missing fact: nobody told this client a new row
  * existed in `team_members` at all.
  *
- * The rule's actual concern — the flood a `resolve_bet` UPDATE would cause
- * (~30 balance rows × 15 subscribers = 450 messages from one resolution, more
- * traffic than a normal day of everything else combined) — is untouched,
- * because it is specifically about UPDATE and this binding is INSERT-only,
- * exactly the restraint already established for `chat_messages` above (bound
- * for INSERT, never for the nightly prune's DELETE storm). A join is a single
- * row, born once per member for the life of their membership, so there is no
- * bulk write path here to flood anything — the asymmetry that makes an INSERT
- * exception safe where a UPDATE or DELETE one would not be. `team_members` HAS
- * a team column, so — like `bets` and `chat_messages`, and unlike `wagers` and
+ * At the time this INSERT exception was written, the rule's actual concern —
+ * the flood a `resolve_bet` UPDATE would cause (~30 balance rows × 15
+ * subscribers = 450 messages from one resolution, more traffic than a normal
+ * day of everything else combined) — was left untouched, because it is
+ * specifically about UPDATE and this binding was INSERT-only, exactly the
+ * restraint already established for `chat_messages` above (bound for INSERT,
+ * never for the nightly prune's DELETE storm). A join is a single row, born
+ * once per member for the life of their membership, so there was no bulk
+ * write path here to flood anything — the asymmetry that made an INSERT
+ * exception safe where a UPDATE one was not, yet. `team_members` HAS a team
+ * column, so — like `bets` and `chat_messages`, and unlike `wagers` and
  * `bet_duels` — this binding is filtered server-side to `team_id=eq.${teamId}`
  * rather than leaning on RLS alone.
+ *
+ * `team_members` UPDATE is a SECOND post-launch bug fix (`agent-docs/
+ * found-bugs.md`, "Negative balances on teammates' dashboards"), and this one
+ * does not amend rule 3 — it retires the reasoning behind it. The 450-message
+ * count above was never wrong, but it was only half the argument for staying
+ * unsubscribed; the other half was that every client already derives a
+ * remote balance move from the bet's own resolution/deletion event, applying
+ * it as a DELTA on top of whatever it currently shows — and that is exactly
+ * what broke: `member-insert` above lands a joiner at whatever `coin_balance`
+ * their `team_members` row held at INSERT time (0, before `app.seed_membership`'s
+ * follow-up grant lands), and grants/daily rewards/injections move balances
+ * through `app.apply_transaction`, which no observer's tab is subscribed to at
+ * all. Every one of those is a credit this binding never told anyone about, so
+ * an observer's copy of a teammate's balance silently fell behind by exactly
+ * the credits it missed, and a later delta (a wager, a payout) then applied on
+ * top of that stale number — the negative balances the bug report describes.
+ *
+ * The fix is not "subscribe and accept the 450 messages" — the message count
+ * is real and the egress budget in `design-scale-and-free-tier.md` §2.5 is
+ * still worth respecting — it is that DELTAS were the wrong client-side model
+ * once more than one write path could move a balance without telling every
+ * open tab. So every local balance delta is gone (see team-context.tsx's
+ * `member-update` reducer case and the mutators that used to call
+ * `applyDeltas`): a `team_members` row's `coin_balance`, `profit_loss` and
+ * `role` are now applied ABSOLUTELY, from this UPDATE, on every client
+ * including the one that caused the change. 450 messages from one resolution
+ * is still real traffic, but it is 450 messages carrying the TRUTH rather than
+ * 450 messages this design used to refuse specifically because the client had
+ * a cheaper way to reach a wrong answer. `agent-docs/design-scale-and-free-tier.md`
+ * §2.5 has the updated budget arithmetic. Filtered server-side exactly like
+ * the INSERT binding above, for the same reason: the column is there to use.
  */
 export function subscribeTeamChannel(
   supabase: Client,
@@ -314,9 +356,8 @@ export function subscribeTeamChannel(
         if (row?.id) handlers.onEvent({ kind: "chat-insert", row });
       },
     )
-    // INSERT only — see the header's `team_members` paragraph for why this
-    // amends §5 rule 3 safely (a join is one row, never a bulk write) where a
-    // UPDATE binding (balance changes) would not be.
+    // INSERT — see the header's `team_members` paragraph for why this amends
+    // §5 rule 3 safely (a join is one row, never a bulk write).
     .on(
       "postgres_changes",
       {
@@ -328,6 +369,22 @@ export function subscribeTeamChannel(
       (payload) => {
         const row = payload.new as MemberRow;
         if (row?.user_id) handlers.onEvent({ kind: "member-insert", row });
+      },
+    )
+    // UPDATE — the negative-balance drift fix. See the header's second
+    // `team_members` paragraph: balances are now server-authoritative on
+    // every client, applied absolutely from this payload, never as a delta.
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "team_members",
+        filter: `team_id=eq.${teamId}`,
+      },
+      (payload) => {
+        const row = payload.new as MemberRow;
+        if (row?.user_id) handlers.onEvent({ kind: "member-update", row });
       },
     );
 

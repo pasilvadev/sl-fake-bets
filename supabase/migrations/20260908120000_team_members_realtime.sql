@@ -38,11 +38,30 @@
 --   prune's DELETE storm) — publishing the table and then binding narrowly is
 --   the pattern this file follows, not a new one.
 --
---   UPDATE (balance changes) and DELETE (the kick/ban cascade) stay exactly as
---   unsubscribed as they were: balances still move on this client purely by
---   recomputing the deltas a bet's own resolution/deletion event carries
---   (`team-context.tsx`'s `applyRemote`), and a departure still resolves on
---   the next load, same as before this migration.
+--   UPDATE (balance changes) and DELETE (the kick/ban cascade) stayed exactly
+--   as unsubscribed as they were AT THE TIME THIS MIGRATION SHIPPED: balances
+--   moved on every client purely by recomputing the deltas a bet's own
+--   resolution/deletion event carried (`team-context.tsx`'s `applyRemote`),
+--   and a departure resolved on the next load.
+--
+--   UPDATE NO LONGER HOLDS. A second post-launch bug fix (the negative-balance
+--   drift, `agent-docs/found-bugs.md`) found that deriving every balance from
+--   a bet event's own delta missed two OTHER write paths entirely — this
+--   migration's own INSERT snapshotting a stale `coin_balance` before
+--   `app.seed_membership`'s grant landed (independently closed by
+--   `20260908130000_seed_membership_truthful_grant.sql`), and every ledger
+--   credit (`app.apply_transaction`) moving a balance through columns nothing
+--   was subscribed to at all — and retired the derive-from-deltas model
+--   rather than patching around its next gap. `team_members` UPDATE is now
+--   bound too (same file, same `subscribeTeamChannel`, same
+--   `filter: "team_id=eq.${teamId}"` this migration's table already supports:
+--   a plain `add table` below replicates every DML operation, so no schema
+--   change was needed to add the binding — see
+--   `agent-docs/design-realtime.md` §5 rule 3's `team_members` sub-section for
+--   the full argument for why that is safe now where it was refused when
+--   this migration shipped. DELETE is the one exception this paragraph does
+--   NOT retire: a departure still resolves on the next load, exactly as
+--   before.
 --
 -- REPLICA IDENTITY stays at the default (primary key), for the same reason
 -- every other table in this publication does: the client reads the INSERT

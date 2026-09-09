@@ -7,6 +7,7 @@ export * from "./errors";
 export * from "./settlement";
 export * from "./ledger";
 export * from "./permissions";
+export * from "./standings";
 export * from "./state-machine";
 export * from "./invites";
 export * from "./id";

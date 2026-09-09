@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cn } from "cn";
 import { type TeamMember } from "@repo/shared";
 import { useTranslations } from "next-intl";
-import { CoinAmount, CoinDelta } from "@/components/sl/coin-amount";
+import { CoinAmount } from "@/components/sl/coin-amount";
 import { UserAvatar } from "@/components/sl/user-avatar";
 import { UserName } from "@/components/sl/user-name";
 import { useModal } from "@/lib/modal-context";
@@ -48,8 +48,8 @@ function TabButton({
 
 /**
  * Richest: rank-1 jade + text-lg, 2-3 full white text-base, 4+ muted text-sm
- * (§5.6). Poorest is the mirror of that scale in rust — rank-1 (the deepest
- * loss) is the loud one, and it fades to muted the same way.
+ * (§5.6). Poorest is the mirror of that scale in rust — rank-1 (the lowest
+ * balance) is the loud one, and it fades to muted the same way.
  */
 function rankClass(rank: number, tab: Tab): string {
   if (tab === "poorest") {
@@ -72,10 +72,13 @@ function StandingRow({
   tab: Tab;
 }) {
   const { userById } = useTeam();
-  const t = useTranslations("standingsModule");
   const user = userById(member.userId);
   if (!user) return null;
 
+  // Both tabs render the same balance now (owner decision, `agent-docs/
+  // found-bugs.md` — Poorest mirrors Richest by coinBalance): no more
+  // CoinDelta/profitLoss on this board, and no more rank-1 tagline — that
+  // copy was written for a "biggest loser" framing this board no longer has.
   return (
     <div className="flex items-center gap-2.5 py-1.5">
       <span className={cn("w-4 shrink-0 font-mono tabular-nums", rankClass(rank, tab))}>
@@ -84,15 +87,8 @@ function StandingRow({
       <UserAvatar user={user} size={20} />
       <div className="min-w-0 flex-1">
         <UserName user={user} badge className="truncate text-sm" />
-        {tab === "poorest" && rank === 0 && (
-          <p className="text-[11px] text-rust">{t("donorNote")}</p>
-        )}
       </div>
-      {tab === "richest" ? (
-        <CoinAmount amount={member.coinBalance} className="text-sm" />
-      ) : (
-        <CoinDelta amount={member.profitLoss} className="text-sm" />
-      )}
+      <CoinAmount amount={member.coinBalance} className="text-sm" />
     </div>
   );
 }
@@ -108,13 +104,11 @@ export function StandingsModule() {
   const t = useTranslations("standingsModule");
   const [tab, setTab] = useState<Tab>("richest");
 
+  // No more "all solvent" empty state (owner decision, `agent-docs/
+  // found-bugs.md`): Poorest mirrors Richest by coinBalance now, and every
+  // member has one, so this list is never empty — the old test was about
+  // nobody being in the red on the profit/loss board that no longer exists.
   const list = (tab === "richest" ? richest : poorest).slice(0, 5);
-  // DOM-028's board is about LOSSES, so "solvent" is nobody in the red — the
-  // same test the full modal uses. (It read `=== 0` while the modal read
-  // `>= 0`, which only diverged once real resolutions started producing
-  // winners: one member up, everyone else flat, and the two surfaces
-  // disagreed about whether there was a podium at all.)
-  const allSolvent = tab === "poorest" && poorest.every((m) => m.profitLoss >= 0);
 
   return (
     <section className="rounded-sm border border-border bg-surface-1 p-4">
@@ -137,15 +131,11 @@ export function StandingsModule() {
         </div>
       </div>
 
-      {allSolvent ? (
-        <p className="py-2 text-sm text-muted-foreground">{t("empty")}</p>
-      ) : (
-        <div className="divide-y divide-border">
-          {list.map((member, i) => (
-            <StandingRow key={member.userId} member={member} rank={i} tab={tab} />
-          ))}
-        </div>
-      )}
+      <div className="divide-y divide-border">
+        {list.map((member, i) => (
+          <StandingRow key={member.userId} member={member} rank={i} tab={tab} />
+        ))}
+      </div>
 
       <button
         type="button"

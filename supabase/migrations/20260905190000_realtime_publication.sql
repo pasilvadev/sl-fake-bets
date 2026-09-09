@@ -41,22 +41,47 @@
 --
 -- WHAT IS DELIBERATELY OUT (agent-docs/design-realtime.md §5 rule 3)
 --
---   team_members UPDATE/DELETE — one `resolve_bet` rewrites ~30 balance rows
---   in a single transaction. At 15 online members that is 450 delivered
---   messages from ONE resolution, more than a normal day of bets, wagers and
---   comments combined. It is also where the double-apply race bites:
---   `resolve_bet` and `delete_bet` already return the deltas they applied and
---   the acting client already dispatches them, so replaying the balance
---   UPDATEs would move the same money twice. Clients derive remote balance
---   moves from the bet's own resolution/deletion event instead. `team_members`
---   INSERT is no longer in this list — `20260908120000_team_members_realtime.sql`
---   adds the table to the publication for exactly that one event, a
---   post-launch bug fix (a member joining was invisible to everyone else's
---   dashboard until a refresh) that does not reopen the flood problem above,
---   because a join is one row per membership, never a bulk write.
+--   At the time this migration was written: team_members UPDATE/DELETE — one
+--   `resolve_bet` rewrites ~30 balance rows in a single transaction, and at 15
+--   online members that is 450 delivered messages from ONE resolution, more
+--   than a normal day of bets, wagers and comments combined. It was also where
+--   a double-apply race would have bitten: `resolve_bet` and `delete_bet`
+--   already return the deltas they applied and the acting client already
+--   dispatches them, so replaying the balance UPDATEs would have moved the
+--   same money twice. Clients derived remote balance moves from the bet's own
+--   resolution/deletion event instead.
 --
---   transactions — the ledger. Append-only, unbounded, and read by exactly one
---   modal; nothing on screen goes stale without it.
+--   TWO LATER MIGRATIONS SUPERSEDE MOST OF THAT PARAGRAPH — left unedited
+--   above (history, not the current rule) rather than rewritten, because the
+--   reasoning it records was correct for the design it described and the
+--   record of what changed and why belongs in the migrations that changed it:
+--     * `20260908120000_team_members_realtime.sql` adds `team_members` to
+--       this publication for its INSERT event (a post-launch bug fix: a
+--       member joining was invisible to everyone else's dashboard until a
+--       refresh) — safe because a join is one row per membership, never a
+--       bulk write, so the flood problem above never applied to it.
+--     * `20260908130000_seed_membership_truthful_grant.sql` and the
+--       client-side negative-balance drift fix (`agent-docs/found-bugs.md`)
+--       go further: `team_members` UPDATE is now bound too, and EVERY client
+--       balance is set ABSOLUTELY from that row rather than derived from a
+--       delta. The 450-message figure is unchanged and still real — it is
+--       simply no longer refused, because deriving-from-deltas was the
+--       design that produced the negative-balance bug this fix closes (two
+--       write paths moved a balance while telling zero subscribers), and an
+--       UPDATE overwrites rather than adds, so the double-apply race above
+--       cannot occur under this model regardless of arrival order.
+--       `agent-docs/design-realtime.md` §5 rule 3 and
+--       `agent-docs/design-scale-and-free-tier.md` §2.5 carry the current
+--       rule and budget; this file's DDL needed no change at all, because a
+--       plain `add table` (below, for `bets`/`wagers`/`comments`, and in
+--       `20260908120000_team_members_realtime.sql` for `team_members`)
+--       already replicates every DML operation — only the CLIENT'S
+--       `.on("postgres_changes", ...)` binding was ever the thing refusing
+--       UPDATE, and that lives in `apps/web/src/lib/data/realtime.ts`, not
+--       in any publication DDL.
+--
+--   transactions is still genuinely out — the ledger, append-only, unbounded,
+--   and read by exactly one modal; nothing on screen goes stale without it.
 --
 -- REPLICA IDENTITY: left at the default (primary key) on purpose.
 --

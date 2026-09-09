@@ -43,7 +43,7 @@ SL is a black-and-white app with exactly one loud color: jade. It borrows the st
 4. **Weight over color for hierarchy.** Two text colors handle 90% of the UI (white full-emphasis, muted-gray secondary). A third tier of emphasis is jade, never a third gray.
 5. **Numbers are mono, prose is sans.** Any figure the user compares or scans (odds, coins, timers, ranks) is Geist Mono + `tabular-nums`. Numbers embedded in a sentence stay Geist Sans.
 6. **Cheap by construction.** No blur walls, no stacked shadows, no shimmer sweeps. Elevation is a lightness step + a hairline border. This is a performance requirement (UX-006), not a style preference.
-7. **Dry, deadpan voice, never corporate.** Empty states and the "podium of the poor" carry their meaning through copy/humor, not iconography color. See §7.
+7. **Dry, deadpan voice, never corporate.** Empty states carry their meaning through copy/humor, not iconography color. See §7.
 
 ---
 
@@ -145,7 +145,7 @@ H=25°, reddish brown. Chosen to sit **below** ember in chroma and **above** it 
 
 Contrast of rust-base: **6.06:1** on N0, 5.70 on N1, 5.23 on N2, 4.67 on N3, and **5.09:1 on rust-wash** — clears 4.5:1 small-text on every surface it is used over.
 
-**Where rust is allowed**: loss/negative deltas (`CoinDelta`), the losing options of a resolved bet (label, pool figures, line-through odds, row fill and border), the Poorest leaderboard tab and its podium (digits, tab tick, row wash, mirrored bottom hairline, "House's favorite donor" line), the `BOTTOM 5` rank badge, a bottom-five "Your rank" ticker chip, and an overdrawn wallet balance.
+**Where rust is allowed**: loss/negative deltas (`CoinDelta`), the losing options of a resolved bet (label, pool figures, line-through odds, row fill and border), the Poorest leaderboard tab and its podium (digits, tab tick, row wash, mirrored bottom hairline — "bottom of the board" per principle 2 above, now the lowest current balance rather than the biggest realized loss, owner decision `agent-docs/found-bugs.md`), the `BOTTOM 5` rank badge, a bottom-five "Your rank" ticker chip, and an overdrawn wallet balance.
 
 **Where rust is banned**: any *action* (that's ember), open/closed/void state (void is a refund, not a loss — it stays N5/N6), category or identity color, and as the sole signal for anything. If you delete the `\` prefix, the line-through or the `cut-mirror` and the meaning survives only because of the hue, the treatment is wrong.
 
@@ -579,7 +579,7 @@ An **unaccepted challenge past its deadline shows `VOID · NOT ACCEPTED IN TIME`
 
 - **No 3D podium graphic.** Both boards are lists using the bet-row anatomy: oversized mono rank digit (rank 1 largest, stepping down by rank 5+), avatar, name (in the user's own name-color, §2.4), balance right-aligned mono.
 - **Richest list**: rank-1 row gets `cut-sm` on its right edge + a 1px jade top line + jade rank digit. Ranks 2–3 full-opacity white digit, 4+ muted (N6).
-- **Poor podium**: mirrored motif *and* the rust hue (owner ruling 2026-09-05 — this bullet previously read "never ember/red, zero color difference"). `cut-mirror` (opposite corner) + a 1px rust **bottom** hairline mirroring the richest board's jade top line + `rust-wash` row fill; rank digit rust at 1, `rust/80` at 2–3, muted from 4 down — the exact emphasis ramp of the richest board, in the other hue. Copy still does the heavy lifting (dry/ironic tag line under rank 1, e.g. "House's favorite donor", itself in rust). The Poorest tab's active tick is rust, the Richest tab's is jade.
+- **Poor podium**: mirrored motif *and* the rust hue (owner ruling 2026-09-05 — this bullet previously read "never ember/red, zero color difference"). `cut-mirror` (opposite corner) + a 1px rust **bottom** hairline mirroring the richest board's jade top line + `rust-wash` row fill; rank digit rust at 1, `rust/80` at 2–3, muted from 4 down — the exact emphasis ramp of the richest board, in the other hue. The Poorest tab's active tick is rust, the Richest tab's is jade. **No rank-1 tagline any more** (owner decision, `agent-docs/found-bugs.md`): Poorest now mirrors Richest by current balance rather than realized profit/loss, so it renders `CoinAmount` like the richest board, never `CoinDelta`, and copy carrying "biggest loser" humor (the old "House's favorite donor" line) no longer fits what the number means — the visual mirroring (rust, `cut-mirror`, the hairline) is what still marks this as "the bottom of the board," per principle 2/§2.3b, without needing a caption to say so.
 - **Inline rank badges** (chat, participant lists): small **slanted parallelogram tag** (not a pill) — `#1` jade fill/black text; `#2`/`#3` jade border/jade text on transparent; `TOP 5` neutral border/N6 text; `BOTTOM 5` same shape mirrored horizontally, `\` prefix instead of a down-arrow icon, rust border + rust text.
 - **Role badges** (moderator/member) are visually distinct from rank badges: rank badges are the slanted parallelogram; role badges are a plain square-cornered label with an icon (shield/star glyph), never the parallelogram shape — the two "badge" concepts must not be visually confusable in the same name-adjacent slot.
 - **Versus composition** (duel bet row, bet-detail hero — Extra Phase 3, 2026-09-07): two identity clusters opposed across a `vs` mark. Each side is the same atomic cluster as chat and the participant list (§5.7/§5.11) — `UserAvatar` + the name in its own `--name-color-N` + the inline rank badge — composed, never re-drawn. The challenger reads left-aligned, the challengee `flex-row-reverse` and right-aligned, so opposition is carried by layout. Two sizes, differing only in avatar px and type scale and never in *what* is shown: **dense** (20px avatar, `text-xs`) for the 64px feed row, **comfortable** (32px, `text-sm`) for the detail hero — §4.5's two tiers, so a duel neither gains nor loses a badge by being looked at more closely. Names truncate from a `min-w-0` wrapper (a `truncate` on `UserName` itself lands on its outer `inline-flex` and clips nothing); a participant this client cannot resolve renders a neutral `—` placeholder rather than collapsing its side, which is reachable on a duel that settled before someone left. **The separator is the word mark, not a diagonal**: §4.3's motif table bans the 68° hairline on list separators and table rows, and the one viewport that would sanction it — the bet-detail hero — has already spent its single cut on §5.11's `cut-md`. Not to be confused with the avatar cluster two bullets up, which is overlapping and same-side by construction and means the opposite thing.
@@ -631,7 +631,7 @@ First shipped use: Extra Phase 1's chat send-failure toast (`\` glyph — flood/
 
 ### 5.10 Empty & loading states
 
-- Empty: oversized ghost S-mark watermark (5% opacity, pure CSS clip-path, no image asset), one dry/irreverent line (N6), one primary CTA. Shared pattern across dashboard, poor podium, transaction history, chat, participant list — not bespoke per surface (perf + consistency).
+- Empty: oversized ghost S-mark watermark (5% opacity, pure CSS clip-path, no image asset), one dry/irreverent line (N6), one primary CTA. Shared pattern across dashboard, transaction history, chat, participant list — not bespoke per surface (perf + consistency). The poor podium no longer has an empty state of its own (owner decision, `agent-docs/found-bugs.md`): it mirrors the richest board by balance, and every member has one.
 - Loading/skeleton: shaped exactly like the real row (rail, icon tile, text bars) at `surface-1`/5% white, slow opacity breathe (0.4↔0.6, 1.2s ease-in-out) — **no gradient shimmer sweep**, no rounded-full placeholder blobs where real content is rectangular. Alternative for full-page/modal-submit loads: the S-slash mark itself, static or single opacity pulse, respecting `prefers-reduced-motion`.
 
 ### 5.11 Bet-detail page (the one full-page nav)
@@ -674,19 +674,17 @@ Shadows generally: the **only** soft `box-shadow` in the entire app is the modal
 
 ## 7. Voice & microcopy tone
 
-Dry, deadpan, irreverent — never corporate, never hype-startup. Copy does semantic work that color isn't allowed to do (especially the poor podium and empty states).
+Dry, deadpan, irreverent — never corporate, never hype-startup. Copy does semantic work that color isn't allowed to do (especially empty states).
 
 | Surface | Example line |
 |---|---|
 | Empty dashboard | "No bets yet. Someone has to make the first bad decision." |
 | Empty bet list (alt) | "Nobody's lost anything here. Yet." |
-| Poor podium, empty | "Everyone's still solvent. Suspicious." |
-| Poor podium, rank 1 tagline | "House's favorite donor" |
 | Onboarding skip affordance | plain, low-pressure — never "Complete your profile to unlock features!" |
 | Error toast | plain statement of what failed, no exclamation points, no "Oops!" |
 | Destructive confirm helper | `Type "{team}" to confirm` — factual, not alarmist |
 
-Rule: humor replaces color as the "this is the losing board" signal (§5.6) — never let copy go flat/corporate on the one surface (poor podium) that most needs personality to avoid feeling punitive.
+The poor podium's two rows above (empty-state line, rank-1 "House's favorite donor" tagline) are HISTORY, not current copy — removed when Poorest stopped ranking by realized loss (owner decision, `agent-docs/found-bugs.md`). Neither case can occur any more: the board mirrors Richest by balance, so it is always populated and rank 1 is simply whoever has the least, with no joke attached. The visual language (§5.6's rust hue, mirrored cut, hairline) still marks it as "the bottom of the board" (principle 2/§2.3b) without a caption doing that work.
 
 ### 7.1 Writing the Portuguese (UX-027)
 
@@ -706,7 +704,7 @@ pt-BR shipped in `apps/web/messages/pt-BR.json` (plan-i18n-ptbr.md D10). Everyth
 
 A **plural** heading is not the same word as a singular label: the bet feed's group heading reads `ABERTAS` where a row's state label reads `ABERTA`. English hides that; Portuguese does not, and they are separate keys because of it.
 
-**Never inflect for the player's gender.** The app has no gender field and must not acquire one. Prefer verb phrases and non-inflecting nouns over agent nouns — §7's *"House's favorite donor"* is **"Quem mais financia a casa"**, not *"Doador oficial da casa"*. Where ICU `select` is genuinely needed it is for the *bet kind*, never for the person.
+**Never inflect for the player's gender.** The app has no gender field and must not acquire one. Prefer verb phrases and non-inflecting nouns over agent nouns — the retired poor-podium tagline (§5.6, §7) *"House's favorite donor"* was **"Quem mais financia a casa"**, not *"Doador oficial da casa"*, and the technique that made that work still applies to any future agent-noun-shaped copy. Where ICU `select` is genuinely needed it is for the *bet kind*, never for the person.
 
 **Register: Brazilian informal `você`.** Never `tu`, never `vós`, never the corporate-formal imperative.
 
@@ -717,7 +715,6 @@ A **plural** heading is not the same word as a singular label: the bet feed's gr
 | en | pt-BR |
 |---|---|
 | No bets yet. Someone has to make the first bad decision. | Nenhuma aposta ainda. Alguém tem que tomar a primeira decisão ruim. |
-| Everyone's still solvent. Suspicious. | Todo mundo ainda tá no azul. Suspeito. |
 | Not enough coins. | Saldo insuficiente. |
 | That didn't go through. Try again. | Não rolou. Tente de novo. |
 

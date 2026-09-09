@@ -243,13 +243,23 @@ return only what a preview card shows: no balances, no wagerer identities, no
 comments. Anything added to either function is published to whoever holds the
 link.
 
-**Realtime (Phase 8):** the publication carries `bets`, `wagers`, `comments`
-and `bet_duels`, and must keep carrying only those — `team_members` and
-`transactions` would cost ~450 messages per bet resolution and re-apply money
-the acting client already moved. Replica identity stays at the default.
-`agent-docs/design-realtime.md` §5 is the binding rule set, and it holds
-identically hosted — the same publication, the same handlers, verified
-against the hosted dev project in `plan-hosted-early-access.md` Phase 2/3.
+**Realtime (Phase 8, revised by the negative-balance drift fix — see
+`agent-docs/found-bugs.md`):** the publication carries `bets`, `wagers`,
+`comments`, `bet_duels` and `team_members`; only `transactions` is deliberately
+absent (the ledger, unbounded, read by exactly one modal). `team_members`
+INSERT and UPDATE are both subscribed and bound: every client applies
+`coin_balance`/`profit_loss`/`role` ABSOLUTELY from the row rather than
+deriving a delta from the bet event that moved it, which is what closes the
+negative-balance drift a purely delta-based model missed (a joiner's own
+INSERT snapshotting a stale balance; ledger credits nothing was subscribed to
+at all). ~450 messages per bet resolution is real, accepted traffic under this
+model, not a re-apply of money the acting client already moved — an UPDATE
+overwrites rather than adds, so an echo of a change this client made agrees
+with its own optimistic write instead of needing a guard against replaying it.
+Replica identity stays at the default. `agent-docs/design-realtime.md` §5 is
+the binding rule set, and it holds identically hosted — the same publication,
+the same handlers, verified against the hosted dev project in
+`plan-hosted-early-access.md` Phase 2/3.
 
 **Analytics & flags (Phase 9):** both infra tables now have exactly one writer
 and one reader each.

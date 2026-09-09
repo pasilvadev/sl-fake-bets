@@ -223,8 +223,6 @@
     "eyebrow": "STANDINGS",
     "richest": "Richest",
     "poorest": "Poorest",
-    "donorNote": "House's favorite donor",
-    "empty": "Everyone's still solvent. Suspicious.",
     "full": "View full leaderboard"
   },
   "teamModule": {
@@ -364,9 +362,7 @@
     "eyebrow": "LEADERBOARD",
     "title": "Standings",
     "richest": "Richest",
-    "poorest": "Poorest",
-    "empty": "Everyone's still solvent. Suspicious.",
-    "donorNote": "House's favorite donor"
+    "poorest": "Poorest"
   },
   "transactionsModal": {
     "eyebrow": "WALLET",

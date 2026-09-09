@@ -36,11 +36,10 @@ import {
   canTransitionBetState,
   computeDuelPhase,
   computeEffectiveState,
+  deriveStandings,
   generateId,
   inviteCreationBlocker,
   removeMemberWagersInTeam,
-  reverseBet,
-  settleBet,
   validateBetDraft,
   validateChatMessage,
   validateCommentBody,
@@ -60,7 +59,6 @@ import {
   type DuelDraft,
   type MutationErrorCode,
   type ProfileDraft,
-  type SettlementDelta,
   type Team,
   type TeamAccessMode,
   type TeamDraft,
@@ -84,6 +82,7 @@ import {
   toResolution,
   toWager,
   type FetchedUser,
+  type MemberRow,
   type OnboardingInfo,
   type TeamData,
 } from "@/lib/data/team-data";
@@ -265,14 +264,23 @@ export interface TeamState {
   duelFor: (betId: string) => Duel | undefined;
   /** Live user lookup — profile edits must show up everywhere a name renders. */
   userById: (userId: string) => User | undefined;
-  /** Members sorted coinBalance desc. */
+  /** Members sorted coinBalance desc — see `deriveStandings` (`@repo/shared`). */
   richest: TeamMember[];
-  /** Members sorted profitLoss asc. */
+  /**
+   * The exact mirror of `richest`: sorted coinBalance ASC, same tie-break.
+   * Owner decision (`agent-docs/found-bugs.md`, "Richest/poorest leaderboard
+   * wrong") — Poorest used to rank by realized profit/loss (DOM-028's
+   * original "podium of the poor"), which left it empty whenever fewer than
+   * 5 members were in the red and padded with winners otherwise. Balance has
+   * no such gap: every member has one, so this list is always fully
+   * populated.
+   */
   poorest: TeamMember[];
   /**
    * One badge max per user, richest-rank precedence:
    * "1"/"2"/"3" richest ranks, "top5" richest ranks 4-5, otherwise "bottom5"
-   * if the user is among the 5 worst profitLoss AND profitLoss < 0.
+   * if the user is among the 5 lowest balances (`poorest`'s own top 5, now
+   * that both boards share one metric).
    */
   rankBadgeFor: (userId: string) => RankBadgeKind | null;
   /** Open-bet count for any of the user's teams (team-switcher rows). */
@@ -482,13 +490,23 @@ type TeamDataAction =
   | { type: "place-wager"; teamId: string; wager: Wager }
   | { type: "close-bet"; betId: string; closedAt: string }
   | {
+      /**
+       * A bet resolving — pool or duel. Carries no `deltas` any more (the
+       * negative-balance drift fix, `agent-docs/found-bugs.md`): balances are
+       * server-authoritative via the `member-update` case below, so this
+       * action only ever flips the bet's own state/resolution. The acting
+       * client's own balance moves through its RPC's `balanceAfter` (see
+       * `resolveBet` below) or, for `resolve_bet`/`delete_bet` which return
+       * deltas rather than a snapshot, through its own realtime echo of the
+       * `team_members` UPDATE the RPC wrote — same channel, same event every
+       * other open tab receives.
+       */
       type: "resolve-bet";
       teamId: string;
       betId: string;
       resolution: BetResolution;
-      deltas: SettlementDelta[];
     }
-  | { type: "delete-bet"; teamId: string; betId: string; deltas: SettlementDelta[] }
+  | { type: "delete-bet"; teamId: string; betId: string }
   // --- duels (Extra Phase 2) ---
   // Four actions for three mutators and one remote event. Each of the three
   // writes is COMPOUND — a duel is never one row — so each gets one action
@@ -519,11 +537,12 @@ type TeamDataAction =
    * `app.settle_bet`.
    */
   | {
+      /** No `deltas` field for the same reason `resolve-bet` above has none
+       * — the refund is server-authoritative via `member-update`. */
       type: "void-duel";
       teamId: string;
       betId: string;
       reason: BetVoidReason;
-      deltas: SettlementDelta[];
     }
   /** A `bet_duels` INSERT or UPDATE off the team channel — see realtime.ts for
    * why one variant covers both, and `applyRemote` for the receive rule. */
@@ -531,19 +550,58 @@ type TeamDataAction =
   /**
    * A `team_members` INSERT off the team channel (bug fix, amending
    * design-realtime.md §5 rule 3 — see realtime.ts's `subscribeTeamChannel`
-   * for the full argument for why an INSERT-only exception is safe). `user`
-   * is present only when this client had never held the joiner's `users` row
-   * before — a brand-new account, or an existing one this client has simply
-   * never shared a team with — and is what makes `userById` resolve for them
-   * from the very next render, everywhere a bet, wager or roster row names
-   * them.
+   * for the full argument for why an INSERT-only exception is safe).
+   *
+   * Carries only the membership — no `user` field, unlike before the
+   * negative-balance drift fix. Dispatched SYNCHRONOUSLY, before
+   * `applyRemote`'s `member-insert` case even starts its conditional
+   * `fetchUser`, so the row exists on this client's copy of the roster the
+   * instant the event arrives rather than after a round trip — see that
+   * case's own comment for why the old ordering (await first, dispatch
+   * second) silently dropped a `member-update` that landed in the gap.
+   * `add-user` below is the joiner's `users` row, when this client needs it,
+   * as its own separate, later dispatch.
    */
-  | {
-      type: "add-member";
-      teamId: string;
-      member: TeamMember;
-      user: FetchedUser | null;
-    }
+  | { type: "add-member"; teamId: string; member: TeamMember }
+  /**
+   * The joiner's `users` row (and onboarding fact), fetched only when
+   * `member-insert` finds this client has never held it — a brand-new
+   * account, or an existing one this client has simply never shared a team
+   * with. A separate action from `add-member` (which it used to ride as an
+   * optional field) precisely so the membership is not held hostage to this
+   * fetch: see `add-member`'s own comment. `update-user` below cannot serve
+   * this role — it only ever replaces an existing entry in `data.users`, and
+   * this is the one case that has to APPEND a new one.
+   */
+  | { type: "add-user"; user: FetchedUser }
+  /**
+   * One or more `team_members` UPDATEs off the team channel (the
+   * negative-balance drift fix, `agent-docs/found-bugs.md`) — `coinBalance`,
+   * `profitLoss` and `role` applied ABSOLUTELY from each row, replacing the
+   * member wholesale rather than adding to whatever this client currently
+   * shows. This is what makes every open tab, including the one that caused
+   * the change, agree with Postgres: see realtime.ts's `subscribeTeamChannel`
+   * for the full argument for why an UPDATE binding is now safe where
+   * design-realtime.md §5 rule 3 used to forbid one.
+   *
+   * Plural, and always dispatched through the coalescing buffer
+   * (`flushMemberUpdates` below) even for a single row: a resolution moves
+   * many members in one Postgres transaction but arrives as that many
+   * separate Realtime messages, and batching them into one dispatch is what
+   * keeps the standings module from re-sorting once per row.
+   */
+  | { type: "member-updates"; teamId: string; members: TeamMember[] }
+  /**
+   * The acting client's own instant balance feedback (negative-balance drift
+   * fix) — set ABSOLUTELY from an RPC's own `balance_after`, exactly the way
+   * `add-transaction` below already does for a ledger credit. Only
+   * `place_wager`/`create_duel`/`accept_duel` dispatch this: each returns a
+   * snapshot already. `resolve_bet`/`delete_bet` return deltas instead of a
+   * snapshot, so the actor does not get a second, competing local write for
+   * the same field — it simply waits for its own `member-update` echo of the
+   * `team_members` UPDATE the RPC already wrote, same as every other open tab.
+   */
+  | { type: "set-balance"; teamId: string; userId: string; balanceAfter: number }
   | {
       type: "remove-membership";
       teamId: string;
@@ -551,16 +609,21 @@ type TeamDataAction =
       ban: boolean;
       wagers: Wager[];
       /**
-       * The duels this departure voids, with the refund each one applies
-       * (Extra Phase 2, task 11) — computed by `departureCascade` below from
-       * `voidDuelsForDepartingMember`, and carried on THIS action rather than
+       * The bet ids of the duels this departure voids (Extra Phase 2, task
+       * 11), computed by `departureCascade` below from
+       * `voidDuelsForDepartingMember` — carried on THIS action rather than
        * dispatched as a burst of `void-duel`s because the voids, the wager
        * cascade and the membership deletion are one server transaction and
        * must be one local commit too. Empty for the overwhelmingly common
        * departure of somebody who was in no duel — and empty, by D7, for a
        * departing MEDIATOR, who strands nothing.
+       *
+       * No `deltas` alongside them (unlike before the negative-balance drift
+       * fix): the refund each voided duel pays out is server-authoritative
+       * via `member-update`, so this list only has to say WHICH bets flip to
+       * resolved, never how much money moved.
        */
-      voidedDuels: { betId: string; deltas: SettlementDelta[] }[];
+      voidedBetIds: string[];
     }
   | { type: "update-team-access"; teamId: string; accessMode: TeamAccessMode }
   | { type: "delete-team"; teamId: string }
@@ -577,25 +640,6 @@ function patchMembers(
   return teams.map((team) =>
     team.id === teamId ? { ...team, members: team.members.map(patch) } : team,
   );
-}
-
-/** Apply per-member balance/profitLoss deltas from settlement.ts. */
-function applyDeltas(
-  teams: Team[],
-  teamId: string,
-  deltas: SettlementDelta[],
-): Team[] {
-  const deltaByUser = new Map(deltas.map((d) => [d.userId, d]));
-  return patchMembers(teams, teamId, (m) => {
-    const delta = deltaByUser.get(m.userId);
-    return delta
-      ? {
-          ...m,
-          coinBalance: m.coinBalance + delta.balanceDelta,
-          profitLoss: m.profitLoss + delta.profitLossDelta,
-        }
-      : m;
-  });
 }
 
 /**
@@ -656,7 +700,7 @@ function departureCascade(
   teamId: string,
   userId: string,
 ): {
-  voidedDuels: { betId: string; deltas: SettlementDelta[] }[];
+  voidedBetIds: string[];
   keptWagers: Wager[];
   removedWagerIds: string[];
 } {
@@ -686,18 +730,12 @@ function departureCascade(
   const kept = new Set(keptWagers.map((w) => w.id));
 
   return {
-    // Deltas are computed per bet rather than flattened, so the reducer can
-    // skip one duel whose realtime echo already landed without having to guess
-    // which entries in a flat list belonged to it. Filtering `data.bets` (over
-    // mapping `voidedBetIds`) keeps the output in the same `bets` order
-    // `voidDuelsForDepartingMember` promises and needs no lookup that could
-    // miss — the ids came out of this very list.
-    voidedDuels: data.bets
-      .filter((bet) => voided.has(bet.id))
-      .map((bet) => ({
-        betId: bet.id,
-        deltas: settleBet(bet, data.wagers, DEPARTURE_VOID),
-      })),
+    // Already in `bets` order — `voidDuelsForDepartingMember` promises it and
+    // `voidedBetIds` is that function's return value, untouched. No `deltas`
+    // alongside them (the negative-balance drift fix): the refund is
+    // server-authoritative via the `member-update` reducer case, so the
+    // reducer only needs to know WHICH bets this departure resolved.
+    voidedBetIds,
     keptWagers,
     removedWagerIds: data.wagers.filter((w) => !kept.has(w.id)).map((w) => w.id),
   };
@@ -721,18 +759,17 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       if (data.bets.some((b) => b.id === action.bet.id)) return data;
       return { ...data, bets: [...data.bets, action.bet] };
     case "place-wager": {
-      // The stake leaves the balance at placement (decision §4.6 money model).
+      // The stake leaves the balance at placement (decision §4.6 money
+      // model), but the debit itself is no longer applied here — the
+      // negative-balance drift fix (`agent-docs/found-bugs.md`) made balances
+      // server-authoritative, so the wagerer's `coinBalance` moves only
+      // through `member-update` (their own realtime echo of `place_wager`'s
+      // debit, or `placeWager`'s own instant `set-balance` dispatch for the
+      // acting client — see that mutator below). This case only ever adds the
+      // wager row.
       const { wager } = action;
       if (data.wagers.some((w) => w.id === wager.id)) return data;
-      return {
-        ...data,
-        wagers: [...data.wagers, wager],
-        teams: patchMembers(data.teams, action.teamId, (m) =>
-          m.userId === wager.userId
-            ? { ...m, coinBalance: m.coinBalance - wager.amount }
-            : m,
-        ),
-      };
+      return { ...data, wagers: [...data.wagers, wager] };
     }
     case "close-bet":
       // DOM-012: closesAt is exactly when open→closed happened — an early
@@ -746,6 +783,12 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         ),
       };
     case "resolve-bet":
+      // Settlement credits balances + realized P/L (decision §4.6 — no
+      // Transaction rows, resolution is not a ledger event), but not here any
+      // more: the negative-balance drift fix made balances
+      // server-authoritative, so this case only ever flips the bet's own
+      // state/resolution and every member's `coinBalance`/`profitLoss` moves
+      // through its own `member-update` echo instead.
       return {
         ...data,
         bets: data.bets.map((b) =>
@@ -753,15 +796,11 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
             ? { ...b, state: "resolved" as const, resolution: action.resolution }
             : b,
         ),
-        // Settlement credits balances + realized P/L; no Transaction rows
-        // (decision §4.6 — resolution is not a ledger event).
-        teams: applyDeltas(data.teams, action.teamId, action.deltas),
       };
     case "delete-bet":
-      // DOM-033 hard delete: the bet, its wagers and its comments go, and the
-      // deltas undo its money effects. Since Phase 6 they arrive from the
-      // delete_bet RPC — the reversal Postgres actually applied — rather than
-      // being recomputed here from settlement.ts.
+      // DOM-033 hard delete: the bet, its wagers and its comments go. The
+      // money reversal `delete_bet` applied no longer lands here (see
+      // `resolve-bet` above for why) — it arrives as `member-update`.
       return {
         ...data,
         bets: data.bets.filter((b) => b.id !== action.betId),
@@ -773,7 +812,6 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         // matching row costs one pass and cannot be forgotten later, whereas a
         // guard has to stay in step with what `kind` means.
         duels: data.duels.filter((d) => d.betId !== action.betId),
-        teams: applyDeltas(data.teams, action.teamId, action.deltas),
       };
     case "start-duel": {
       // Idempotent in THREE places rather than one, and the split matters.
@@ -789,23 +827,15 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       const hasDuel = data.duels.some((d) => d.betId === duel.betId);
       const hasWager = data.wagers.some((w) => w.id === wager.id);
       if (hasBet && hasDuel && hasWager) return data;
+      // The debit (decision §4.6 money model — D5: no escrow, no held-balance
+      // column) no longer lands here: it is server-authoritative via
+      // `member-update`, and the acting client gets its instant feedback from
+      // `startDuel`'s own `set-balance` dispatch below instead.
       return {
         ...data,
         bets: hasBet ? data.bets : [...data.bets, bet],
         duels: hasDuel ? data.duels : [...data.duels, duel],
         wagers: hasWager ? data.wagers : [...data.wagers, wager],
-        // The debit rides the WAGER's idempotency, exactly as `place-wager`
-        // does: the challenger's stake left their balance at placement
-        // (decision §4.6 money model) and this is that placement, not a
-        // separate duel-shaped movement of coins. D5 in one line — there is no
-        // escrow here and there must not be one.
-        teams: hasWager
-          ? data.teams
-          : patchMembers(data.teams, action.teamId, (m) =>
-              m.userId === wager.userId
-                ? { ...m, coinBalance: m.coinBalance - wager.amount }
-                : m,
-            ),
       };
     }
     case "accept-duel": {
@@ -816,6 +846,9 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       // `Duel.expiresAt` is untouched on purpose: after this the bet no longer
       // remembers when the challenge would have lapsed, and that column is the
       // only surviving record of it.
+      // The challengee's debit, likewise, is server-authoritative via
+      // `member-update` now — `acceptDuel`'s own `set-balance` dispatch below
+      // is the acting client's instant feedback.
       const { wager } = action;
       const hasWager = data.wagers.some((w) => w.id === wager.id);
       return {
@@ -829,27 +862,19 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
           d.betId === action.betId ? { ...d, acceptedAt: action.acceptedAt } : d,
         ),
         wagers: hasWager ? data.wagers : [...data.wagers, wager],
-        teams: hasWager
-          ? data.teams
-          : patchMembers(data.teams, action.teamId, (m) =>
-              m.userId === wager.userId
-                ? { ...m, coinBalance: m.coinBalance - wager.amount }
-                : m,
-            ),
       };
     }
     case "void-duel": {
-      // The one guard in this reducer that exists to stop MONEY moving twice,
-      // rather than to stop a row appearing twice. `resolve-bet` above has no
-      // such check because it predates realtime and Postgres is authoritative
-      // anyway; here the race is easy to hit and cheap to close — a client that
+      // The guard against a duel appearing resolved twice (a client that
       // declines a duel receives its own `bets` UPDATE echo on the team
-      // channel, and if that echo wins the race against the RPC's return, the
-      // refund has already been applied by `applyRemote`'s `bet-update` case.
-      // Re-applying these deltas would credit the challenger their stake twice
-      // on screen until the next load. `bet-update` holds the mirror image of
-      // this guard (`bet.state !== "resolved"`), so exactly one of the two
-      // paths ever applies the money, whichever arrives first.
+      // channel, and if that echo wins the race against the RPC's return,
+      // `applyRemote`'s `bet-update` case has already flipped this bet's
+      // state). Money is no longer this guard's concern — the refund is
+      // server-authoritative via `member-update`, which has its own,
+      // independent idempotency (Realtime never redelivers the same UPDATE),
+      // so a redundant state flip here would be harmless on its own; the
+      // guard stays because re-running it costs nothing and keeps this case
+      // provably idempotent rather than merely lucky.
       const bet = data.bets.find((b) => b.id === action.betId);
       if (!bet || bet.state === "resolved") return data;
       return {
@@ -872,7 +897,6 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
               }
             : b,
         ),
-        teams: applyDeltas(data.teams, action.teamId, action.deltas),
       };
     }
     case "duel-upsert": {
@@ -927,25 +951,53 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
             }
           : t,
       );
-      // `action.user` is `null` exactly when this client already held the
-      // joiner's `users` row (an existing account joining a SECOND team this
-      // client can see) — team-context.tsx's `applyRemote` decides that
-      // before dispatching, because only it can check `dataRef` at the moment
-      // the event actually arrived. Skip the merge rather than re-check here:
-      // re-deriving "already known" from `data.users`, which may have moved on
-      // by the time this reducer runs, could disagree with that decision and
-      // either drop a real user row or duplicate one.
-      if (!action.user) return { ...data, teams };
+      return { ...data, teams };
+    }
+    case "add-user":
+      // Universal insert guard, same shape as `add-bet`/`add-comment`: two
+      // concurrent `member-insert`s for the same never-before-seen user (one
+      // person joining two of this client's teams close together) can both
+      // decide "not known yet" before either dispatches, so this is what
+      // keeps the second `fetchUser`'s answer from duplicating `data.users`.
+      if (data.users.some((u) => u.id === action.user.user.id)) return data;
       return {
         ...data,
-        teams,
         users: [...data.users, action.user.user],
         onboarding: {
           ...data.onboarding,
           [action.user.user.id]: action.user.onboarding,
         },
       };
+    case "member-updates": {
+      // The negative-balance drift fix's whole point: overwrite each member
+      // ABSOLUTELY from the row Postgres just wrote — no delta math, ever.
+      // Ignore any member this client does not already hold (the universal
+      // receive rule) rather than inserting one: an UPDATE can only ever be
+      // about a row that already exists on this client's copy of the roster,
+      // since the INSERT that created it is a separate, older event.
+      const byUserId = new Map(action.members.map((m) => [m.userId, m]));
+      return {
+        ...data,
+        teams: patchMembers(
+          data.teams,
+          action.teamId,
+          (m) => byUserId.get(m.userId) ?? m,
+        ),
+      };
     }
+    case "set-balance":
+      // The acting client's own instant feedback (see this action's doc
+      // comment) — absolute, exactly like `member-update` and
+      // `add-transaction`, just narrower: only `coinBalance` is known at the
+      // call site, not the whole row.
+      return {
+        ...data,
+        teams: patchMembers(data.teams, action.teamId, (m) =>
+          m.userId === action.userId
+            ? { ...m, coinBalance: action.balanceAfter }
+            : m,
+        ),
+      };
     case "remove-membership": {
       // DOM-031/032: the membership (and with it the per-team balance) goes,
       // the pre-computed cascade replaces the wager list, and a ban — unlike a
@@ -959,17 +1011,20 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
       // world in which these bets are already resolved.
       //
       // Skipping a duel this client already holds as resolved is the same
-      // money-moves-once guard `void-duel` carries, for the same race: the
-      // `bets` UPDATE the server's void produced may have arrived on the team
-      // channel before the RPC returned, in which case `bet-update` has already
-      // applied this refund.
-      const pending = action.voidedDuels.filter((v) =>
-        data.bets.some((b) => b.id === v.betId && b.state !== "resolved"),
-      );
-      const voided = new Set(pending.map((v) => v.betId));
-      const teams = pending.reduce(
-        (acc, v) => applyDeltas(acc, action.teamId, v.deltas),
-        data.teams,
+      // guard `void-duel` carries, for the same race: the `bets` UPDATE the
+      // server's void produced may have arrived on the team channel before
+      // the RPC returned, in which case `bet-update` has already flipped it.
+      // The refund itself is no longer applied here either way (negative-
+      // balance drift fix) — it is server-authoritative via `member-update`,
+      // including for the departing member's own transient credit: Postgres
+      // still applies it (`app.void_duel` before `remove_membership` deletes
+      // the row), this client just never has to mirror it locally, because
+      // that membership is filtered out of `data.teams` two lines below
+      // regardless of what its balance briefly was.
+      const voided = new Set(
+        action.voidedBetIds.filter((betId) =>
+          data.bets.some((b) => b.id === betId && b.state !== "resolved"),
+        ),
       );
       return {
         ...data,
@@ -986,13 +1041,7 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
                     }
                   : b,
               ),
-        // The departing member's own refund is applied and then discarded with
-        // their membership one line below, which is exactly what Postgres does
-        // — `app.void_duel` credits every wagerer's `team_members` row and
-        // `remove_membership` deletes theirs immediately after. Their per-team
-        // balance dies with the membership (decision §4.4); there is nothing to
-        // pay it to and nowhere for it to go.
-        teams: teams.map((t) =>
+        teams: data.teams.map((t) =>
           t.id === action.teamId
             ? {
                 ...t,
@@ -1355,6 +1404,47 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [flushTick, setFlushTick] = useState(0);
 
   /**
+   * Coalesces `member-update` events within one animation frame (negative-
+   * balance drift fix, step 8 of the plan in `agent-docs/found-bugs.md`).
+   *
+   * A single `resolve_bet` can rewrite dozens of `team_members` rows in one
+   * transaction — the exact shape `design-realtime.md` §5 rule 3 counts as
+   * "~30 balance rows" — and each arrives here as its OWN Realtime message,
+   * not as one batch. Dispatching one `member-update` per message would
+   * re-sort the standings module and re-render every roster row as many
+   * times, milliseconds apart, each showing a still-incomplete picture of the
+   * same resolution — a visible shuffle for a change that is really one
+   * event from the user's point of view. Buffered per team, keyed by user id
+   * (a later row for the same member during the same frame replaces the
+   * earlier one rather than queuing both), and flushed as a single
+   * `member-updates` dispatch on the next animation frame, so the roster
+   * moves once, straight to its final state.
+   */
+  const memberUpdateBuffer = useRef(new Map<string, Map<string, MemberRow>>());
+  const memberUpdateFrame = useRef<number | null>(null);
+  const flushMemberUpdates = useCallback(() => {
+    memberUpdateFrame.current = null;
+    for (const [teamId, byUser] of memberUpdateBuffer.current) {
+      dispatch({
+        type: "member-updates",
+        teamId,
+        members: [...byUser.values()].map(toMember),
+      });
+    }
+    memberUpdateBuffer.current.clear();
+  }, []);
+  // Belt and braces: a frame queued just before unmount must not dispatch
+  // into a provider that is no longer there.
+  useEffect(
+    () => () => {
+      if (memberUpdateFrame.current !== null) {
+        cancelAnimationFrame(memberUpdateFrame.current);
+      }
+    },
+    [],
+  );
+
+  /**
    * Pull the whole world down again. Used on sign-in, on team switching
    * between accounts, and after the two mutations that change which teams the
    * user belongs to (create/join a team) — those re-scope everything.
@@ -1456,13 +1546,20 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    *     is what keeps money from moving twice — and it makes at-least-once
    *     delivery harmless.
    *
-   * Balances move here without `team_members` UPDATEs ever being subscribed
-   * (§5 rule 3): a resolution or a deletion carries enough to recompute the
-   * same deltas Postgres applied, through the same `settleBet` / `reverseBet`
-   * the RPCs are SQL twins of. `team_members` INSERT is a later, narrow
-   * exception to that same rule — see the `member-insert` case below and
-   * realtime.ts's header for why an INSERT does not reopen the flood problem
-   * the rule exists to prevent.
+   * Balances used to move here purely by re-deriving them from a resolution's
+   * or a deletion's own event, with `team_members` UPDATEs never subscribed at
+   * all (§5 rule 3) — until the negative-balance drift fix
+   * (`agent-docs/found-bugs.md`) found the two write paths that broke that
+   * model (a joiner's balance snapshotted at zero before their grant landed;
+   * every ledger credit invisible to anyone but the credited member's own
+   * tab) and replaced it with the simpler rule realtime.ts's header argues
+   * for at length: `team_members` UPDATE is now subscribed, and every
+   * `coinBalance`/`profitLoss` on this client is SET FROM that row, never
+   * computed from a delta. `resolve-bet` and `delete-bet` above therefore
+   * carry no money at all any more — the `member-update` case below is where
+   * it arrives, for every wagerer, on every open tab. `team_members` INSERT
+   * remains the narrower, earlier exception it always was — see the
+   * `member-insert` case below.
    *
    * Extra Phase 1 (UX-019) adds a fourth event, `chat-insert` — see that case
    * below for the two EXTRA guards it needs beyond the two invariants above
@@ -1491,6 +1588,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
    * the fetch for an already-known user is not an optimization bolted on after
    * the fact — it is what keeps a member joining their SECOND visible team from
    * reading as a second, duplicate `users` row.
+   *
+   * The second post-launch bug fix (the negative-balance drift) adds
+   * `member-update`, which needs no read at all — the row is a complete
+   * `MemberRow` and `toMember` maps it exactly as `loadTeamData` does — only
+   * the same team-id recheck `member-insert` already carries, plus the
+   * universal receive rule applied literally: a member this client does not
+   * already hold is ignored rather than inserted, because an UPDATE is never
+   * the first thing this client learns about a row.
    */
   const applyRemote = useCallback(
     async (event: RemoteEvent) => {
@@ -1508,15 +1613,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           const resolution = toResolution(event.row);
           if (event.row.state === "resolved" && bet.state !== "resolved") {
             if (!resolution) return;
+            // No `deltas` any more (negative-balance drift fix): the payout
+            // `resolve_bet` wrote reaches every subscriber, this one included,
+            // as its own `member-update` event(s) on this same channel — this
+            // dispatch only has to flip the bet's state/resolution.
             dispatch({
               type: "resolve-bet",
               teamId: bet.teamId,
               betId: bet.id,
               resolution,
-              // The deltas `resolve_bet` wrote, recomputed rather than shipped:
-              // the RPC is settleBet's SQL twin over the same wagers, and this
-              // client holds those wagers because they arrived on this channel.
-              deltas: settleBet(bet, dataRef.current.wagers, resolution),
             });
             return;
           }
@@ -1534,12 +1639,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         case "bet-delete": {
           const bet = dataRef.current.bets.find((b) => b.id === event.betId);
           if (!bet) return;
-          dispatch({
-            type: "delete-bet",
-            teamId: bet.teamId,
-            betId: bet.id,
-            deltas: reverseBet(bet, dataRef.current.wagers),
-          });
+          // No `deltas` (see "bet-update" above) — `delete_bet`'s reversal
+          // arrives as its own `member-update` event(s).
+          dispatch({ type: "delete-bet", teamId: bet.teamId, betId: bet.id });
           return;
         }
         case "wager-insert": {
@@ -1623,22 +1725,66 @@ export function TeamProvider({ children }: { children: ReactNode }) {
             return;
           }
           const member = toMember(row);
-          // This is the bug fix's other half. Without this fetch, a BRAND-NEW
-          // account — one no team this client belongs to has ever put in
-          // `data.users` — leaves `userById(member.userId)` answering
-          // `undefined` the instant this member's own bet or wager arrives on
-          // this same channel, and the "created by" tag it should carry
-          // renders blank until the next full load. `known` short-circuits
-          // the round trip for the ordinary case: an existing account joining
-          // a SECOND team this client can already see.
-          const known = dataRef.current.users.some((u) => u.id === member.userId);
-          const user = known ? null : await fetchUser(supabase, member.userId);
-          dispatch({ type: "add-member", teamId: row.team_id, member, user });
+          // Dispatched SYNCHRONOUSLY, before the `fetchUser` below even
+          // starts — the second half of the negative-balance drift fix's
+          // `member-insert` ordering repair (`agent-docs/found-bugs.md`).
+          // This used to await `fetchUser` first, so an UPDATE for the
+          // joiner landing during that round trip (the onboarding grant, the
+          // first daily reward) was dropped as "unknown member" — nothing
+          // in `patchMembers` found a row to patch. Dispatching the
+          // membership immediately shrinks that window to nothing: the row
+          // exists on this client's copy the instant this handler runs, and
+          // any `member-update` that arrives after it, even a microtask
+          // later, has somewhere to land.
+          dispatch({ type: "add-member", teamId: row.team_id, member });
+          // This is the bug fix's other half, and it can now run AFTER the
+          // dispatch above rather than gating it: a BRAND-NEW account — one
+          // no team this client belongs to has ever put in `data.users` —
+          // leaves `userById(member.userId)` answering `undefined` the
+          // instant this member's own bet or wager arrives on this same
+          // channel, and the "created by" tag it should carry renders blank
+          // until the next full load (`bet-row.tsx`'s `creator && (...)`).
+          // `known` short-circuits the round trip for the ordinary case: an
+          // existing account joining a SECOND team this client can already
+          // see. The blank-name window this leaves is now bounded to one
+          // fetch round trip rather than the whole membership — the fix
+          // above is what stops a joiner's own balance from going missing
+          // too, which was the worse half of this bug.
+          if (dataRef.current.users.some((u) => u.id === member.userId)) return;
+          const user = await fetchUser(supabase, member.userId);
+          if (user) dispatch({ type: "add-user", user });
+          return;
+        }
+        case "member-update": {
+          const { row } = event;
+          // Same defense-in-depth as `member-insert`'s identical guard.
+          if (row.team_id !== teamIdRef.current) return;
+          // The universal receive rule: a member this client does not already
+          // hold is ignored, never inserted — an UPDATE cannot be the first
+          // this client learns of a row; the INSERT that created it is a
+          // separate, earlier event.
+          const team = dataRef.current.teams.find((t) => t.id === row.team_id);
+          if (!team || !team.members.some((m) => m.userId === row.user_id)) {
+            return;
+          }
+          // Buffered rather than dispatched straight away — see
+          // `flushMemberUpdates`'s own doc comment for why a resolution's
+          // worth of these must land as one `member-updates` dispatch, not
+          // one per row.
+          let byUser = memberUpdateBuffer.current.get(row.team_id);
+          if (!byUser) {
+            byUser = new Map();
+            memberUpdateBuffer.current.set(row.team_id, byUser);
+          }
+          byUser.set(row.user_id, row);
+          if (memberUpdateFrame.current === null) {
+            memberUpdateFrame.current = requestAnimationFrame(flushMemberUpdates);
+          }
           return;
         }
       }
     },
-    [supabase],
+    [supabase, flushMemberUpdates],
   );
 
   /** Hold events aside while a full load is in flight; see `reload`. */
@@ -1919,6 +2065,18 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           placedAt: result.wager.placedAt,
         },
       });
+      // Instant feedback (negative-balance drift fix): `place_wager` already
+      // returns the post-debit snapshot, so the actor's own balance is set
+      // from it immediately rather than waiting for its `member-update`
+      // echo. That echo still arrives a moment later and simply confirms the
+      // same number — Realtime delivers in commit order, so it can never be
+      // stale here.
+      dispatch({
+        type: "set-balance",
+        teamId: team.id,
+        userId: member.userId,
+        balanceAfter: result.wager.balanceAfter,
+      });
       return ok;
     },
     [supabase, data.bets, data.teams, data.wagers, currentUserId],
@@ -2067,12 +2225,17 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           ? { kind: "void", reason: resolution.reason ?? "mediator" }
           : resolution;
 
+      // No local balance patch here (negative-balance drift fix): the payout
+      // `resolve_bet` wrote reaches this same client as its own
+      // `member-update` echo, exactly as it reaches every other open tab —
+      // `result.deltas` is no longer read for anything but has stayed on the
+      // RPC's return shape (see bet-mutations.ts) since `resolve_bet` has no
+      // cheaper snapshot to offer for potentially dozens of wagerers at once.
       dispatch({
         type: "resolve-bet",
         teamId: bet.teamId,
         betId: bet.id,
         resolution: applied,
-        deltas: result.deltas ?? [],
       });
       return ok;
     },
@@ -2116,12 +2279,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const result = await betDb.deleteBet(supabase, bet.id);
       if (!result.ok) return result;
 
-      dispatch({
-        type: "delete-bet",
-        teamId: bet.teamId,
-        betId: bet.id,
-        deltas: result.deltas ?? [],
-      });
+      // No local balance patch (see `resolveBet` above for the same note) —
+      // `delete_bet`'s reversal arrives as this client's own `member-update`
+      // echo.
+      dispatch({ type: "delete-bet", teamId: bet.teamId, betId: bet.id });
       return ok;
     },
     [supabase, data.bets, data.teams, data.duels, currentUserId],
@@ -2320,6 +2481,14 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         placedAt: started.createdAt,
       };
       dispatch({ type: "start-duel", teamId: ctx.team.id, bet, duel, wager });
+      // Instant feedback (negative-balance drift fix), exactly as `placeWager`
+      // does: `create_duel` already returns the post-debit snapshot.
+      dispatch({
+        type: "set-balance",
+        teamId: ctx.team.id,
+        userId: ctx.userId,
+        balanceAfter: started.balanceAfter,
+      });
       return ok;
     },
     [supabase, requireContext, data.users],
@@ -2418,6 +2587,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           placedAt: result.accepted.acceptedAt,
         },
       });
+      // Instant feedback (negative-balance drift fix), exactly as `placeWager`
+      // and `startDuel` do: `accept_duel` already returns the post-debit
+      // snapshot.
+      dispatch({
+        type: "set-balance",
+        teamId: team.id,
+        userId: currentUserId,
+        balanceAfter: result.accepted.balanceAfter,
+      });
       return ok;
     },
     [supabase, data.bets, data.teams, data.duels, currentUserId],
@@ -2478,18 +2656,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const result = await betDb.declineDuel(supabase, bet.id, reason);
       if (!result.ok) return result;
 
-      dispatch({
-        type: "void-duel",
-        teamId: bet.teamId,
-        betId: bet.id,
-        reason,
-        // The refunds Postgres actually applied, not a second local
-        // computation of them: `app.void_duel` runs `app.settle_bet(bet,
-        // 'void', null)` — the SQL twin of `settleBet`, the same function a
-        // mediator's ruling and `delete_bet`'s reversal both go through — so
-        // the balances on screen are the ones the database wrote.
-        deltas: result.deltas ?? [],
-      });
+      // The refund `app.void_duel` applied (via `app.settle_bet(bet, 'void',
+      // null)` — the SQL twin of `settleBet`) is no longer read from
+      // `result.deltas` here: it reaches the challenger, on every open tab
+      // including this one, as its own `member-update` echo.
+      dispatch({ type: "void-duel", teamId: bet.teamId, betId: bet.id, reason });
       return ok;
     },
     [supabase, data.bets, data.teams, data.duels, currentUserId],
@@ -2813,7 +2984,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         userId,
         ban,
         wagers: cascade.keptWagers,
-        voidedDuels: cascade.voidedDuels,
+        voidedBetIds: cascade.voidedBetIds,
       });
       return ok;
     },
@@ -2981,7 +3152,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       userId: ctx.userId,
       ban: false,
       wagers: cascade.keptWagers,
-      voidedDuels: cascade.voidedDuels,
+      voidedBetIds: cascade.voidedBetIds,
     });
     setCurrentTeamId(null);
     return ok;
@@ -3174,12 +3345,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const duelByBetId = new Map(duels.map((d) => [d.betId, d]));
     const duelFor = (betId: string) => duelByBetId.get(betId);
 
-    const richest = [...team.members].sort((a, b) => b.coinBalance - a.coinBalance);
-    const poorest = [...team.members].sort((a, b) => a.profitLoss - b.profitLoss);
-
-    const bottomFive = new Set(
-      poorest.slice(0, 5).filter((m) => m.profitLoss < 0).map((m) => m.userId),
-    );
+    const { richest, poorest, bottomFive } = deriveStandings(team.members);
 
     const rankBadgeFor = (userId: string): RankBadgeKind | null => {
       const richestIndex = richest.findIndex((m) => m.userId === userId);
