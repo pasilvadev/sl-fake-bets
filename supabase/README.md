@@ -47,6 +47,40 @@ refuse to run while linked to prod, precisely because it would mean every
 | `db:push:prod` | `scripts/db-push-prod.sh` | prod, guarded — below |
 | `config:push:prod` | `scripts/config-push-prod.sh` | prod, guarded — below |
 
+### A change that needs a migration ships it to BOTH projects, in the same session
+
+**Owner ruling, 2026-09-09:** while production is in alpha, a migration (or a
+`config.toml` change) that the code in the same change depends on is pushed
+to **dev and then prod as part of that change** — not left for a later,
+separate order. Prod is alpha; friends losing a session or seeing a wrong
+number for an hour is a lower cost than the alternative, which has already
+happened once: `20260907150000_invite_links.sql` sat on dev only while the
+commit that needed it reached `main`, and `main` deploys to production on its
+own (Vercel Git deploys of `main` ARE the prod deploy). Code that needs a
+schema it does not have fails in production until someone notices.
+
+The sequence, every time:
+
+1. `pnpm db:push:dev` (after `set -a; source .env.ops; set +a`), then verify
+   the behaviour on dev — PostgREST as a seeded user, the browser, whatever the
+   change calls for — and run `scripts/supabase-privilege-audit.sql` on dev.
+2. `pnpm db:push:prod`. From an agent shell, where the script's typed prompt
+   has no tty, `echo prod | bash scripts/db-push-prod.sh` — every guard in the
+   script still runs (`.env.ops` present, refs set, repo not linked to prod,
+   dry-run printed first); only the keyboard is replaced. Do the dry-run by
+   hand before that and read the pending list: it must be exactly the files
+   the change added.
+3. Run the privilege audit on prod (read-only, Management API) and a read-only
+   `select` confirming the objects the change added — never a write, never
+   PostgREST as a fixture account (prod has none and must not).
+4. Commit with the verification recorded. The migration files and the code
+   that needs them land in one commit, and prod already has the schema when
+   that commit reaches `main`.
+
+What does NOT change: prod is still never `db reset`, `--include-seed` still
+never appears beside a prod ref, and the two prod scripts are still the only
+path there. This ruling is about *when* to run them, not about adding a third.
+
 ### Why the CLI's own prompt cannot be trusted
 
 `db reset`'s confirmation is `Confirm resetting the remote database? [Y/n]` —
