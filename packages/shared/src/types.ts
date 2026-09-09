@@ -348,14 +348,21 @@ export interface ChatMessage {
 /**
  * Coin-ledger entry (DOM-025): grants, leader injections, future donations.
  * Deliberately NOT per-wager (DOM-026) — wager outcomes only aggregate into
- * TeamMember.profitLoss.
+ * TeamMember.profitLoss. `"weekly-reward"` (owner order 2026-09-09) sits
+ * beside `"daily-reward"` as the second lazily-granted login gift — same
+ * shape, same idempotence-by-unique-index story, different calendar window.
  */
 export interface Transaction {
   id: string;
   teamId: string;
   /** Whose balance this entry belongs to. */
   userId: string;
-  kind: "onboarding-grant" | "daily-reward" | "injection" | "donation";
+  kind:
+    | "onboarding-grant"
+    | "daily-reward"
+    | "weekly-reward"
+    | "injection"
+    | "donation";
   /** Positive = credit, negative = debit. */
   amount: number;
   /** e.g. injector/donor display context; free text for the history row. */

@@ -1871,15 +1871,31 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
 
   /**
-   * DOM-022 / A-2 / decision §4.3: the daily reward is claimed lazily, on team
-   * load, once per (user, team, calendar day). "Once" is the database's word —
-   * `claim_daily_reward` is idempotent against a unique index — so the ref
-   * below is only there to keep a re-render from issuing a round trip that is
-   * already known to return nothing.
+   * DOM-022 / A-2 / decision §4.3: the daily reward and its sibling, the
+   * weekly login reward (DOM-036, owner order 2026-09-09), both claimed lazily
+   * on team load — once per (user, team, calendar day) and once per (user,
+   * team, ISO week in UTC) respectively. "Once" is the database's word in both cases —
+   * `claim_daily_reward` and `claim_weekly_reward` are each idempotent against
+   * their own partial unique index — so the ref below is only there to keep a
+   * re-render from issuing a round trip that is already known to return
+   * nothing.
    *
    * It runs per team rather than once per session because balances are
-   * per-team (DOM-013): switching to a team you have not opened today owes you
-   * that team's reward.
+   * per-team (DOM-013): switching to a team you have not opened today (or this
+   * week) owes you that team's reward(s).
+   *
+   * The two claims run SEQUENTIALLY, daily awaited before weekly starts, and
+   * that order is load-bearing, not a style choice: the "add-transaction"
+   * reducer case applies `balanceAfter` as an ABSOLUTE overwrite of
+   * `coinBalance`, not a delta, because that is what the server's own ledger
+   * snapshot says the balance now is. Two claims dispatched out of server
+   * order would leave the wallet showing whichever response's `balanceAfter`
+   * happened to land second in the JS event loop — not necessarily the truly
+   * latest one — until the next `team_members` realtime echo quietly corrected
+   * it. Awaiting daily before firing weekly makes dispatch order match the
+   * server's write order, so the balance is right the first time. The second
+   * round trip (weekly) is a background gift nobody is blocking on; nothing
+   * downstream waits for it.
    */
   const claimedRewards = useRef(new Set<string>());
   useEffect(() => {
@@ -1890,27 +1906,52 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
     const teamId = team.id;
     void (async () => {
-      const result = await db.claimDailyReward(supabase, teamId);
+      const daily = await db.claimDailyReward(supabase, teamId);
       // A failure here is not worth a visible error: the reward is a gift, and
-      // the next load asks again. Let the ref forget so it does.
-      if (!result.ok) {
+      // Extra Phase 4 task 12 froze this path as deliberately silent — do NOT
+      // add a toast. Let the ref forget so the next load retries BOTH claims;
+      // both are idempotent, so retrying the one that already succeeded costs
+      // nothing.
+      if (!daily.ok) {
         claimedRewards.current.delete(key);
         return;
       }
-      if (!result.reward) return;
-      dispatch({
-        type: "add-transaction",
-        transaction: {
-          id: result.reward.transactionId,
-          teamId,
-          userId: currentUserId,
-          kind: "daily-reward",
-          amount: result.reward.amount,
-          description: "Daily login reward",
-          balanceAfter: result.reward.balanceAfter,
-          createdAt: result.reward.createdAt,
-        },
-      });
+      if (daily.reward) {
+        dispatch({
+          type: "add-transaction",
+          transaction: {
+            id: daily.reward.transactionId,
+            teamId,
+            userId: currentUserId,
+            kind: "daily-reward",
+            amount: daily.reward.amount,
+            description: "Daily login reward",
+            balanceAfter: daily.reward.balanceAfter,
+            createdAt: daily.reward.createdAt,
+          },
+        });
+      }
+
+      const weekly = await db.claimWeeklyReward(supabase, teamId);
+      if (!weekly.ok) {
+        claimedRewards.current.delete(key);
+        return;
+      }
+      if (weekly.reward) {
+        dispatch({
+          type: "add-transaction",
+          transaction: {
+            id: weekly.reward.transactionId,
+            teamId,
+            userId: currentUserId,
+            kind: "weekly-reward",
+            amount: weekly.reward.amount,
+            description: "Weekly login reward",
+            balanceAfter: weekly.reward.balanceAfter,
+            createdAt: weekly.reward.createdAt,
+          },
+        });
+      }
     })();
   }, [supabase, currentUserId, team]);
 

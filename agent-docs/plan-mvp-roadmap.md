@@ -899,4 +899,49 @@ What it changed that a reader of THIS doc needs to know:
 
 ---
 
+### Login rewards retune: daily 10, weekly 100 — owner order (2026-09-09)
+
+Not an Extra Phase in this doc's series, and deliberately so: it is a
+tunable retune plus one mirrored RPC, with no phase-sized plan behind it —
+there is no decision record here because there was nothing left to decide,
+only DOM-022's number to raise and its shape to repeat once for a second
+cadence.
+
+**Lifts from §6 risk 7:** nothing. Notifications (ARC-014), coin donation
+(DOM-023), crowd resolution (DOM-020), native mobile and the platform icon
+set (DOM-010) all stay excluded — a grant-amount retune touches none of
+them, and a passive wallet readout is neither a claim surface nor an alert.
+
+What it changed that a reader of THIS doc needs to know:
+
+- `public.transaction_kind` gains a fifth value, `weekly-reward` — alone in
+  its own migration (`20260909100000_weekly_reward_kind.sql`) because
+  Postgres will not let a transaction both add an enum value and use it in
+  the same breath; the two things that USE the new value — the partial
+  unique index and `claim_weekly_reward` itself — land in the migration
+  right after it (`20260909100100_login_rewards_retune.sql`), together with
+  the retuned `app.daily_reward_coins()` and the new
+  `app.weekly_reward_coins()`.
+  That constraint, not a sizing choice, is why this one-line feature is two
+  migration files instead of one.
+- `claim_weekly_reward` mirrors `claim_daily_reward` RPC-for-RPC: same
+  lazy-on-team-load trigger (decision §4.3), same partial-unique-index
+  idempotence, same `{granted, transaction_id, amount, balance_after,
+  created_at}` return shape. The client claims daily **then** weekly, in
+  series, never in parallel — the add-transaction reducer applies each
+  RPC's `balance_after` absolutely rather than as a delta (the same rule
+  the realtime `team_members` handler follows, §"State of the backend" in
+  `supabase/README.md`), so a weekly claim landing before a daily claim on
+  the same load would overwrite the daily grant's own credit with a number
+  that had not yet counted it.
+- DOM-022's reference value is now **10**, not 5, and the new requirement
+  this order adds is **DOM-036** in `AGENT_SPEC.md` — the coin-economy
+  group's next free id.
+- Phase 7's migration comment on `app.daily_reward_coins()` calling it the
+  "Third and last such duplication" is now historical, not current:
+  `app.weekly_reward_coins()` is one more SQL/TypeScript twin needing the
+  exact same warning, carried in both halves.
+
+---
+
 Hosting: see `plan-hosted-early-access.md`.

@@ -217,7 +217,9 @@
     "overdrawn": "Overdrawn — a deleted bet took back a payout. No wagers until a leader injection clears it.",
     "dailyLogin": "Daily login:",
     "claimedToday": "today ✓",
-    "claimNext": "on your next visit"
+    "claimNext": "on your next visit",
+    "weeklyLogin": "Weekly login:",
+    "claimedThisWeek": "this week ✓"
   },
   "standingsModule": {
     "eyebrow": "STANDINGS",
@@ -370,6 +372,7 @@
     "empty": "No transactions yet.",
     "lifetime": "Lifetime P/L by team",
     "dailyReward": "Daily login reward",
+    "weeklyReward": "Weekly login reward",
     "onboardingGrant": "Onboarding grant"
   },
   "profileModal": {

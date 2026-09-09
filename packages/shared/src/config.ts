@@ -20,8 +20,43 @@ export interface BetDurationPreset {
 export const CONFIG = Object.freeze({
   /** Coins granted to every new user (DOM-021). Currency name is still an open decision (#1). */
   ONBOARDING_GRANT_COINS: 100,
-  /** Unconditional grant on first login of each calendar day (DOM-022, assumption A-2). */
-  DAILY_REWARD_COINS: 5,
+  /**
+   * Unconditional grant on first login of each calendar day (DOM-022,
+   * assumption A-2). Retuned from the vision's reference value of 5 to 10 by
+   * owner order 2026-09-09, alongside the new weekly reward below. SQL twin:
+   * `app.daily_reward_coins()`, now living in
+   * `20260909100100_login_rewards_retune.sql` — that migration's
+   * `create or replace` supersedes the function body first written in
+   * `20260905170000_resolution_rewards_ledger.sql`, so a reader who finds the
+   * old file first should follow the trail to the new one rather than trust
+   * what is on the page there.
+   */
+  DAILY_REWARD_COINS: 10,
+  /**
+   * Unconditional grant once per (user, team, calendar WEEK) — the owner's
+   * 2026-09-09 order, sibling to the daily reward above and granted the same
+   * lazy way: on team load, once the current claim window has not already
+   * been paid.
+   *
+   * HARD WARNING, in the same shape as `CHAT_RETENTION_DAYS` and
+   * `DUEL_ACCEPT_WINDOW_HOURS` elsewhere in this file: this is NOT the
+   * authority. `app.weekly_reward_coins()` in
+   * `20260909100100_login_rewards_retune.sql` is — the grant has to be
+   * decided inside the transaction that writes it, where TypeScript cannot
+   * reach, exactly like the daily reward. This constant exists ONLY to write
+   * the wallet readout ("Weekly login: +100"). Change one half and not the
+   * other and the copy starts lying about what the database actually pays
+   * out — change both in the same commit.
+   *
+   * The "week" is the ISO week in UTC — Monday 00:00 UTC through the instant
+   * before the next Monday 00:00 UTC, i.e. Postgres's
+   * `date_trunc('week', ...)`. That is the exact calendar the partial unique
+   * index `transactions_one_weekly_reward_per_week_idx` counts against, and
+   * `wallet-module.tsx`'s `utcWeekStart()` must compute the same boundary —
+   * three places agreeing on one definition of "week" by construction, not by
+   * coincidence.
+   */
+  WEEKLY_REWARD_COINS: 100,
   /** Soft planning target, not hard-enforced (DOM-004 / ARC-018, open decision #5). */
   TEAM_TARGET_SIZE: 30,
   /**

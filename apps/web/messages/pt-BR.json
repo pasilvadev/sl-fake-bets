@@ -217,7 +217,9 @@
     "overdrawn": "No vermelho — uma aposta apagada levou o pagamento de volta. Sem apostar até o líder injetar moedas.",
     "dailyLogin": "Login diário:",
     "claimedToday": "hoje ✓",
-    "claimNext": "na sua próxima visita"
+    "claimNext": "na sua próxima visita",
+    "weeklyLogin": "Login semanal:",
+    "claimedThisWeek": "esta semana ✓"
   },
   "standingsModule": {
     "eyebrow": "RANKING",
@@ -370,6 +372,7 @@
     "empty": "Nenhuma transação ainda.",
     "lifetime": "Saldo total por time",
     "dailyReward": "Bônus de login diário",
+    "weeklyReward": "Bônus de login semanal",
     "onboardingGrant": "Moedas iniciais"
   },
   "profileModal": {

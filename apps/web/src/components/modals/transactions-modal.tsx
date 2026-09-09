@@ -14,11 +14,11 @@ import { formatCoins, formatShortDate } from "@/lib/format";
  *
  * `transactions.description` is written by SQL, in English, by the ledger RPCs
  * — the read-side twin of the problem D9 solved for exception text, except
- * these are shown on every visit rather than on a race. Two of the four kinds
- * say a fixed sentence and are recovered from `kind` alone; `injection` and
- * the unused `donation` embed a display NAME the row does not carry as a
- * column, so there is nothing to rebuild them from and they fall through to
- * the stored English.
+ * these are shown on every visit rather than on a race. Three of the five
+ * kinds (daily, weekly, onboarding) say a fixed sentence and are recovered
+ * from `kind` alone; `injection` and the unused `donation` embed a display
+ * NAME the row does not carry as a column, so there is nothing to rebuild
+ * them from and they fall through to the stored English.
  *
  * Closing that last gap means a `description` code (or an actor column) on
  * `public.transactions`, which is a migration touching every ledger RPC —
@@ -30,6 +30,7 @@ function describe(
   t: ReturnType<typeof useTranslations<"transactionsModal">>,
 ): string {
   if (tx.kind === "daily-reward") return t("dailyReward");
+  if (tx.kind === "weekly-reward") return t("weeklyReward");
   if (tx.kind === "onboarding-grant") return t("onboardingGrant");
   return tx.description;
 }

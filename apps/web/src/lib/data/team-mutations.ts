@@ -265,7 +265,8 @@ export async function injectCoins(
   return error ? asFailure(error) : { ok: true, balanceAfter: data as number };
 }
 
-export interface DailyReward {
+/** The ledger row as written, shared by the daily and weekly login claims. */
+export interface LoginReward {
   /** Its own uuid and the server's clock — the ledger row, as written. */
   transactionId: string;
   amount: number;
@@ -274,23 +275,16 @@ export interface DailyReward {
 }
 
 /**
- * DOM-022 / A-2 / decision §4.3 (roadmap Phase 7): the unconditional daily
- * reward, once per (user, team, calendar day in UTC), claimed lazily whenever
- * a team loads. Calling it a second time is not an error and not a no-op to
- * apologise for — it is the normal case, and it comes back with no reward.
- *
- * Idempotence is the database's, not this function's: the partial unique index
- * on `transactions` is the arbiter, so two tabs opening at once still grant one
- * reward.
+ * Both `claim_daily_reward` and `claim_weekly_reward` return the exact same
+ * `jsonb` shape — `{granted, transaction_id?, amount?, balance_after?,
+ * created_at?}` — because both are the same idempotent-grant pattern with a
+ * different calendar window underneath, so there is exactly one place that
+ * turns that shape into a `MutationResult`, not two copies that could drift.
  */
-export async function claimDailyReward(
-  supabase: Client,
-  teamId: string,
-): Promise<MutationResult & { reward?: DailyReward }> {
-  const { data, error } = await supabase.rpc("claim_daily_reward", {
-    p_team_id: teamId,
-  });
-
+function parseLoginReward(
+  data: unknown,
+  error: PostgrestError | null,
+): MutationResult & { reward?: LoginReward } {
   if (error) return asFailure(error);
 
   const row = data as {
@@ -311,6 +305,47 @@ export async function claimDailyReward(
       createdAt: row.created_at!,
     },
   };
+}
+
+/**
+ * DOM-022 / A-2 / decision §4.3 (roadmap Phase 7): the unconditional daily
+ * reward, once per (user, team, calendar day in UTC), claimed lazily whenever
+ * a team loads. Calling it a second time is not an error and not a no-op to
+ * apologise for — it is the normal case, and it comes back with no reward.
+ *
+ * Idempotence is the database's, not this function's: the partial unique index
+ * on `transactions` is the arbiter, so two tabs opening at once still grant one
+ * reward.
+ */
+export async function claimDailyReward(
+  supabase: Client,
+  teamId: string,
+): Promise<MutationResult & { reward?: LoginReward }> {
+  const { data, error } = await supabase.rpc("claim_daily_reward", {
+    p_team_id: teamId,
+  });
+  return parseLoginReward(data, error);
+}
+
+/**
+ * The owner's 2026-09-09 order: an unconditional weekly reward, once per
+ * (user, team, ISO week in UTC — Monday 00:00 UTC through the instant before
+ * the next), claimed lazily on team load exactly like `claimDailyReward`
+ * above. The second call in a given week is the normal case, not a failure —
+ * it comes back with no `reward`.
+ *
+ * Idempotence is the partial unique index's, not this function's:
+ * `transactions_one_weekly_reward_per_week_idx` is the arbiter, so two tabs
+ * opening at once still grant exactly one reward.
+ */
+export async function claimWeeklyReward(
+  supabase: Client,
+  teamId: string,
+): Promise<MutationResult & { reward?: LoginReward }> {
+  const { data, error } = await supabase.rpc("claim_weekly_reward", {
+    p_team_id: teamId,
+  });
+  return parseLoginReward(data, error);
 }
 
 /** DOM-002: access mode — a one-row update the `teams` UPDATE policy covers. */

@@ -11,8 +11,8 @@ import { useFeatureFlag } from "@/lib/feature-flags";
 
 /**
  * Pulse Rail module 1/4 (design-dashboard.md §4.1): big balance numeral,
- * daily auto-grant readout (DOM-022), P/L line (DOM-026), transaction
- * history link, and a disabled Donate stub (DOM-023, future-stub).
+ * daily + weekly auto-grant readouts (DOM-022, DOM-036), P/L line (DOM-026),
+ * transaction history link, and a disabled Donate stub (DOM-023, future-stub).
  *
  * **The Donate stub is `coming-soon-teasers`'s live subject (roadmap §8 Extra
  * Phase 1, task 13/D-decision, `packages/shared/src/infra.ts`'s
@@ -36,6 +36,21 @@ function utcDay(iso: string | number): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
+/**
+ * The ISO date (YYYY-MM-DD) of the Monday 00:00 UTC that starts the week
+ * containing `iso`. This must agree with Postgres's
+ * `date_trunc('week', timezone('UTC', created_at))` — ISO weeks, Monday
+ * start — which is what `transactions_one_weekly_reward_per_week_idx`
+ * counts; a Sunday-start week here would show "this week ✓" for a reward the
+ * database still considers last week's.
+ */
+function utcWeekStart(iso: string | number): string {
+  const d = new Date(iso);
+  const offset = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - offset);
+  return d.toISOString().slice(0, 10);
+}
+
 export function WalletModule() {
   const { balance, member, currentUser, transactions } = useTeam();
   const { open } = useModal();
@@ -53,6 +68,15 @@ export function WalletModule() {
         t.kind === "daily-reward" &&
         t.userId === currentUser.id &&
         utcDay(t.createdAt) === utcDay(now),
+    );
+
+  const claimedThisWeek =
+    now != null &&
+    transactions.some(
+      (t) =>
+        t.kind === "weekly-reward" &&
+        t.userId === currentUser.id &&
+        utcWeekStart(t.createdAt) === utcWeekStart(now),
     );
 
   return (
@@ -81,6 +105,14 @@ export function WalletModule() {
           +{CONFIG.DAILY_REWARD_COINS}
         </span>{" "}
         {claimedToday ? t("claimedToday") : t("claimNext")}
+      </p>
+
+      <p className="mt-2 text-xs text-muted-foreground">
+        {t("weeklyLogin")}{" "}
+        <span className="font-mono text-jade">
+          +{CONFIG.WEEKLY_REWARD_COINS}
+        </span>{" "}
+        {claimedThisWeek ? t("claimedThisWeek") : t("claimNext")}
       </p>
 
       <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">

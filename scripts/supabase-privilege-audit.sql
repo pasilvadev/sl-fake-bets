@@ -54,6 +54,7 @@
 --   dsc = 20260906130000_duel_schema.sql          drp = 20260906130100_duel_rpcs.sql
 --   dpf = 20260906130400_duel_pair_rule_fix.sql
 --   inv = 20260907150000_invite_links.sql
+--   wrk = 20260909100000_weekly_reward_kind.sql    lrr = 20260909100100_login_rewards_retune.sql
 -- =============================================================================
 
 with roster_tables(object) as ( -- dom: domain tables; cht/dsc: the two later ones
@@ -108,6 +109,8 @@ table_exceptions(object, role, priv, note) as (values
 -- inv: 2 tunables + create_invite_code/revoke_invite_code (team_preview_by_code
 -- and join_team_with_code are recreated with the same signatures, so they stay
 -- on their trp roster row unmoved).
+-- lrr: weekly_reward_coins + claim_weekly_reward (daily_reward_coins is
+-- recreated with the same signature, stays on its rrl row).
 roster_functions(schema, name, args) as (values
   ('app','apply_transaction','p_team_id uuid, p_user_id uuid, p_kind transaction_kind, p_amount integer, p_description text'),
   ('app','bet_accepts_wagers','p_bet_id uuid'),
@@ -146,10 +149,12 @@ roster_functions(schema, name, args) as (values
   ('app','team_role','p_team_id uuid'),
   ('app','void_duel','p_bet_id uuid, p_reason bet_void_reason'),
   ('app','void_duels_for_departing_member','p_team_id uuid, p_user_id uuid'),
+  ('app','weekly_reward_coins',''),
   ('public','accept_duel','p_bet_id uuid'),
   ('public','bet_preview','p_bet_id uuid'),
   ('public','chat_page','p_team_id uuid, p_before_created_at timestamp with time zone, p_before_id uuid, p_limit integer'),
   ('public','claim_daily_reward','p_team_id uuid'),
+  ('public','claim_weekly_reward','p_team_id uuid'),
   ('public','close_bet_early','p_bet_id uuid'),
   ('public','create_bet','p_team_id uuid, p_title text, p_icon_emoji text, p_options text[], p_closes_at timestamp with time zone, p_max_wager_per_user integer'),
   ('public','create_duel','p_team_id uuid, p_title text, p_icon_emoji text, p_challengee_id uuid, p_mediator_id uuid, p_any_moderator boolean, p_stake integer'),
@@ -199,7 +204,8 @@ function_exceptions(schema, name, args, role, note) as (values
   ('public','sweep_stale_duels','','anon','dpf: anon named explicitly (from-public alone is not enough)'),
   ('public','resolve_bet','p_bet_id uuid, p_kind bet_resolution_kind, p_winning_option_id uuid, p_void_reason bet_void_reason','anon','dpf: anon named explicitly (from-public alone is not enough)'),
   ('public','create_invite_code','p_team_id uuid, p_code text, p_temporary boolean','anon','inv: anon named explicitly (from-public alone is not enough)'),
-  ('public','revoke_invite_code','p_invite_id uuid','anon','inv: anon named explicitly (from-public alone is not enough)')
+  ('public','revoke_invite_code','p_invite_id uuid','anon','inv: anon named explicitly (from-public alone is not enough)'),
+  ('public','claim_weekly_reward','p_team_id uuid','anon','lrr: anon named explicitly (from-public alone is not enough)')
 ),
 
 live_tables as (

@@ -3,7 +3,7 @@
 import { Bell } from "lucide-react";
 import { cn } from "cn";
 import { useTranslations } from "next-intl";
-import { canStartDuel } from "@repo/shared";
+import { CONFIG, canStartDuel } from "@repo/shared";
 import { SMark } from "@/components/sl/s-mark";
 import { AlphaTag } from "@/components/sl/alpha-tag";
 import { CoinAmount } from "@/components/sl/coin-amount";
@@ -49,7 +49,11 @@ export function TopBar() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {/* Balance pill: current balance + docked daily-grant micro-tag (DOM-022, auto-grant, static in mock). */}
+        {/* Balance pill: current balance + docked daily-grant micro-tag (DOM-022,
+            auto-grant). The number is CONFIG's, not a literal: it read "+5" from
+            Phase 1 until the 2026-09-09 retune moved the daily reward to 10 and
+            the hardcoded tag kept saying 5 — the exact drift `wallet-module.tsx`
+            avoided by deriving its line from the same constant. */}
         <button
           type="button"
           onClick={() => open("transactions")}
@@ -57,7 +61,7 @@ export function TopBar() {
         >
           <CoinAmount amount={balance} className="text-sm" />
           <span className="rounded-sm bg-jade-wash px-1 py-0.5 text-[10px] font-semibold leading-none text-jade">
-            +5
+            +{CONFIG.DAILY_REWARD_COINS}
           </span>
         </button>
 

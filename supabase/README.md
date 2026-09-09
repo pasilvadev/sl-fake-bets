@@ -158,6 +158,8 @@ against dev only — it can never reach prod through that file by construction
 | `migrations/20260907130000_alpha_flags.sql` | Hosted early access (D9): flips `locale-pt-br` on, seeds the `auth-google` ops kill switch |
 | `migrations/20260907140000_analytics_events_size_check.sql` | Hosted early access: bounds `analytics_events.properties` at 4 KiB |
 | `migrations/20260907150000_invite_links.sql` | Invite links: expiry choice & revocation (`plan-invite-links.md`) — nullable `invite_codes.expires_at`, the lazy-expiry predicate on `team_preview_by_code`/`join_team_with_code`, and the `create_invite_code`/`revoke_invite_code` RPCs that withdraw the table's last direct client write |
+| `migrations/20260909100000_weekly_reward_kind.sql` | Login rewards retune (owner order 2026-09-09): adds the `weekly-reward` value to `transaction_kind` — alone in its file because a new enum value cannot be used in the transaction that adds it |
+| `migrations/20260909100100_login_rewards_retune.sql` | Login rewards retune: daily reward 5 → 10 (`app.daily_reward_coins()`), the new `app.weekly_reward_coins()` = 100, `transactions_one_weekly_reward_per_week_idx` (ISO week, UTC) and `claim_weekly_reward` — the daily RPC's mirror |
 | `queries/arc-017-metrics.sql` | The two ARC-017 metrics, as SQL. This is the entire analytics product — run it in Studio; there is no dashboard |
 | `seed.sql` | `mock-data.ts` as Postgres rows. Runs on `db reset` — **dev only, always**; `db push` never runs it without `--include-seed`, and no prod command in this repo ever passes that flag |
 | `templates/magic_link.html` | Why email login was designed as a CODE, not a link — dormant until full release adds the SMTP vendor that makes editing it possible (`plan-hosted-early-access.md` §8) |
@@ -224,7 +226,7 @@ client:
 |---|---|
 | Teams & membership | `create_team`, `team_preview_by_code`, `join_team_with_code`, `remove_membership` (kick/ban + wager cascade), `inject_coins` |
 | Bets & wagers | `create_bet`, `place_wager`, `close_bet_early`, `delete_bet` |
-| Money out | `resolve_bet`, `claim_daily_reward` |
+| Money out | `resolve_bet`, `claim_daily_reward`, `claim_weekly_reward` |
 | Share previews (no session needed) | `team_preview_by_code` (UX-023), `bet_preview` (UX-024) |
 
 RLS is therefore no longer the Phase 3 first pass on the write side. Phases 5–6

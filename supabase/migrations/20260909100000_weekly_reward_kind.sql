@@ -1,0 +1,39 @@
+-- =============================================================================
+-- SL Fake Bets — add 'weekly-reward' to public.transaction_kind
+-- (owner order, 2026-09-09: daily reward retune + new weekly reward).
+--
+-- WHY THIS IS ITS OWN FILE
+--
+-- Postgres has allowed `ALTER TYPE ... ADD VALUE` inside a transaction since
+-- PG 12, but it still forbids USING the new value inside that SAME
+-- transaction — the new label is not visible to other backends, and is not
+-- even guaranteed to be visible to the CURRENT one, until the transaction
+-- that added it commits. The Supabase CLI applies every migration file as
+-- one transaction. `20260909100100_login_rewards_retune.sql` creates
+-- `transactions_one_weekly_reward_per_week_idx`, a partial unique index whose
+-- predicate is `where kind = 'weekly-reward'` — a USE of the new value — and
+-- `public.claim_weekly_reward` inserts rows with that same kind. Either one,
+-- in the same transaction as the ADD VALUE below, fails at apply time with
+-- Postgres's own "unsafe use of new value 'weekly-reward' of enum type
+-- transaction_kind" error. Splitting the enum growth into this file, applied
+-- and committed before the next migration file opens its own transaction, is
+-- the only way both land in one `supabase db push` without that error.
+--
+-- ON THE OLD "do not extend this type" COMMENT
+--
+-- `20260905120000_domain_schema.sql`'s enum comment reads: "DOM-025 + decision
+-- §4.6: stays the 4-value union. Wager stakes, payouts and void refunds are
+-- NOT ledger rows — do not extend this type." That sentence is about DOM-026 /
+-- decision §4.6's specific boundary — a bet's settlement math is not a
+-- transfer and must never become a `transactions` row, so nothing in
+-- `resolve_bet` or `delete_bet` may ever reach for a new `transaction_kind`
+-- value to describe a payout or a refund. A login reward is not that: it is a
+-- ledger grant exactly like `'daily-reward'` and `'onboarding-grant'` already
+-- are — money the product hands a member outside any bet, credited through
+-- `app.apply_transaction` like every other credit. Extending the enum for
+-- ANOTHER ledger grant is precisely what that rule permits; the rule itself —
+-- wager stakes, payouts and void refunds stay out of this table, forever — is
+-- unchanged by this file or the one after it.
+-- =============================================================================
+
+alter type public.transaction_kind add value if not exists 'weekly-reward';
