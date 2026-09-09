@@ -61,13 +61,20 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except Next's own static output, image files, and `/api/`
+     * Everything except Next's own static output, image files, `/api/`
      * (plan-hosted-early-access.md Phase 1 task 4: the keep-alive cron hits
      * `/api/keepalive` bearer-authenticated and carries no session at all —
-     * spending a single-use refresh token on it would do nothing but burn it).
-     * Auth cookies are worth refreshing on ordinary page requests; a favicon
-     * or a cron ping is not.
+     * spending a single-use refresh token on it would do nothing but burn it),
+     * and `/auth/callback`. Auth cookies are worth refreshing on ordinary page
+     * requests; a favicon or a cron ping is not — and neither is the OAuth
+     * return leg, which is about to MINT a brand-new session via
+     * `exchangeCodeForSession` rather than read an existing one. Running this
+     * file first there bought nothing but a second, unprotected network round
+     * trip to Supabase Auth stacked in front of that exchange (found while
+     * investigating a Google-login 499 for an existing user — the ordinary
+     * navigation right after the callback's redirect still hits this file and
+     * picks up the fresh session).
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -5,6 +5,24 @@ import type { SessionUser } from "@/lib/session-user";
 import { supabaseEnv } from "./env";
 
 /**
+ * Wraps `fetch` so a call through it fails fast instead of hanging until the
+ * platform's own function timeout kills it. Found via a Google-login 499:
+ * nothing in the auth path bounded how long `exchangeCodeForSession` could
+ * wait on Supabase/Google, so a slow round trip surfaced to the browser as an
+ * aborted connection rather than a clean, translatable error. Combines with
+ * an existing signal, if the caller ever supplies one, instead of replacing it.
+ */
+function withTimeout(ms: number): typeof fetch {
+  return (input, init) => {
+    const timeoutSignal = AbortSignal.timeout(ms);
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal;
+    return fetch(input, { ...init, signal });
+  };
+}
+
+/**
  * Server-side Supabase client (Phase 3, task 7; carrying the session since
  * Phase 4).
  *
@@ -12,8 +30,14 @@ import { supabaseEnv } from "./env";
  * user and RLS applies to them exactly as it does in the browser. Must be
  * created per request — never hoisted to a module-level singleton, which would
  * leak one user's session into another's render.
+ *
+ * `fetchTimeoutMs` is opt-in rather than a default for every caller: the auth
+ * callback route (see `withTimeout` above) is the one place a hung request
+ * turns into a user-visible 499, since it's the sole server-side hop in the
+ * whole login flow. Everywhere else already fails through RLS/redirect logic
+ * that doesn't need a second timeout layered under it.
  */
-export async function createClient() {
+export async function createClient(options?: { fetchTimeoutMs?: number }) {
   const cookieStore = await cookies();
   const { url, anonKey } = supabaseEnv();
 
@@ -38,6 +62,9 @@ export async function createClient() {
           }
         },
       },
+      global: options?.fetchTimeoutMs
+        ? { fetch: withTimeout(options.fetchTimeoutMs) }
+        : undefined,
     },
   );
 }

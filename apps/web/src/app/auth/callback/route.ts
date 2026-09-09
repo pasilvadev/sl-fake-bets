@@ -61,7 +61,14 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   if (!code) return fail("sign-in-incomplete");
 
-  const supabase = await createClient();
+  // 8s: comfortably under every Vercel plan's default function timeout, so a
+  // slow/hung Supabase↔Google round trip fails here — cleanly, as `error`,
+  // per @supabase/auth-js's fetch wrapper turning an abort into an
+  // AuthRetryableFetchError rather than throwing — instead of the platform
+  // killing the function later and the browser only ever seeing a bare
+  // aborted connection (a Google-login 499 for an existing user, root-caused
+  // to this route having no bound on how long it would wait).
+  const supabase = await createClient({ fetchTimeoutMs: 8_000 });
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     // Deliberately NOT surfaced verbatim. The common failure here is a missing
