@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getLocale, getTimeZone, getTranslations } from "next-intl/server";
 import { AppProviders } from "@/components/app-providers";
+import { ConnectionFallbackScript } from "@/components/connection-fallback-script";
 import { createClient, getSessionUser } from "@/lib/supabase/server";
 import { loadRequestFeatureFlags } from "@/lib/data/feature-flags";
 import { LOCALES, OG_LOCALES } from "@/i18n/config";
@@ -128,6 +129,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <ConnectionFallbackScript />
         <AppProviders
           initialUser={initialUser}
           flags={flags}
