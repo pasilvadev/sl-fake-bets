@@ -1,1 +1,3 @@
 # In this doc I will list bugs or changes I found that are needed but I couldn't ask for a fix at the time. Every bug or change listed here that was already dealt with should be removed, not tagget or anything, straight up removed, I dont want agent comments here, just the list I make and it should be cleared if anything here is not bugged or as described on live anymore.
+
+## Implementar o doar moedas (transferencia entre jogadores).
