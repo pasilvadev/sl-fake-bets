@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTransaction, deriveProfitLoss } from "./ledger";
+import { applyTransaction, deriveBetSettlementHistory, deriveProfitLoss } from "./ledger";
 import {
   mockBets,
   mockTeam,
@@ -189,6 +189,93 @@ describe("fixture regression — b-05/b-06 reproduce the hand-typed member field
         ).toBe(member.profitLoss);
       }
     }
+  });
+});
+
+describe("deriveBetSettlementHistory — found-bugs item 1 (bet/duel wins & losses)", () => {
+  const b05 = requireResolvedBet("b-05");
+
+  it("one entry per resolved bet the user staked on, matching settleBet's own delta", () => {
+    const history = deriveBetSettlementHistory("u-02", mockBets, mockWagers);
+    expect(history).toEqual([
+      {
+        id: "b-05",
+        teamId: "t-01",
+        userId: "u-02",
+        betKind: "pool",
+        title: b05.title,
+        resolution: b05.resolution,
+        profitLossDelta: 50,
+        createdAt: b05.closesAt,
+      },
+    ]);
+  });
+
+  it("a void refund is 0 P/L, not a loss", () => {
+    const history = deriveBetSettlementHistory("u-05", mockBets, mockWagers);
+    expect(history).toHaveLength(1);
+    const [entry] = history;
+    expect(entry?.resolution).toEqual({ kind: "void" });
+    expect(entry?.profitLossDelta).toBe(0);
+  });
+
+  it("excludes a resolved bet the user never wagered on (did-not-participate)", () => {
+    // u-03 has no wager on either resolved fixture (b-05/b-06).
+    expect(deriveBetSettlementHistory("u-03", mockBets, mockWagers)).toEqual([]);
+  });
+
+  it("excludes open/closed bets even when the user staked on them", () => {
+    // u-01 also wagers on b-01 (open) and b-04 (closed) — neither resolved.
+    const history = deriveBetSettlementHistory("u-01", mockBets, mockWagers);
+    expect(history.map((e) => e.id)).toEqual(["b-05"]);
+  });
+
+  it("sums to the same total deriveProfitLoss already reports, for every fixture member", () => {
+    for (const member of mockTeam.members) {
+      const total = deriveBetSettlementHistory(
+        member.userId,
+        mockBets,
+        mockWagers,
+      ).reduce((s, e) => s + e.profitLossDelta, 0);
+      expect(total, member.userId).toBe(
+        deriveProfitLoss(member.userId, mockBets, mockWagers),
+      );
+    }
+  });
+
+  it("covers a resolved duel with its own betKind, same settlement math as a pool bet", () => {
+    const duelBet: Bet = {
+      id: "b-duel-syn",
+      teamId: "t-01",
+      creatorId: "u-07",
+      title: "synthetic duel",
+      options: [
+        { id: "b-duel-syn-o1", label: "u-07" },
+        { id: "b-duel-syn-o2", label: "u-06" },
+      ],
+      state: "resolved",
+      closesAt: "2026-09-05T00:00:00Z",
+      maxWagerPerUser: 25,
+      resolution: { kind: "winner", winningOptionId: "b-duel-syn-o1" },
+      kind: "duel",
+      createdAt: "2026-09-04T00:00:00Z",
+    };
+    const wagers = [
+      { id: "w-duel-syn-1", betId: "b-duel-syn", userId: "u-07", optionId: "b-duel-syn-o1", amount: 25, placedAt: "2026-09-04T00:01:00Z" },
+      { id: "w-duel-syn-2", betId: "b-duel-syn", userId: "u-06", optionId: "b-duel-syn-o2", amount: 25, placedAt: "2026-09-04T00:02:00Z" },
+    ];
+    expect(deriveBetSettlementHistory("u-07", [duelBet], wagers)).toEqual([
+      {
+        id: "b-duel-syn",
+        teamId: "t-01",
+        userId: "u-07",
+        betKind: "duel",
+        title: "synthetic duel",
+        resolution: { kind: "winner", winningOptionId: "b-duel-syn-o1" },
+        profitLossDelta: 25,
+        createdAt: "2026-09-05T00:00:00Z",
+      },
+    ]);
   });
 });
 

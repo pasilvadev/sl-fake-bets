@@ -185,6 +185,7 @@
   "betRow": {
     "moreOptions": "+{count} more {count, plural, one {option} other {options}}",
     "pool": "Pool",
+    "yourStake": "Your stake",
     "stake": "Stake",
     "winnerTakes": "Winner takes",
     "acceptBy": "Accept by",
@@ -373,7 +374,15 @@
     "lifetime": "Lifetime P/L by team",
     "dailyReward": "Daily login reward",
     "weeklyReward": "Weekly login reward",
-    "onboardingGrant": "Onboarding grant"
+    "onboardingGrant": "Onboarding grant",
+    "betWin": "Won: \"{title}\"",
+    "betLoss": "Lost: \"{title}\"",
+    "betPush": "Broke even: \"{title}\"",
+    "betRefunded": "Refunded: \"{title}\"",
+    "duelWin": "Won a duel: \"{title}\"",
+    "duelLoss": "Lost a duel: \"{title}\"",
+    "duelPush": "Duel broke even: \"{title}\"",
+    "duelRefunded": "Duel refunded: \"{title}\""
   },
   "profileModal": {
     "eyebrow": "PROFILE",

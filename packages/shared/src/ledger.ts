@@ -1,4 +1,4 @@
-import type { Bet, TeamMember, Transaction, Wager } from "./types";
+import type { Bet, BetSettlementEntry, TeamMember, Transaction, Wager } from "./types";
 import { settleBet } from "./settlement";
 
 /**
@@ -80,4 +80,41 @@ export function deriveProfitLoss(
     total += delta?.profitLossDelta ?? 0;
   }
   return total;
+}
+
+/**
+ * Bet/duel wins and losses, reshaped for the transaction-history screen
+ * (found-bugs item 1: the modal only ever showed grants and rewards, because
+ * `resolve_bet` deliberately writes no ledger row — DOM-025/026 above). This
+ * is the same replay `deriveProfitLoss` does, one `BetSettlementEntry` per
+ * resolved bet the user actually staked on, in bet order — the caller sorts.
+ *
+ * Same did-not-participate guard as `bet-row.tsx`'s `ResolvedOutcome`: a
+ * `settleBet` result with no matching userId means this member never wagered
+ * on this bet, and it must not appear as a silent loss.
+ */
+export function deriveBetSettlementHistory(
+  userId: string,
+  bets: readonly Bet[],
+  wagers: readonly Wager[],
+): BetSettlementEntry[] {
+  const entries: BetSettlementEntry[] = [];
+  for (const bet of bets) {
+    if (bet.state !== "resolved" || !bet.resolution) continue;
+    const delta = settleBet(bet, wagers, bet.resolution).find(
+      (d) => d.userId === userId,
+    );
+    if (!delta) continue;
+    entries.push({
+      id: bet.id,
+      teamId: bet.teamId,
+      userId,
+      betKind: bet.kind,
+      title: bet.title,
+      resolution: bet.resolution,
+      profitLossDelta: delta.profitLossDelta,
+      createdAt: bet.closesAt,
+    });
+  }
+  return entries;
 }

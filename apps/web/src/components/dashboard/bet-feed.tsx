@@ -7,6 +7,7 @@ import {
   canAcceptDuel,
   canResolveDuel,
   computeDuelPhase,
+  computeEffectiveState,
   type Bet,
 } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
@@ -110,14 +111,30 @@ export function BetFeed() {
     // flag that could strand coins would be a leak, not a kill switch.
     const visible = duelsEnabled ? bets : bets.filter((b) => b.kind !== "duel");
 
+    // DOM-012: a scheduled close (closesAt elapsing with nobody manually
+    // closing early or resolving it) never flips the stored `state` column —
+    // only `close_bet_early`/`resolve_bet` do — so grouping on the raw value
+    // left a pool bet in OPEN forever once its window quietly lapsed. Pool
+    // bets group on the clock-aware `computeEffectiveState` instead.
+    //
+    // Duels are excluded on purpose: `accept_duel` already writes
+    // `state='closed'` itself the instant it's accepted (D2), so a duel's
+    // stored state is never lazy the way a pool bet's is, and a still-PENDING
+    // duel's `closesAt` is the ACCEPT deadline, not a betting-close deadline —
+    // an unaccepted, lapsed challenge reads as void (`duelView.readsAsVoid` in
+    // `bet-row.tsx`), which is a different bucket from CLOSED and must not be
+    // produced here.
+    const effectiveState = (b: Bet) =>
+      b.kind !== "duel" && now != null ? computeEffectiveState(b, now) : b.state;
+
     // UX-008's grouping contract, unchanged: OPEN soonest-closing first →
     // CLOSED most-recent first → RESOLVED most-recent first, empty group
     // omitted. The pin re-orders WITHIN a group and never adds a fourth.
     const openBets = [...visible]
-      .filter((b) => b.state === "open")
+      .filter((b) => effectiveState(b) === "open")
       .sort((a, b) => new Date(a.closesAt).getTime() - new Date(b.closesAt).getTime());
     const closed = [...visible]
-      .filter((b) => b.state === "closed")
+      .filter((b) => effectiveState(b) === "closed")
       .sort((a, b) => new Date(b.closesAt).getTime() - new Date(a.closesAt).getTime());
     const resolved = [...visible]
       .filter((b) => b.state === "resolved")
@@ -189,7 +206,12 @@ export function BetFeed() {
       featuredBetId: featured,
       soonestOpenBetId: soonestOpen?.id,
     };
-  }, [bets, filter, awaitingYou, duelsEnabled]);
+    // `now` is a dependency, not just a value read above: the tick that
+    // crosses a bet's `closesAt` must re-run this grouping on its own, with
+    // nothing else about `bets` having changed, or an OPEN bet whose window
+    // just lapsed would stay in OPEN until some unrelated realtime update
+    // happened to re-render the feed.
+  }, [bets, filter, awaitingYou, duelsEnabled, now]);
 
   const hasBets = duelsEnabled
     ? bets.length > 0

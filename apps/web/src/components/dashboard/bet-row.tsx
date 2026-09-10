@@ -9,9 +9,11 @@ import {
   canAcceptDuel,
   canResolveDuel,
   computeDuelPhase,
+  computeEffectiveState,
   getPoolStats,
   settleBet,
   type Bet,
+  type BetState,
   type Duel,
   type DuelPhase,
   type OptionPoolStat,
@@ -251,10 +253,12 @@ function DuelStake({ stake }: { stake: number }) {
  */
 function StateLabel({
   bet,
+  effectiveState,
   closingSoon,
   duelView,
 }: {
   bet: Bet;
+  effectiveState: BetState;
   closingSoon: boolean;
   duelView: DuelView | null;
 }) {
@@ -271,10 +275,13 @@ function StateLabel({
     // The lazily-expired case: nothing has persisted a resolution yet, so
     // `bet.resolution` is still absent and only the clock knows.
     text = formatVoidLabel(locale, "expired");
-  } else if (bet.state === "open" && closingSoon) {
+  } else if (effectiveState === "open" && closingSoon) {
     text = tState("closingSoon");
     className = "text-jade/80";
-  } else if (bet.state === "closed") {
+  } else if (effectiveState === "closed") {
+    // DOM-012: a scheduled close with nobody manually closing/resolving it
+    // never flips the stored `state` column, so this reads the CLOCK-aware
+    // value — the same one `bet-feed.tsx` groups by — and not the raw one.
     text = tState("awaitingResult");
   } else if (bet.state === "resolved" && bet.resolution?.kind === "void") {
     text = formatVoidLabel(locale, bet.resolution.reason);
@@ -292,10 +299,12 @@ function StateLabel({
 /** Rail: 3px left accent — the row's only color-coded state signal. */
 function Rail({
   bet,
+  effectiveState,
   closingSoon,
   duelView,
 }: {
   bet: Bet;
+  effectiveState: BetState;
   closingSoon: boolean;
   duelView: DuelView | null;
 }) {
@@ -308,7 +317,10 @@ function Rail({
     <div
       className={cn(
         "absolute inset-y-0 left-0 w-[3px]",
-        bet.state === "open" ? "bg-jade" : "bg-input",
+        // DOM-012: clock-aware, same reason as StateLabel above — a bet whose
+        // window lapsed on its own must lose the live jade rail immediately,
+        // not whenever something next writes `state='closed'` to the row.
+        effectiveState === "open" ? "bg-jade" : "bg-input",
         closingSoon && "motion-safe:animate-pulse",
       )}
     />
@@ -484,6 +496,24 @@ export function BetRow({
    * countdown, share, and nothing to press.
    */
   const isDuel = bet.kind === "duel";
+
+  // DOM-012: `bet.state` is the stored value; a scheduled close (closesAt
+  // elapsing with nobody manually closing early or resolving it) never
+  // flips that column, only `close_bet_early`/`resolve_bet` do. Every read
+  // below that used to key on `bet.state === "open"`/`"closed"` now keys on
+  // this instead, so the row agrees with `bet-feed.tsx`'s CLOSED grouping
+  // the instant the clock says so, not whenever the DB catches up.
+  //
+  // Duels are excluded on purpose, not merely `now == null`-guarded like the
+  // rest of the row: `accept_duel` already writes `state='closed'` itself
+  // (D2), so a duel's stored state is never lazy the way a pool bet's is,
+  // and a still-PENDING duel's `closesAt` is the ACCEPT deadline, not a
+  // betting-close deadline — `computeDuelPhase`/`duelView.readsAsVoid`
+  // already reads a lapsed one as expired/void, which is a different label
+  // from "closed" and must not be overwritten by this.
+  const effectiveState: BetState =
+    isDuel || now == null ? bet.state : computeEffectiveState(bet, now);
+
   const duel = isDuel ? duelFor(bet.id) : undefined;
   let duelView: DuelView | null = null;
   if (duel) {
@@ -517,11 +547,18 @@ export function BetRow({
   const poolTotal = poolStats.reduce((sum, o) => sum + o.total, 0);
   const creator = userById(bet.creatorId);
   const distinctWagerUserIds = Array.from(new Set(betWagers.map((w) => w.userId)));
+  // Same sum `wager-modal.tsx` calls `existingStake` — the feed never showed
+  // it, so a pool bet with your own money on it looked identical to one you
+  // had never touched. A duel doesn't need this: its stake is symmetric, so
+  // `DuelStake` already IS "what you bet".
+  const myStake = betWagers
+    .filter((w) => w.userId === currentUser.id)
+    .reduce((sum, w) => sum + w.amount, 0);
 
   const { label: countdownLabel, msLeft } =
-    bet.state === "open" && now != null ? formatTimeLeft(locale, bet.closesAt, now) : { label: "—", msLeft: null as number | null };
+    effectiveState === "open" && now != null ? formatTimeLeft(locale, bet.closesAt, now) : { label: "—", msLeft: null as number | null };
   const closingSoon =
-    bet.state === "open" &&
+    effectiveState === "open" &&
     Boolean(soonest) &&
     msLeft != null &&
     msLeft > 0 &&
@@ -574,10 +611,10 @@ export function BetRow({
         "relative flex min-h-[96px] flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-background px-3 py-2.5",
         "transition-colors motion-safe:duration-150 hover:bg-surface-1",
         "sm:min-h-[64px] sm:flex-nowrap",
-        bet.state === "closed" && "opacity-90",
+        effectiveState === "closed" && "opacity-90",
       )}
     >
-      <Rail bet={bet} closingSoon={closingSoon} duelView={duelView} />
+      <Rail bet={bet} effectiveState={effectiveState} closingSoon={closingSoon} duelView={duelView} />
 
       {/* Featured-row corner tint (design-dashboard.md §5.1): a flat 6% jade
           fill behind a diagonal cut — no gradient (banned list #3), the
@@ -621,7 +658,7 @@ export function BetRow({
                 <UserName user={creator} className="text-xs" />
               </>
             )}
-            <StateLabel bet={bet} closingSoon={closingSoon} duelView={duelView} />
+            <StateLabel bet={bet} effectiveState={effectiveState} closingSoon={closingSoon} duelView={duelView} />
           </div>
         </div>
       </div>
@@ -681,6 +718,12 @@ export function BetRow({
                 {t("pool")}
               </span>
               <CoinAmount amount={poolTotal} className="text-sm" />
+              {myStake > 0 && (
+                <span className="mt-0.5 flex items-center gap-1 whitespace-nowrap text-[11px] text-muted-foreground">
+                  {t("yourStake")}
+                  <CoinAmount amount={myStake} className="text-xs text-foreground" />
+                </span>
+              )}
             </div>
           </>
         )}
@@ -703,13 +746,13 @@ export function BetRow({
               {t("acceptBy")}{" "}
             </span>
           )}
-          {bet.state === "open" &&
+          {effectiveState === "open" &&
             (duelView?.readsAsVoid
               ? formatShortDate(locale, bet.closesAt)
               : now == null
                 ? "—"
                 : countdownLabel)}
-          {bet.state === "closed" &&
+          {effectiveState === "closed" &&
             (now == null
               ? "—"
               : t("closedAgo", {
@@ -745,7 +788,7 @@ export function BetRow({
           duelView && <DuelCta bet={bet} view={duelView} />
         ) : (
           <>
-            {bet.state === "open" && (
+            {effectiveState === "open" && (
               <button
                 type="button"
                 onClick={handleWager}

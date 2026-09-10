@@ -371,6 +371,32 @@ export interface Transaction {
   createdAt: string;
 }
 
+/**
+ * A bet/duel settlement, reshaped for the history screen (agent-docs/found-bugs
+ * item 1). NOT a ledger row and never written to `public.transactions` —
+ * DOM-025/026 still holds, resolution stays a non-ledger event server-side.
+ * This is a pure client-side VIEW, replayed from `bets` + `wagers` through
+ * `deriveBetSettlementHistory` below the same way `deriveProfitLoss` replays
+ * them for the lifetime total, so the two numbers can never drift apart.
+ *
+ * `id` is the bet's id — settlement is 1:1 with its bet, so there is nothing
+ * else to key it on. `createdAt` is `bet.closesAt`: the schema has no
+ * resolved-at timestamp (`BetResolution` carries no clock of its own), and
+ * `closesAt` is the same stand-in the bet-row's own resolved-date cell
+ * already uses.
+ */
+export interface BetSettlementEntry {
+  id: string;
+  teamId: string;
+  userId: string;
+  betKind: BetKind;
+  title: string;
+  resolution: BetResolution;
+  /** Payout − stake on a win; 0 on a void refund (settlement.ts). */
+  profitLossDelta: number;
+  createdAt: string;
+}
+
 /** Live pari-mutuel view of one option's pool share (DOM-016). */
 export interface OptionPoolStat {
   optionId: string;

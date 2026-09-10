@@ -185,6 +185,7 @@
   "betRow": {
     "moreOptions": "+{count} {count, plural, one {opção} other {opções}}",
     "pool": "Pote",
+    "yourStake": "Sua aposta",
     "stake": "Valor",
     "winnerTakes": "Quem ganha leva",
     "acceptBy": "Aceite até",
@@ -373,7 +374,15 @@
     "lifetime": "Saldo total por time",
     "dailyReward": "Bônus de login diário",
     "weeklyReward": "Bônus de login semanal",
-    "onboardingGrant": "Moedas iniciais"
+    "onboardingGrant": "Moedas iniciais",
+    "betWin": "Ganhou a aposta \"{title}\"",
+    "betLoss": "Perdeu a aposta \"{title}\"",
+    "betPush": "Saiu no zero a zero: \"{title}\"",
+    "betRefunded": "Aposta \"{title}\" anulada",
+    "duelWin": "Ganhou o duelo \"{title}\"",
+    "duelLoss": "Perdeu o duelo \"{title}\"",
+    "duelPush": "Duelo \"{title}\" saiu no zero a zero",
+    "duelRefunded": "Duelo \"{title}\" anulado"
   },
   "profileModal": {
     "eyebrow": "PERFIL",

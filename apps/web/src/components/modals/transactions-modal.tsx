@@ -1,7 +1,13 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { type Team, type TeamMember, type Transaction } from "@repo/shared";
+import {
+  deriveBetSettlementHistory,
+  type BetSettlementEntry,
+  type Team,
+  type TeamMember,
+  type Transaction,
+} from "@repo/shared";
 import { useModal } from "@/lib/modal-context";
 import { useTeam } from "@/lib/team-context";
 import { ModalShell } from "@/components/sl/modal-shell";
@@ -35,16 +41,74 @@ function describe(
   return tx.description;
 }
 
+/**
+ * A resolved bet/duel's row text (found-bugs item 1: the ledger above never
+ * carries these — DOM-025/026 — so this reads `deriveBetSettlementHistory`'s
+ * view instead of `kind`). Needs its own key per bet kind rather than one key
+ * with the noun as a `{param}`: "aposta" is feminine, "duelo" is masculine
+ * (messages/README.md's D6), so "won"/"lost" inflect differently in pt-BR.
+ */
+function describeBetEntry(
+  entry: BetSettlementEntry,
+  t: ReturnType<typeof useTranslations<"transactionsModal">>,
+): string {
+  const isDuel = entry.betKind === "duel";
+  if (entry.resolution.kind === "void") {
+    return isDuel
+      ? t("duelRefunded", { title: entry.title })
+      : t("betRefunded", { title: entry.title });
+  }
+  if (entry.profitLossDelta > 0) {
+    return isDuel
+      ? t("duelWin", { title: entry.title })
+      : t("betWin", { title: entry.title });
+  }
+  if (entry.profitLossDelta < 0) {
+    return isDuel
+      ? t("duelLoss", { title: entry.title })
+      : t("betLoss", { title: entry.title });
+  }
+  // Payout === stake exactly (everyone backed the winning side, DOM-016's
+  // pari-mutuel pool has nobody to redistribute from) — same `±0` neutral
+  // reading `CoinDelta` already gives this amount, just spelled out.
+  return isDuel
+    ? t("duelPush", { title: entry.title })
+    : t("betPush", { title: entry.title });
+}
+
+/**
+ * One row, either a real ledger `Transaction` or a derived
+ * `BetSettlementEntry` — merged by timestamp so a bet/duel outcome reads
+ * inline with grants and rewards instead of in a second list.
+ */
+type HistoryRow =
+  | { source: "ledger"; createdAt: string; tx: Transaction }
+  | { source: "bet"; createdAt: string; entry: BetSettlementEntry };
+
 /** DOM-025/026: dense transaction history + per-team lifetime P/L breakdown. */
 export function TransactionsModal() {
   const { close } = useModal();
-  const { currentUser, transactions, teams } = useTeam();
+  const { currentUser, transactions, teams, bets, wagers } = useTeam();
   const locale = useLocale();
   const t = useTranslations("transactionsModal");
 
-  const myTransactions = transactions
-    .filter((t) => t.userId === currentUser.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const myTransactions = transactions.filter((tx) => tx.userId === currentUser.id);
+  // Same replay `deriveProfitLoss` does for the footer's lifetime total, one
+  // entry per resolved bet/duel the user actually staked on — see ledger.ts.
+  const myBetHistory = deriveBetSettlementHistory(currentUser.id, bets, wagers);
+
+  const rows: HistoryRow[] = [
+    ...myTransactions.map((tx) => ({
+      source: "ledger" as const,
+      createdAt: tx.createdAt,
+      tx,
+    })),
+    ...myBetHistory.map((entry) => ({
+      source: "bet" as const,
+      createdAt: entry.createdAt,
+      entry,
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const myTeams: { team: Team; member: TeamMember }[] = teams
     .map((team) => ({
@@ -74,29 +138,48 @@ export function TransactionsModal() {
         </div>
       }
     >
-      {myTransactions.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           {t("empty")}
         </p>
       ) : (
         <ul>
-          {myTransactions.map((tx) => (
-            <li
-              key={tx.id}
-              className="flex items-center gap-3 border-b border-border py-2.5"
-            >
-              <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground">
-                {formatShortDate(locale, tx.createdAt)}
-              </span>
-              <span className="flex-1 truncate text-sm text-foreground">
-                {describe(tx, t)}
-              </span>
-              <CoinDelta amount={tx.amount} className="text-sm" />
-              <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                {formatCoins(locale, tx.balanceAfter)}
-              </span>
-            </li>
-          ))}
+          {rows.map((row) =>
+            row.source === "ledger" ? (
+              <li
+                key={row.tx.id}
+                className="flex items-center gap-3 border-b border-border py-2.5"
+              >
+                <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground">
+                  {formatShortDate(locale, row.tx.createdAt)}
+                </span>
+                <span className="flex-1 truncate text-sm text-foreground">
+                  {describe(row.tx, t)}
+                </span>
+                <CoinDelta amount={row.tx.amount} className="text-sm" />
+                <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                  {formatCoins(locale, row.tx.balanceAfter)}
+                </span>
+              </li>
+            ) : (
+              <li
+                key={row.entry.id}
+                className="flex items-center gap-3 border-b border-border py-2.5"
+              >
+                <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground">
+                  {formatShortDate(locale, row.entry.createdAt)}
+                </span>
+                <span className="flex-1 truncate text-sm text-foreground">
+                  {describeBetEntry(row.entry, t)}
+                </span>
+                <CoinDelta amount={row.entry.profitLossDelta} className="text-sm" />
+                {/* No ledger snapshot exists for a wager payout (DOM-025) —
+                    there is no balance-after to show here, only a blank
+                    column so the amounts still line up. */}
+                <span className="w-16 shrink-0" />
+              </li>
+            ),
+          )}
         </ul>
       )}
     </ModalShell>
