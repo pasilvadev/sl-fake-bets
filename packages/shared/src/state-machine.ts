@@ -5,8 +5,16 @@ import type { Bet, BetState, Duel } from "./types";
  * EFFECTIVE state also counts the clock. A stored-open bet whose closesAt has
  * passed behaves as closed everywhere — no new wagers, resolvable — even
  * before anything persists the transition.
+ *
+ * Takes a `Pick`, not the full `Bet`, on purpose: `bet-preview.ts`'s
+ * `BetPreview` (the public share-card read, `bet_preview` RPC) carries these
+ * two fields and nothing else Bet-shaped, and it should not need a cast to
+ * call this.
  */
-export function computeEffectiveState(bet: Bet, nowMs: number): BetState {
+export function computeEffectiveState(
+  bet: Pick<Bet, "state" | "closesAt">,
+  nowMs: number,
+): BetState {
   if (bet.state === "open" && Date.parse(bet.closesAt) <= nowMs) {
     return "closed";
   }
@@ -16,6 +24,34 @@ export function computeEffectiveState(bet: Bet, nowMs: number): BetState {
 /** Guard blocking new wagers once a bet is effectively closed (DOM-012/014). */
 export function canAcceptWagers(bet: Bet, nowMs: number): boolean {
   return computeEffectiveState(bet, nowMs) === "open";
+}
+
+/**
+ * `computeEffectiveState`, safe to call unconditionally on ANY bet and before
+ * the clock has hydrated — the two guards every open/closed-counting surface
+ * was re-deriving by hand (found-bugs: the DOM-012 grouping fix only landed
+ * in `bet-feed.tsx`/`bet-row.tsx`, leaving the ticker, invite modal, and
+ * team-switcher badge reading the raw, lazily-stale column):
+ *
+ *  - `nowMs == null`: the server render and the first client render, before
+ *    `useNow` ticks once. Reads the stored `state` rather than guessing.
+ *  - a duel: `accept_duel` already writes `state='closed'` itself the instant
+ *    it's accepted (D2), so a duel's stored state is never lazy the way a
+ *    pool bet's is, and a still-PENDING duel's `closesAt` is the ACCEPT
+ *    deadline, not a betting-close deadline — `computeDuelPhase` already reads
+ *    a lapsed one as expired/void, a different bucket from CLOSED that must
+ *    not be produced here.
+ *
+ * Every surface that groups, counts, or labels bets by open/closed status
+ * should call this instead of `computeEffectiveState` directly, so both
+ * guards live in exactly one place.
+ */
+export function effectiveBetState(
+  bet: Pick<Bet, "kind" | "state" | "closesAt">,
+  nowMs: number | null,
+): BetState {
+  if (bet.kind === "duel" || nowMs == null) return bet.state;
+  return computeEffectiveState(bet, nowMs);
 }
 
 /**

@@ -7,7 +7,7 @@ import {
   canAcceptDuel,
   canResolveDuel,
   computeDuelPhase,
-  computeEffectiveState,
+  effectiveBetState,
   type Bet,
 } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
@@ -115,17 +115,11 @@ export function BetFeed() {
     // closing early or resolving it) never flips the stored `state` column —
     // only `close_bet_early`/`resolve_bet` do — so grouping on the raw value
     // left a pool bet in OPEN forever once its window quietly lapsed. Pool
-    // bets group on the clock-aware `computeEffectiveState` instead.
-    //
-    // Duels are excluded on purpose: `accept_duel` already writes
-    // `state='closed'` itself the instant it's accepted (D2), so a duel's
-    // stored state is never lazy the way a pool bet's is, and a still-PENDING
-    // duel's `closesAt` is the ACCEPT deadline, not a betting-close deadline —
-    // an unaccepted, lapsed challenge reads as void (`duelView.readsAsVoid` in
-    // `bet-row.tsx`), which is a different bucket from CLOSED and must not be
-    // produced here.
-    const effectiveState = (b: Bet) =>
-      b.kind !== "duel" && now != null ? computeEffectiveState(b, now) : b.state;
+    // bets group on the clock-aware `effectiveBetState` instead, which also
+    // carries the duel exclusion (a still-PENDING duel's `closesAt` is the
+    // ACCEPT deadline, not a betting-close deadline — see its own doc comment
+    // in state-machine.ts) so this file does not have to re-derive it.
+    const effectiveState = (b: Bet) => effectiveBetState(b, now);
 
     // UX-008's grouping contract, unchanged: OPEN soonest-closing first →
     // CLOSED most-recent first → RESOLVED most-recent first, empty group

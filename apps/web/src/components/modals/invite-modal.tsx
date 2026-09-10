@@ -6,6 +6,7 @@ import { Link2Off } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CONFIG,
+  effectiveBetState,
   inviteCreationBlocker,
   liveInvites,
   type TeamInvite,
@@ -71,7 +72,9 @@ export function InviteModal() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const openCount = bets.filter((b) => b.state === "open").length;
+  // DOM-012: raw `bet.state` never flips on a scheduled close, so this count
+  // used to hold a lapsed pool bet as "open" indefinitely — see ticker.tsx.
+  const openCount = bets.filter((b) => effectiveBetState(b, now) === "open").length;
 
   /**
    * D3: `liveInvites` needs a real clock to tell an already-lapsed 24-hour

@@ -1,4 +1,5 @@
 import {
+  computeEffectiveState,
   poolStatsFromTotals,
   type BetResolution,
   type BetState,
@@ -131,12 +132,21 @@ export function describeBetPreview(
     .map((o) => `${o.label} ${o.multiplier === null ? "—" : `${o.multiplier.toFixed(2)}×`}`)
     .join(" · ");
 
+  // DOM-012: `preview.state` is the raw `bets.state` column off the
+  // `bet_preview` RPC, which never flips on a scheduled close — a share link
+  // for a pool bet whose window quietly lapsed read "OPEN" forever. No
+  // `bet.kind` on this row to exclude duels the way `effectiveBetState` does
+  // (the RPC doesn't return one), so this reads `computeEffectiveState`
+  // directly; it needs only the two fields this preview already carries, and
+  // is a no-op for an already-resolved/closed bet.
+  const effectiveState: BetState = computeEffectiveState(preview, Date.now());
+
   const status =
-    preview.state === "resolved"
+    effectiveState === "resolved"
       ? preview.resolutionKind === "void"
         ? t("betStatusVoided")
         : t("betStatusResolved")
-      : preview.state === "closed"
+      : effectiveState === "closed"
         ? t("betStatusClosed")
         : t("betStatusOpen");
 

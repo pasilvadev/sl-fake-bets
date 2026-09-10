@@ -15,7 +15,7 @@ import {
   canResolveBet,
   canResolveDuel,
   computeDuelPhase,
-  computeEffectiveState,
+  effectiveBetState,
   getPoolStats,
   settleBet,
   validateCommentBody,
@@ -163,8 +163,13 @@ function BetDetailContent({ bet }: { bet: Bet }) {
 
   // Until the clock mounts (useNow is null on the first render) fall back to
   // the stored state; the effective open→closed auto-transition kicks in one
-  // tick later. Mutators re-guard with a fresh clock anyway.
-  const effectiveState = now == null ? bet.state : computeEffectiveState(bet, now);
+  // tick later. Mutators re-guard with a fresh clock anyway. `effectiveBetState`
+  // also excludes duels (a still-pending duel's `closesAt` is its ACCEPT
+  // deadline, not a betting-close deadline) — this page's own reads of
+  // `effectiveState` all happen to already be `!isDuel`-guarded or preceded by
+  // a duel-phase check, but computing it unconditionally through the shared
+  // duel-safe helper means that stays true by construction, not by luck.
+  const effectiveState = effectiveBetState(bet, now);
   const poolStats = getPoolStats(bet, wagers);
   const poolTotal = poolStats.reduce((sum, o) => sum + o.total, 0);
   const betWagers = wagers

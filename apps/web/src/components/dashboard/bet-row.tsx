@@ -9,7 +9,7 @@ import {
   canAcceptDuel,
   canResolveDuel,
   computeDuelPhase,
-  computeEffectiveState,
+  effectiveBetState,
   getPoolStats,
   settleBet,
   type Bet,
@@ -504,15 +504,12 @@ export function BetRow({
   // this instead, so the row agrees with `bet-feed.tsx`'s CLOSED grouping
   // the instant the clock says so, not whenever the DB catches up.
   //
-  // Duels are excluded on purpose, not merely `now == null`-guarded like the
-  // rest of the row: `accept_duel` already writes `state='closed'` itself
-  // (D2), so a duel's stored state is never lazy the way a pool bet's is,
-  // and a still-PENDING duel's `closesAt` is the ACCEPT deadline, not a
-  // betting-close deadline — `computeDuelPhase`/`duelView.readsAsVoid`
-  // already reads a lapsed one as expired/void, which is a different label
-  // from "closed" and must not be overwritten by this.
-  const effectiveState: BetState =
-    isDuel || now == null ? bet.state : computeEffectiveState(bet, now);
+  // `effectiveBetState` carries its own duel exclusion (a still-PENDING
+  // duel's `closesAt` is the ACCEPT deadline, not a betting-close deadline —
+  // `computeDuelPhase`/`duelView.readsAsVoid` already reads a lapsed one as
+  // expired/void, a different label from "closed") so this row does not have
+  // to re-derive that guard from `isDuel` itself.
+  const effectiveState: BetState = effectiveBetState(bet, now);
 
   const duel = isDuel ? duelFor(bet.id) : undefined;
   let duelView: DuelView | null = null;

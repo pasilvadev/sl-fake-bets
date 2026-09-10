@@ -392,6 +392,13 @@ export interface BetSettlementEntry {
   betKind: BetKind;
   title: string;
   resolution: BetResolution;
+  /**
+   * `settlement.ts`'s `isRefundResolution`: true for a declared void AND for a
+   * "winner" nobody backed (both refund everyone, `profitLossDelta: 0`).
+   * `resolution.kind === "void"` alone under-detects the second case — read
+   * this instead of re-deriving it from `resolution`.
+   */
+  refunded: boolean;
   /** Payout − stake on a win; 0 on a void refund (settlement.ts). */
   profitLossDelta: number;
   createdAt: string;

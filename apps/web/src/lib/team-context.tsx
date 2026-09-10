@@ -37,6 +37,7 @@ import {
   computeDuelPhase,
   computeEffectiveState,
   deriveStandings,
+  effectiveBetState,
   generateId,
   inviteCreationBlocker,
   removeMemberWagersInTeam,
@@ -3398,8 +3399,16 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       return null;
     };
 
+    // DOM-012: raw `b.state` never flips on a scheduled close, so this badge
+    // held a lapsed pool bet as "open" indefinitely, disagreeing with that
+    // team's own feed the moment it's opened. `Date.now()` rather than a
+    // threaded clock, same as closeBetEarly/resolveBet's own gates below:
+    // this is called at render time by team-switcher.tsx, not itself a
+    // ticking hook, so there is nothing to memoize a clock into.
     const openBetCountFor = (teamId: string): number =>
-      data.bets.filter((b) => b.teamId === teamId && b.state === "open").length;
+      data.bets.filter(
+        (b) => b.teamId === teamId && effectiveBetState(b, Date.now()) === "open",
+      ).length;
 
     // D2: derived from the two stored markers, never stored directly —
     // see the ChatState/ChatSlice doc comments for why there are two and

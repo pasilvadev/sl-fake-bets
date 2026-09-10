@@ -68,6 +68,29 @@ export function settleBet(
 }
 
 /**
+ * True when `settleBet` will take its refund branch for this resolution: a
+ * declared void, or a "winner" nobody actually backed (line 49 above) — both
+ * return `profitLossDelta: 0` for every participant, but neither is a genuine
+ * push (a real payout that happens to net to exactly the stake back). Callers
+ * that need to tell "refunded" from "broke even" apart — the history screen's
+ * wording is the first one — must check this instead of `resolution.kind`
+ * alone, or a "winner" with an empty winning side reads as a push.
+ */
+export function isRefundResolution(
+  bet: Bet,
+  wagers: readonly Wager[],
+  resolution: BetResolution,
+): boolean {
+  if (resolution.kind === "void") return true;
+  const winTotal = wagers
+    .filter(
+      (w) => w.betId === bet.id && w.optionId === resolution.winningOptionId,
+    )
+    .reduce((sum, w) => sum + w.amount, 0);
+  return winTotal === 0;
+}
+
+/**
  * Kick/ban wager cascade (DOM-032, decision §4.4): drop the member's wagers
  * from every active (non-resolved) bet — plain removal, no refund, since the
  * per-team balance is deleted with the membership. Pool odds recompute

@@ -8,6 +8,7 @@ import {
   mockWagers,
 } from "./mock-data";
 import {
+  isRefundResolution,
   removeMemberActiveWagers,
   settleBet,
   type SettlementDelta,
@@ -205,6 +206,7 @@ describe("deriveBetSettlementHistory — found-bugs item 1 (bet/duel wins & loss
         betKind: "pool",
         title: b05.title,
         resolution: b05.resolution,
+        refunded: false,
         profitLossDelta: 50,
         createdAt: b05.closesAt,
       },
@@ -216,7 +218,67 @@ describe("deriveBetSettlementHistory — found-bugs item 1 (bet/duel wins & loss
     expect(history).toHaveLength(1);
     const [entry] = history;
     expect(entry?.resolution).toEqual({ kind: "void" });
+    expect(entry?.refunded).toBe(true);
     expect(entry?.profitLossDelta).toBe(0);
+  });
+
+  it("a \"winner\" nobody backed is a refund, not a push — resolution.kind stays \"winner\"", () => {
+    // Same shape as the synthetic duel fixture below, but the declared
+    // winner ("o2") has no wagers on it at all: settleBet's void-or-empty-
+    // winner branch (settlement.ts) refunds both bettors in full. Regression
+    // for the bug this diff fixes — describeBetEntry (transactions-modal.tsx)
+    // used to read this as a push because it only checked `resolution.kind`.
+    const bet: Bet = {
+      id: "b-orphan-winner",
+      teamId: "t-01",
+      creatorId: "u-01",
+      title: "synthetic orphan winner",
+      options: [
+        { id: "b-orphan-winner-o1", label: "A" },
+        { id: "b-orphan-winner-o2", label: "B" },
+      ],
+      state: "resolved",
+      closesAt: "2026-09-05T00:00:00Z",
+      maxWagerPerUser: 100,
+      resolution: { kind: "winner", winningOptionId: "b-orphan-winner-o2" },
+      kind: "pool",
+      createdAt: "2026-09-04T00:00:00Z",
+    };
+    const wagers = [
+      {
+        id: "w-orphan-1",
+        betId: "b-orphan-winner",
+        userId: "u-01",
+        optionId: "b-orphan-winner-o1",
+        amount: 40,
+        placedAt: "2026-09-04T00:01:00Z",
+      },
+      {
+        id: "w-orphan-2",
+        betId: "b-orphan-winner",
+        userId: "u-02",
+        optionId: "b-orphan-winner-o1",
+        amount: 60,
+        placedAt: "2026-09-04T00:02:00Z",
+      },
+    ];
+
+    expect(isRefundResolution(bet, wagers, bet.resolution!)).toBe(true);
+
+    const history = deriveBetSettlementHistory("u-01", [bet], wagers);
+    expect(history).toEqual([
+      {
+        id: "b-orphan-winner",
+        teamId: "t-01",
+        userId: "u-01",
+        betKind: "pool",
+        title: "synthetic orphan winner",
+        resolution: { kind: "winner", winningOptionId: "b-orphan-winner-o2" },
+        refunded: true,
+        profitLossDelta: 0,
+        createdAt: "2026-09-05T00:00:00Z",
+      },
+    ]);
   });
 
   it("excludes a resolved bet the user never wagered on (did-not-participate)", () => {
@@ -272,6 +334,7 @@ describe("deriveBetSettlementHistory — found-bugs item 1 (bet/duel wins & loss
         betKind: "duel",
         title: "synthetic duel",
         resolution: { kind: "winner", winningOptionId: "b-duel-syn-o1" },
+        refunded: false,
         profitLossDelta: 25,
         createdAt: "2026-09-05T00:00:00Z",
       },

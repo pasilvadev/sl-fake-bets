@@ -53,7 +53,12 @@ function describeBetEntry(
   t: ReturnType<typeof useTranslations<"transactionsModal">>,
 ): string {
   const isDuel = entry.betKind === "duel";
-  if (entry.resolution.kind === "void") {
+  // `entry.refunded`, not `entry.resolution.kind === "void"`: a declared
+  // "winner" nobody backed also refunds everyone in full (settlement.ts's
+  // `isRefundResolution`), but `resolution.kind` stays "winner" for that
+  // case — checking `kind` alone let it fall through to the push branch
+  // below and read as "broke even" instead of "refunded".
+  if (entry.refunded) {
     return isDuel
       ? t("duelRefunded", { title: entry.title })
       : t("betRefunded", { title: entry.title });
@@ -68,9 +73,11 @@ function describeBetEntry(
       ? t("duelLoss", { title: entry.title })
       : t("betLoss", { title: entry.title });
   }
-  // Payout === stake exactly (everyone backed the winning side, DOM-016's
-  // pari-mutuel pool has nobody to redistribute from) — same `±0` neutral
-  // reading `CoinDelta` already gives this amount, just spelled out.
+  // Genuine push, not a refund: a real payout that happens to net to exactly
+  // the stake back (e.g. the sole bettor on the winning side) — `refunded`
+  // above already peeled off the "nobody backed the winner" case, which also
+  // nets to 0 but is not this. Same `±0` neutral reading `CoinDelta` already
+  // gives this amount, just spelled out.
   return isDuel
     ? t("duelPush", { title: entry.title })
     : t("betPush", { title: entry.title });

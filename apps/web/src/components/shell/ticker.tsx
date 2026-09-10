@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { cn } from "cn";
 import { useLocale, useTranslations } from "next-intl";
-import { CONFIG, type Bet } from "@repo/shared";
+import { CONFIG, effectiveBetState, type Bet } from "@repo/shared";
 import { useTeam } from "@/lib/team-context";
 import { useNow } from "@/lib/use-now";
 import { formatCoins, formatTimeLeft } from "@/lib/format";
@@ -65,7 +65,12 @@ export function Ticker() {
   const t = useTranslations("ticker");
   const locale = useLocale();
 
-  const openBets = bets.filter((b) => b.state === "open");
+  // DOM-012: a scheduled close (closesAt elapsing with nobody manually
+  // closing/resolving it) never flips the stored `state` column, so counting
+  // on the raw value left a lapsed pool bet reading OPEN here forever — even
+  // after bet-feed.tsx's own CLOCK-aware grouping had already moved it to
+  // CLOSED right below this strip. `effectiveBetState` also excludes duels.
+  const openBets = bets.filter((b) => effectiveBetState(b, now) === "open");
   const soonest = soonestOpenBet(openBets);
 
   const openBetIds = new Set(openBets.map((b) => b.id));

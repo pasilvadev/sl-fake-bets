@@ -1,5 +1,5 @@
 import type { Bet, BetSettlementEntry, TeamMember, Transaction, Wager } from "./types";
-import { settleBet } from "./settlement";
+import { isRefundResolution, settleBet } from "./settlement";
 
 /**
  * Transfer ledger (DOM-025, decision §4.6): grants, daily rewards, and leader
@@ -112,6 +112,11 @@ export function deriveBetSettlementHistory(
       betKind: bet.kind,
       title: bet.title,
       resolution: bet.resolution,
+      // A declared "winner" nobody backed refunds everyone (settlement.ts)
+      // exactly like a void does, but `resolution.kind` stays "winner" — read
+      // this instead of `resolution.kind === "void"`, or that case reads as a
+      // push (settlement.test.ts covers it).
+      refunded: isRefundResolution(bet, wagers, bet.resolution),
       profitLossDelta: delta.profitLossDelta,
       createdAt: bet.closesAt,
     });
