@@ -118,7 +118,11 @@ export function deriveBetSettlementHistory(
       // push (settlement.test.ts covers it).
       refunded: isRefundResolution(bet, wagers, bet.resolution),
       profitLossDelta: delta.profitLossDelta,
-      createdAt: bet.closesAt,
+      // `resolvedAt` when we have it (everything settled since
+      // 20260909110000_bet_resolved_at.sql); `closesAt` — betting-close time,
+      // not settlement time — for anything resolved before that column
+      // existed, same approximation this always used.
+      createdAt: bet.resolvedAt ?? bet.closesAt,
     });
   }
   return entries;

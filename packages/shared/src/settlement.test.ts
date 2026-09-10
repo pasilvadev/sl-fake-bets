@@ -213,6 +213,29 @@ describe("deriveBetSettlementHistory — found-bugs item 1 (bet/duel wins & loss
     ]);
   });
 
+  it("createdAt falls back to closesAt when resolvedAt is absent (fixture predates the column)", () => {
+    // b05 carries no `resolvedAt` in mock-data.ts, same as every bet resolved
+    // before 20260909110000_bet_resolved_at.sql — the approximation this
+    // always used, unchanged for exactly that data.
+    expect(b05.resolvedAt).toBeUndefined();
+    const [entry] = deriveBetSettlementHistory("u-02", mockBets, mockWagers);
+    expect(entry?.createdAt).toBe(b05.closesAt);
+  });
+
+  it("createdAt prefers resolvedAt over closesAt when the bet has one", () => {
+    // Regression for the sort-order bug this column fixes: a bet resolved
+    // well after it closed must not be timestamped as if it settled the
+    // moment betting closed.
+    const bet: Bet = { ...b05, resolvedAt: "2026-09-20T00:00:00Z" };
+    expect(bet.resolvedAt).not.toBe(bet.closesAt);
+    const [entry] = deriveBetSettlementHistory(
+      "u-02",
+      [bet, ...mockBets.filter((b) => b.id !== "b-05")],
+      mockWagers,
+    );
+    expect(entry?.createdAt).toBe("2026-09-20T00:00:00Z");
+  });
+
   it("a void refund is 0 P/L, not a loss", () => {
     const history = deriveBetSettlementHistory("u-05", mockBets, mockWagers);
     expect(history).toHaveLength(1);

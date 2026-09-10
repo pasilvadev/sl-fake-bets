@@ -196,6 +196,12 @@ export interface BetRow {
    */
   void_reason: BetVoidReason | null;
   created_at: string;
+  /**
+   * `20260909110000_bet_resolved_at.sql`. `null` until `resolve_bet`/
+   * `void_duel` settle the bet, and `null` forever for anything resolved
+   * before that column existed — see `Bet.resolvedAt`'s doc comment.
+   */
+  resolved_at: string | null;
   bet_options: BetOptionRow[];
 }
 
@@ -372,6 +378,7 @@ function toBet(row: BetRow): Bet {
     // lookup that could only ever miss.
     kind: row.kind,
     createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? undefined,
   };
 }
 
@@ -456,7 +463,7 @@ export function toComment(row: CommentRow): Comment {
  * to make impossible.
  */
 const BET_SELECT =
-  "id, team_id, creator_id, title, icon_emoji, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, kind, void_reason, created_at, bet_options!bet_options_bet_id_fkey(id, label, position)";
+  "id, team_id, creator_id, title, icon_emoji, state, closes_at, max_wager_per_user, resolution_kind, winning_option_id, kind, void_reason, created_at, resolved_at, bet_options!bet_options_bet_id_fkey(id, label, position)";
 
 /**
  * One bet, by id — the only read Phase 8's realtime layer performs.

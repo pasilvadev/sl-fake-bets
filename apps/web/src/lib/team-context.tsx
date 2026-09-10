@@ -506,6 +506,16 @@ type TeamDataAction =
       teamId: string;
       betId: string;
       resolution: BetResolution;
+      /**
+       * `bets.resolved_at`, or `undefined` when this dispatch has no server
+       * value to offer yet (the acting client's own optimistic call — see
+       * `resolveBet` below). Same rule as `void-duel`'s `closesAt` comment:
+       * the browser clock never writes a stored timestamp in this file, so an
+       * optimistic dispatch leaves this unset rather than guess, and the
+       * realtime echo (or the next load) fills in the real value moments
+       * later.
+       */
+      resolvedAt?: string;
     }
   | { type: "delete-bet"; teamId: string; betId: string }
   // --- duels (Extra Phase 2) ---
@@ -794,7 +804,18 @@ function teamDataReducer(data: TeamData, action: TeamDataAction): TeamData {
         ...data,
         bets: data.bets.map((b) =>
           b.id === action.betId
-            ? { ...b, state: "resolved" as const, resolution: action.resolution }
+            ? {
+                ...b,
+                state: "resolved" as const,
+                resolution: action.resolution,
+                // `?? b.resolvedAt`, not a bare overwrite: the acting
+                // client's own optimistic dispatch (below) carries no
+                // `resolvedAt` at all, and if the realtime echo won the race
+                // and already applied the real value, this must not clobber
+                // it back to `undefined`. The echo itself always supplies a
+                // value, so it always wins regardless of arrival order.
+                resolvedAt: action.resolvedAt ?? b.resolvedAt,
+              }
             : b,
         ),
       };
@@ -1623,6 +1644,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
               teamId: bet.teamId,
               betId: bet.id,
               resolution,
+              // The real server value — this IS the row Postgres just wrote,
+              // unlike the acting client's own optimistic dispatch below.
+              resolvedAt: event.row.resolved_at ?? undefined,
             });
             return;
           }
@@ -2273,6 +2297,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // `result.deltas` is no longer read for anything but has stayed on the
       // RPC's return shape (see bet-mutations.ts) since `resolve_bet` has no
       // cheaper snapshot to offer for potentially dozens of wagerers at once.
+      // No `resolvedAt` either, same reasoning: `resolve_bet` returns only
+      // deltas, and the browser clock does not get to write the timestamp
+      // Postgres stamped with `now()`. The realtime echo above (or the next
+      // load) fills it in — see the action's own doc comment.
       dispatch({
         type: "resolve-bet",
         teamId: bet.teamId,

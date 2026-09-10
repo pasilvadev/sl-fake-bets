@@ -246,6 +246,20 @@ export interface Bet {
    */
   kind: BetKind;
   createdAt: string;
+  /**
+   * The moment `resolve_bet`/`void_duel` actually settled this bet. Optional
+   * like `resolution` above and for the identical reason — it does not exist
+   * until then — plus one more: it is also `undefined` forever for anything
+   * resolved before this column existed (`20260909110000_bet_resolved_at.sql`,
+   * no backfill). Added so `deriveBetSettlementHistory` (ledger.ts) has a real
+   * timestamp to sort a settlement entry by, instead of `closesAt` (when
+   * BETTING closed, which can predate the actual resolution by however long
+   * it sat awaiting one). Same "browser clock never writes a stored
+   * timestamp" rule as `closesAt`: `team-context.tsx`'s optimistic
+   * `resolve-bet` dispatch does not guess it, and leaves it to the realtime
+   * echo (or the next load) to fill in.
+   */
+  resolvedAt?: string;
 }
 
 /**
@@ -380,10 +394,11 @@ export interface Transaction {
  * them for the lifetime total, so the two numbers can never drift apart.
  *
  * `id` is the bet's id — settlement is 1:1 with its bet, so there is nothing
- * else to key it on. `createdAt` is `bet.closesAt`: the schema has no
- * resolved-at timestamp (`BetResolution` carries no clock of its own), and
- * `closesAt` is the same stand-in the bet-row's own resolved-date cell
- * already uses.
+ * else to key it on. `createdAt` is `bet.resolvedAt`, falling back to
+ * `bet.closesAt` for anything resolved before that column existed
+ * (`20260909110000_bet_resolved_at.sql`) — see `Bet.resolvedAt`'s own doc
+ * comment for why `closesAt` alone is the wrong instant for a settlement to
+ * sort by.
  */
 export interface BetSettlementEntry {
   id: string;
